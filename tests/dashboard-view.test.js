@@ -42,13 +42,14 @@ test('renderer escapes attacker-controlled names and prints draft-only amounts i
   assert.equal(escapeHtml('<>&"\''), '&lt;&gt;&amp;&quot;&#39;');
   assert.equal(money('2599', 'fr'), '25,99\u00a0$ CA');
   assert.equal(money('2599', 'en'), 'CA$25.99');
-  for (const language of ['fr', 'en']) {
+  for (const [language, logout] of [['fr', 'Se déconnecter'], ['en', 'Sign out']]) {
     const page = renderDashboard({ summary, drafts, language });
     assert.match(page, new RegExp(`<html lang="${language}"`));
     assert.ok(page.includes('&lt;img src=x onerror=alert(1)&gt; &amp; &quot;customer&quot;'));
     assert.ok(!page.includes('<img src=x onerror=alert(1)>'));
     assert.ok(!page.includes('<script'));
-    assert.ok(!page.includes('<form'));
+    assert.match(page, new RegExp(`<form method="post" action="/internal/logout\\?lang=${language}"><button class="signout" type="submit">${logout}</button></form>`));
+    assert.equal((page.match(/<form\b/g) || []).length, 1);
     assert.ok(!page.includes('synthetic-admin-key'));
     assert.ok(!page.includes(TOKEN));
     assert.match(page, /Drafts only|Brouillons seulement/);
@@ -96,7 +97,8 @@ test('HTML endpoint requires a live staff session, bounds query and locks down b
     assert.equal(response.headers.get('x-frame-options'), 'DENY');
     assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
-    assert.match(await response.text(), /Recent drafts/);
+    assert.match(response.headers.get('content-security-policy'), /form-action 'self'/);
+    assert.match(await response.text(), /<form method="post" action="\/internal\/logout\?lang=en"/);
     assert.deepEqual(calls, { summary: 1, drafts: 1 });
     assert.equal((await fetch(base + '/internal/dashboard', { method: 'POST', headers })).status, 405);
   });

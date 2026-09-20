@@ -6,6 +6,7 @@ const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
 const { DashboardError, pageOptions } = require('./dashboard-store');
+const { renderDashboard } = require('./dashboard-view');
 const { CustomerDirectoryError, customerListOptions } = require('./customer-directory');
 const { ApprovalLedgerError, approvalPageOptions } = require('./approval-ledger');
 const { resolveReadOnlyStaff } = require('./staff-read-access');
@@ -21,6 +22,21 @@ function sendJson(response, statusCode, body) {
     'Referrer-Policy': 'no-referrer',
   });
   response.end(JSON.stringify(body));
+}
+
+function sendHtml(response, html) {
+  if (response.headersSent || response.destroyed) return;
+  response.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'private, no-store',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  });
+  response.end(html);
 }
 
 function isAuthorized(provided, expected) {
@@ -92,9 +108,10 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isGet = /^\/api\/drafts\/[^/]+$/.test(path) && !isPreview;
     const isWave = path === '/api/wave/businesses';
     const isDashboard = path === '/api/dashboard/summary';
+    const isHtml = path === '/internal/dashboard';
     const isCustomers = path === '/api/customers';
     const isApprovals = path === '/api/approvals';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals) {
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
@@ -102,6 +119,12 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     if ((expectedMethod && request.method !== expectedMethod) ||
         (isCollection && !['GET', 'POST'].includes(request.method))) {
       return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+    }
+
+    // The HTML view rejects X-Admin-Key. Never embed a shared admin key or bearer
+    // token in browser code. Normal browser navigation needs separate secure login.
+    if (isHtml && request.headers.authorization === undefined) {
+      return sendJson(response, 401, { error: 'UNAUTHORIZED' });
     }
 
     // Staff may list tenant-scoped draft summaries. Full drafts, customer contacts,
@@ -115,7 +138,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 503, { error: 'AUTH_UNAVAILABLE' });
       }
       if (!staff) return sendJson(response, 401, { error: 'UNAUTHORIZED' });
-      if (!((isDashboard || isCollection || isGet || isCustomers || isApprovals) && request.method === 'GET')) {
+      if (!((isDashboard || isCollection || isGet || isCustomers || isApprovals || isHtml) && request.method === 'GET')) {
         return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
       }
       if ((isCustomers || isGet || isApprovals) && staff.role !== 'OWNER') {
@@ -125,6 +148,23 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       if (!config.adminKey) return sendJson(response, 503, { error: 'ADMIN_NOT_CONFIGURED' });
       if (!isAuthorized(request.headers['x-admin-key'], config.adminKey)) {
         return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      }
+    }
+
+    if (isHtml) {
+      if (!dashboardStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+      if ([...url.searchParams.keys()].some(key => key !== 'lang') || url.searchParams.getAll('lang').length > 1) {
+        return sendJson(response, 422, { error: 'INVALID_QUERY' });
+      }
+      const language = url.searchParams.get('lang') ?? 'fr';
+      if (!['fr', 'en'].includes(language)) return sendJson(response, 422, { error: 'INVALID_LANGUAGE' });
+      try {
+        const [summary, drafts] = await Promise.all([
+          dashboardStore.getSummary(), dashboardStore.listDrafts(pageOptions('1', '20')),
+        ]);
+        return sendHtml(response, renderDashboard({ summary, drafts, language }));
+      } catch {
+        return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }
     }
 

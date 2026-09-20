@@ -5,12 +5,14 @@ const { createServer } = require('./src/server');
 const { createDraftStore } = require('./src/draft-store');
 const { createDashboardStore } = require('./src/dashboard-store');
 const { createStaffAuthStore } = require('./src/staff-auth-store');
+const { createCustomerDirectory } = require('./src/customer-directory');
 
 if (require.main === module) {
   const config = loadConfig();
   let draftStore = null;
   let dashboardStore = null;
   let staffAuthStore = null;
+  let customerDirectory = null;
   if (config.databaseUrl && config.businessId) {
     // Database module is required only for the dedicated app; no existing TAKATAK DB is accessed.
     const { Pool } = require('pg');
@@ -19,8 +21,9 @@ if (require.main === module) {
     draftStore = createDraftStore({ pool, businessId: config.businessId });
     dashboardStore = createDashboardStore({ pool, businessId: config.businessId });
     staffAuthStore = createStaffAuthStore({ pool, businessId: config.businessId });
+    customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
   }
-  const server = createServer({ config, draftStore, dashboardStore, staffAuthStore });
+  const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory });
   server.listen(config.port, () => {
     console.info(`TAKATAK Wave development service listening on port ${server.address().port}`);
   });

@@ -1,0 +1,9 @@
+# Customer directory — backend milestone
+
+`GET /api/customers` lists existing customers in the **single dedicated Facturations business** configured on the server. No customer sign-up, public portal, client invitations, Wave writes or email delivery are implemented.
+
+Authorization: a valid OWNER staff session (server-side verification; `Authorization: Bearer` for backend development only) or the temporary private **server-to-server** `X-Admin-Key`. Ordinary STAFF sessions return 403 before any customer query. Invalid/expired/revoked/other-business tokens return 401 and cannot fall back to an admin key. Browser login, verified owner setup and MFA remain outstanding: never place tokens/admin keys in client-side code, localStorage, a URL or screenshots.
+
+Queries: `page` defaults to 1 (maximum 1000), `pageSize` defaults to 20 (maximum 50), `q` is optional and must be 2–80 characters after trimming. Searches match customer name or normalized email case-insensitively; literal `%`, `_` and `!` are escaped, not SQL wildcards. Duplicate/unrecognized parameters and invalid inputs are rejected. Response includes `status: CUSTOMERS_ONLY`, `page`, `pageSize`, `hasMore` and customer `{id,name,email,address,createdAt}` entries. Results have `Cache-Control: no-store`; database errors are sanitized. No customer records are sent to GitHub or CI.
+
+Each SQL query binds `business_id` from the server configuration, never from request query parameters; stable name/ID ordering and `pageSize + 1` determine whether more results exist. Test coverage includes real disposable PostgreSQL 16 and negative authorization cases. The backend directory is **not** a production dashboard. Before launch: authenticated browser cookies, CSRF defense, MFA, distributed throttling, role reviews, audit logs, backup/restore and end-to-end staging verification.

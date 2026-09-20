@@ -6,6 +6,7 @@ const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
 const { DashboardError, pageOptions } = require('./dashboard-store');
+const { CustomerDirectoryError, customerListOptions } = require('./customer-directory');
 const { resolveReadOnlyStaff } = require('./staff-read-access');
 
 const MAX_BODY_BYTES = 32768;
@@ -72,7 +73,7 @@ function parseListOptions(searchParams) {
 }
 
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
-  staffAuthStore = null } = {}) {
+  staffAuthStore = null, customerDirectory = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -90,7 +91,8 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isGet = /^\/api\/drafts\/[^/]+$/.test(path) && !isPreview;
     const isWave = path === '/api/wave/businesses';
     const isDashboard = path === '/api/dashboard/summary';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard) {
+    const isCustomers = path === '/api/customers';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
@@ -100,9 +102,9 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    // Staff session credentials may read tenant-scoped drafts and dashboard ONLY.
-    // The temporary admin key remains server-to-server only, never in browser JavaScript.
-    // An Authorization header takes precedence: a bad staff token cannot fall back to an admin key.
+    // Staff session credentials may read tenant-scoped data only. Customer contacts
+    // require OWNER; ordinary STAFF sessions never receive contact information.
+    // The temporary admin key is strictly server-to-server and must not enter browsers.
     if (request.headers.authorization !== undefined) {
       let staff;
       try {
@@ -112,13 +114,28 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 503, { error: 'AUTH_UNAVAILABLE' });
       }
       if (!staff) return sendJson(response, 401, { error: 'UNAUTHORIZED' });
-      if (!((isDashboard || isCollection || isGet) && request.method === 'GET')) {
+      if (!((isDashboard || isCollection || isGet || isCustomers) && request.method === 'GET')) {
         return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
+      }
+      if (isCustomers && staff.role !== 'OWNER') {
+        return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
       }
     } else {
       if (!config.adminKey) return sendJson(response, 503, { error: 'ADMIN_NOT_CONFIGURED' });
       if (!isAuthorized(request.headers['x-admin-key'], config.adminKey)) {
         return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      }
+    }
+
+    if (isCustomers) {
+      if (!customerDirectory) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+      try {
+        return sendJson(response, 200, await customerDirectory.listCustomers(customerListOptions(url.searchParams)));
+      } catch (error) {
+        if (error instanceof CustomerDirectoryError || error instanceof DashboardError) {
+          return sendJson(response, error.statusCode, { error: error.code });
+        }
+        return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }
     }
 

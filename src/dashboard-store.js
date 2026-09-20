@@ -34,13 +34,14 @@ function createDashboardStore({ pool, businessId }) {
 
   async function listDrafts(options = pageOptions()) {
     const { page, pageSize, offset } = options;
-    // Every query includes the business ID. The result excludes email, street address,
-    // internal idempotency keys and the full invoice snapshot.
+    // Every query includes the business ID. Display the recipient name from the
+    // immutable invoice snapshot: directory contact details can be stale or change
+    // independently of a draft. Exclude email, address, keys and the full snapshot.
     const result = await pool.query(
       `SELECT d.id, d.created_at, d.snapshot->>'invoiceDate' AS invoice_date,
               d.snapshot->>'dueDate' AS due_date,
               d.snapshot->>'totalCents' AS total_cents,
-              c.name AS customer_name
+              d.snapshot#>>'{customer,name}' AS customer_name
          FROM invoice_drafts AS d
          JOIN invoice_customers AS c
            ON c.business_id=d.business_id AND c.id=d.customer_id

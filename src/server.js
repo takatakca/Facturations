@@ -4,6 +4,7 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
+const { StoreError } = require('./draft-store');
 
 const MAX_BODY_BYTES = 32768;
 
@@ -59,43 +60,58 @@ function readJson(request) {
   });
 }
 
-function createServer({ config, fetchImpl = globalThis.fetch } = {}) {
+function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
     const path = request.url?.split('?')[0];
     if (path === '/health') {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
-      return sendJson(response, 200, { ok: true, service: 'takatak-wave', phase: 2 });
+      return sendJson(response, 200, { ok: true, service: 'takatak-wave', phase: 3 });
     }
 
-    if (path !== '/api/wave/businesses' && path !== '/api/drafts/preview') {
-      return sendJson(response, 404, { error: 'NOT_FOUND' });
-    }
-    const expectedMethod = path === '/api/drafts/preview' ? 'POST' : 'GET';
-    if (request.method !== expectedMethod) {
-      return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
-    }
+    const isPreview = path === '/api/drafts/preview';
+    const isSave = path === '/api/drafts';
+    const isGet = /^\/api\/drafts\/[^/]+$/.test(path || '') && !isPreview;
+    const isWave = path === '/api/wave/businesses';
+    if (!isPreview && !isSave && !isGet && !isWave) return sendJson(response, 404, { error: 'NOT_FOUND' });
+
+    const expectedMethod = isPreview || isSave ? 'POST' : 'GET';
+    if (request.method !== expectedMethod) return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     if (!config.adminKey) return sendJson(response, 503, { error: 'ADMIN_NOT_CONFIGURED' });
     if (!isAuthorized(request.headers['x-admin-key'], config.adminKey)) {
       return sendJson(response, 401, { error: 'UNAUTHORIZED' });
     }
 
-    if (path === '/api/drafts/preview') {
+    if (isPreview || isSave || isGet) {
+      if (!isPreview && !draftStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+      if (isGet) {
+        try {
+          const draft = await draftStore.getDraft(path.slice('/api/drafts/'.length));
+          return sendJson(response, 200, draft);
+        } catch (error) {
+          if (error instanceof StoreError) return sendJson(response, error.statusCode, { error: error.code });
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
+      }
       if (!/^application\/json(?:\s*;|\s*$)/iu.test(request.headers['content-type'] || '')) {
         return sendJson(response, 415, { error: 'UNSUPPORTED_MEDIA_TYPE' });
       }
       try {
-        const draft = await readJson(request);
-        return sendJson(response, 200, previewDraft(draft));
+        const payload = await readJson(request);
+        if (isPreview) return sendJson(response, 200, previewDraft(payload));
+        const key = request.headers['idempotency-key'];
+        const stored = await draftStore.createDraft(payload, key);
+        return sendJson(response, 200, stored);
       } catch (error) {
-        if (error instanceof DraftValidationError) {
+        if (error instanceof DraftValidationError || error instanceof StoreError) {
           return sendJson(response, error.statusCode, { error: error.code });
         }
-        if (error && typeof error.statusCode === 'number') {
+        if (error && typeof error.statusCode === 'number' &&
+          ['BODY_TOO_LARGE', 'INVALID_JSON', 'INVALID_REQUEST'].includes(error.code)) {
           return sendJson(response, error.statusCode, { error: error.code });
         }
-        return sendJson(response, 500, { error: 'INTERNAL_ERROR' });
+        return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }
     }
 

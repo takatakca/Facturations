@@ -17,7 +17,7 @@ function base32Encode(bytes) {
   let encoded = '';
   for (const byte of bytes) {
     accumulator = (accumulator << 8) | byte;
-    bits += 8;
+    bits += 5;
     while (bits >= 5) {
       bits -= 5;
       encoded += ALPHABET[(accumulator >>> bits) & 31];
@@ -102,10 +102,16 @@ function createStaffTotpStore({ pool, businessId, encryptionKeyHex, now = Date.n
     return { secretBase32: base32Encode(secret) };
   }
 
-  async function check(staffId, code, activating) {
+  // A login already holds a PostgreSQL transaction client and a staff row lock.
+  // Use that SAME client for the TOTP read and atomic consume: borrowing another
+  // connection from the pool can exhaust it and block every concurrent login.
+  async function check(staffId, code, activating, queryClient = pool) {
     const id = staffIdValue(staffId);
     if (typeof code !== 'string' || !CODE.test(code)) return false;
-    const found = await pool.query(
+    if (!queryClient || typeof queryClient.query !== 'function') {
+      throw new TypeError('A PostgreSQL query client is required');
+    }
+    const found = await queryClient.query(
       `SELECT t.secret_iv,t.secret_ciphertext,t.secret_tag FROM facturations_staff_totp t
        JOIN facturations_staff_users u ON u.business_id=t.business_id AND u.id=t.user_id
        WHERE t.business_id=$1 AND t.user_id=$2 AND t.active=$3
@@ -129,7 +135,7 @@ function createStaffTotpStore({ pool, businessId, encryptionKeyHex, now = Date.n
            AND EXISTS (SELECT 1 FROM facturations_staff_users u WHERE u.business_id=t.business_id
                        AND u.id=t.user_id AND u.enabled AND u.email_verified_at IS NOT NULL)
          RETURNING t.user_id`;
-    const result = await pool.query(update, [tenant, id, step]);
+    const result = await queryClient.query(update, [tenant, id, step]);
     // Atomic update guarantees that simultaneous use of the same code succeeds once.
     return result.rows.length === 1;
   }
@@ -137,7 +143,7 @@ function createStaffTotpStore({ pool, businessId, encryptionKeyHex, now = Date.n
   return Object.freeze({
     provisionTrusted,
     confirmTrusted: (staffId, code) => check(staffId, code, true),
-    verify: (staffId, code) => check(staffId, code, false),
+    verify: (staffId, code, transactionClient = pool) => check(staffId, code, false, transactionClient),
   });
 }
 

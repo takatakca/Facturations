@@ -33,7 +33,7 @@ test('health is public but leaks no secrets', async () => {
     const { response, payload } = await request(base, '/health');
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
-    assert.deepEqual(payload, { ok: true, service: 'takatak-wave', phase: 2 });
+    assert.deepEqual(payload, { ok: true, service: 'takatak-wave', phase: 3 });
     assert.equal(JSON.stringify(payload).includes('hidden-token'), false);
   });
 });
@@ -98,7 +98,7 @@ test('no OAuth, invoices, or email endpoint is exposed; unknown routes return 40
   });
 });
 
-test('write requests to protected route are rejected without contacting Wave', async () => {
+test('write requests to protected Wave route are rejected without contacting Wave', async () => {
   let calls = 0;
   await withServer({ adminKey: key, waveToken: 'token' }, async () => { calls++; }, async (base) => {
     const { response, payload } = await request(base, '/api/wave/businesses', { method: 'POST', headers: { 'X-Admin-Key': key } });

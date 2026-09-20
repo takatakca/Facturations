@@ -33,7 +33,7 @@ test('health is public but leaks no secrets', async () => {
     const { response, payload } = await request(base, '/health');
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
-    assert.deepEqual(payload, { ok: true, service: 'takatak-wave', phase: 1 });
+    assert.deepEqual(payload, { ok: true, service: 'takatak-wave', phase: 2 });
     assert.equal(JSON.stringify(payload).includes('hidden-token'), false);
   });
 });

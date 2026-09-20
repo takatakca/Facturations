@@ -1,6 +1,6 @@
 # Authenticated workspace HTTP boundary — not yet an editor
 
-`src/browser-workspace-routes.js` adds a cookie-authenticated, development-only JSON boundary to the revisioned workspaces from migration 008. It is installed **only** when the dedicated database, exact HTTPS `FACTURATIONS_PUBLIC_ORIGIN` and MFA encryption key are configured. The app must be reachable exclusively through the trusted HTTPS reverse proxy; the code does not prove transport security or provision staff accounts. Do not deploy to an existing GROUPE TAKATAK production database.
+`src/browser-workspace-routes.js` adds a cookie-authenticated JSON boundary to the revisioned workspaces from migration 008. **This is not restricted to `NODE_ENV=development`:** `app.js` installs these routes whenever the dedicated database, exact HTTPS `FACTURATIONS_PUBLIC_ORIGIN` and MFA encryption key are configured. Do not treat the word “development” or the startup log as a runtime access control. The app must be reachable exclusively through the trusted HTTPS reverse proxy; the code does not prove transport security or provision staff accounts. Do not deploy to an existing GROUPE TAKATAK production database.
 
 ## Routes and security
 

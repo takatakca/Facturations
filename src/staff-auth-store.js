@@ -6,6 +6,7 @@ const scrypt = promisify(crypto.scrypt);
 const SCRYPT_OPTIONS = Object.freeze({ N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const TOTP_PATTERN = /^[0-9]{6}$/;
 
 class StaffAuthError extends Error {
   constructor(code, statusCode = 401) {
@@ -41,12 +42,15 @@ function tokenDigest(token) {
   return crypto.createHash('sha256').update(token, 'utf8').digest();
 }
 
-function createStaffAuthStore({ pool, businessId }) {
+function createStaffAuthStore({ pool, businessId, totpStore = null }) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new Error('Dedicated PostgreSQL pool required');
   }
   if (typeof businessId !== 'string' || businessId.trim().length < 1 || businessId.trim().length > 200) {
     throw new Error('Dedicated business ID required');
+  }
+  if (totpStore !== null && (typeof totpStore !== 'object' || typeof totpStore.verify !== 'function')) {
+    throw new TypeError('A valid tenant-scoped TOTP store is required');
   }
   const tenant = businessId.trim();
 
@@ -71,8 +75,21 @@ function createStaffAuthStore({ pool, businessId }) {
     }
   }
 
-  // Not wired to HTTP until verified enrollment, MFA, CSRF and distributed rate limiting are complete.
+  // Legacy trusted/backend-only password authentication for isolated tests.
+  // If MFA is configured, it cannot issue sessions: use authenticateWithTotp instead.
+  // Neither method is exposed to HTTP; browser login additionally needs durable rate
+  // limiting, verified enrollment, HTTPS, Origin/CSRF and a secure cookie response.
   async function authenticate({ email, password }) {
+    if (totpStore) throw new StaffAuthError('MFA_REQUIRED', 403);
+    return authenticateCredentials({ email, password }, false);
+  }
+
+  async function authenticateWithTotp({ email, password, code }) {
+    if (!totpStore) throw new StaffAuthError('MFA_NOT_CONFIGURED', 503);
+    return authenticateCredentials({ email, password, code }, true);
+  }
+
+  async function authenticateCredentials({ email, password, code }, requireTotp) {
     let normalized;
     try { normalized = normalizeEmail(email); }
     catch { throw new StaffAuthError('INVALID_CREDENTIALS'); }
@@ -107,6 +124,11 @@ function createStaffAuthStore({ pool, businessId }) {
         }
         await client.query('COMMIT');
         transaction = false;
+        throw new StaffAuthError('INVALID_CREDENTIALS');
+      }
+      // The one-time code must be verified and consumed BEFORE any session row is inserted.
+      // A caller-controlled value can never disable this check when MFA is configured.
+      if (requireTotp && (!TOTP_PATTERN.test(code) || !(await totpStore.verify(user.id, code)))) {
         throw new StaffAuthError('INVALID_CREDENTIALS');
       }
       await client.query(
@@ -172,7 +194,8 @@ function createStaffAuthStore({ pool, businessId }) {
     return result.rows.length;
   }
 
-  return Object.freeze({ createPendingStaff, authenticate, getSession, revokeSession, revokeAllSessionsForStaff });
+  return Object.freeze({ createPendingStaff, authenticate, authenticateWithTotp,
+    getSession, revokeSession, revokeAllSessionsForStaff });
 }
 
 module.exports = { createStaffAuthStore, StaffAuthError, normalizeEmail };

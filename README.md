@@ -1,12 +1,22 @@
 # GROUPE TAKATAK — Facturations
 
-**Phase 3 development:** isolated Node.js Wave read-only connector, deterministic CAD invoice previews, and opt-in PostgreSQL customer/draft persistence. This application is intended for `facturations.bolon.ca` **after MochaHost confirms a separate hosting environment**. It has not been deployed or connected to a real Wave business or database.
+**Status: development / NOT ready for real customers or invoicing.** Independent Node.js application intended for a NEW, isolated `facturations.bolon.ca` hosting environment only after MochaHost confirms its DNS, HTTPS and dedicated application. No real Wave connection, production deployment, client enrollment or invoice send has been verified. The repository is PUBLIC: never commit `.env`, passwords, access tokens, real customer information, invoices, database dumps or logs.
 
-**Important limits:** Saved drafts are NOT issued invoices. No Wave invoice creation, customer invitations, client portal login, PDF creation, payment collection, AI commands, email sending or OAuth callback exists yet. No automatic deployment. The repository is **public by the owner's choice**: never commit secrets, `.env`, client records, invoices, database snapshots or logs.
+The single source of truth for remaining blockers and verified work is [the readiness audit](https://github.com/takatakca/Facturations/issues/27). `docs/product-blueprint.md` and `docs/first-run-guidance.md` describe planned work, NOT delivered features. A passing CI run is not an end-to-end release sign-off.
 
-## Development and tests
+## Implemented, with important boundaries
 
-Requirements: Node.js 20.11+ or Node.js 22 and a separate PostgreSQL 16 database for real draft storage. From a checkout:
+- CAD-only deterministic preview, with bounded line items and user-supplied tax definitions; tax applicability and fiscal correctness are **not** automatically determined.
+- Tenant-scoped PostgreSQL customer records, immutable and idempotently saved **draft snapshots**, draft-only summary/listing, owner-only customer directory and internal approval ledger. No editable draft revisions or recoverable autosave yet; a customer's directory profile may retain older details while each draft preserves its own recipient snapshot.
+- Trusted backend foundations for staff accounts, invitations, hashed/revocable sessions, encrypted TOTP and email-scoped PostgreSQL login throttling. Invitations are **not** delivered or recovered automatically; no production enrollment process is available.
+- An **opt-in** bilingual FR/EN browser sign-in and sign-out with password + activated TOTP, exact configured HTTPS Origin/Host checks and a Secure/HttpOnly/SameSite=Strict session cookie. The cookie authorizes ONLY the read-only HTML dashboard at `/internal/dashboard`, not `/api/*` or Wave writes. Requires a separate database, private TOTP key and explicit HTTPS origin. It does not prove TLS/proxy/IP protection is correctly configured on an actual host.
+- A fixed, read-only Wave GraphQL business-list query, if privately configured. This is **not** an OAuth callback, live connection verification, invoice issuance or synchronization.
+
+**Not implemented / not verified:** full draft editor and revision-safe autosave, owner approval interface, Wave invoice creation/reconciliation, invoice PDF/email/payment tracking, authenticated customer portal, AI/voice assistant, secure self-service onboarding/recovery, backups/restores, complete tax review and independent browser/staging tests. Internal draft approval service is not exposed by the browser or HTTP routes. No actual invoice number, revenue or payment status is produced.
+
+## Local development and disposable tests
+
+Requirements: Node.js 20.11+ (Node 22 also tested), npm and an isolated PostgreSQL 16 instance **only for integration tests or a separately authorized Facturations database**. From a fresh checkout:
 
 ```bash
 npm install --ignore-scripts --no-audit --no-fund
@@ -15,26 +25,26 @@ npm test
 cp .env.example .env
 ```
 
-Generate a random administrator key with `openssl rand -hex 32`. Add it privately to `TAKATAK_ADMIN_KEY` and add a newly created Wave personal access token to `WAVE_ACCESS_TOKEN` only on the machine/server running the app. **Do not reuse or publish previously disclosed secrets.** Start with `npm run dev` and check `http://127.0.0.1:3000/health`.
+The repository currently lacks a committed `package-lock.json`; installation is NOT yet fully reproducible. Track this gap in audit #27. GitHub Actions runs the syntax gate and tests on Node 20/22 with disposable PostgreSQL 16; integration tests require `FACTURATIONS_TEST_DATABASE_URL` and the setup script rejects anything other than a local `facturations_test` database. Do not run migrations or tests on existing TAKATAK production data.
 
-The `X-Admin-Key` mechanism is temporary **server-to-server/testing authentication**, NOT a login system for browsers or clients. Never embed it in a webpage, mobile app, URL or screenshot. The public `/health` response contains no customer data or credentials.
+For *local development only*, keep `.env` private; use `npm run dev` and inspect `http://127.0.0.1:3000/health`. An empty `TAKATAK_ADMIN_KEY` means private admin routes are unavailable. If used for isolated server-to-server tests, generate a new random value privately (for example `openssl rand -hex 32`). **Never put `X-Admin-Key`, Wave tokens or database credentials in a browser or mobile app.** Do not reuse previously exposed credentials.
 
-## Endpoints and safeguards
+## Available routes and access
 
-| Method | Route | Description |
+| Method | Route | Current behavior |
 | --- | --- | --- |
-| GET | `/health` | Public minimal health response |
-| GET | `/api/wave/businesses` | Administrator header; reads accessible Wave businesses only |
-| POST | `/api/drafts/preview` | Administrator header; validates/calculates a stateless draft preview |
-| POST | `/api/drafts` | Administrator header + `Idempotency-Key`; saves a draft **only if a dedicated database is configured** |
-| GET | `/api/drafts/:uuid` | Administrator header; retrieves a saved draft in the configured business only |
-| Other | `/oauth/callback`, `/api/invoices`, `/api/email`, `/portal` | Not implemented; returns 404 |
+| GET | `/health` | Minimal public process response; not production readiness |
+| GET | `/internal/login?lang=fr` or `en` | Bilingual sign-in form, only if explicitly configured |
+| POST | `/internal/login` and `/internal/logout` | MFA sign-in/session revocation; exact Origin/Host checks, only if configured |
+| GET | `/internal/dashboard?lang=fr` or `en` | Read-only draft dashboard; staff bearer or valid browser session cookie |
+| GET | `/api/dashboard/summary`, `/api/drafts` | Draft-only summary and paginated listing; staff bearer or private admin header |
+| GET | `/api/drafts/:uuid`, `/api/customers`, `/api/approvals` | Full draft, contacts and internal approvals; OWNER bearer or private admin header |
+| POST | `/api/drafts/preview`, `/api/drafts` | Private admin header only; preview or save a DRAFT with `Idempotency-Key` |
+| GET | `/api/wave/businesses` | Private admin header only; read-only Wave business list |
 
-All submitted draft JSON uses `Content-Type: application/json` and a 32-KiB request limit. The `Idempotency-Key` must be 16–80 letters, numbers, underscores or dashes; reuse the same key for retries of **exactly the same draft**. Reusing it for changed content gives HTTP 409. No Wave API write is triggered by any draft route.
+Browser cookies never authorize `/api/*`. For new drafts, submit JSON `Content-Type: application/json` within the 32-KiB limit. The `Idempotency-Key` is 16–80 letters/numbers/underscores/dashes; retries with the same key and different content return 409. A draft is **never** an invoice sent to Wave.
 
-The pure preview calculator accepts **CAD only**, up to 50 line items and three explicitly provided tax definitions. Quantities and prices are whole integers/cents; independent taxes on a common taxable base are rounded half up per tax with integer arithmetic. **No tax rate or jurisdictional applicability is assumed**; confirm legal tax rules, rounding and registration details with a qualified accountant before issuing invoices.
-
-Example fictional preview input (never commit real customer information):
+Example entirely fictional preview payload:
 
 ```json
 {
@@ -47,22 +57,13 @@ Example fictional preview input (never commit real customer information):
 }
 ```
 
-Preview response is `PREVIEW_ONLY`, `persisted: false`; saved draft response is `DRAFT`, `persisted: true`, with a database UUID and creation timestamp. Both explicitly indicate `waveSynced: false` and `emailed: false`. No official invoice number is generated.
+The preview recalculates integer minor-unit totals and labels them `PREVIEW_ONLY`; saved records remain `DRAFT` with `waveSynced: false` and `emailed: false`. Tax rules, registration and rounding must be reviewed by the responsible qualified professionals before real issuance.
 
-## Dedicated database: opt-in only
+## Isolated database and browser sign-in: NOT a deployment procedure
 
-1. Create a **new database exclusively for Facturations**. Never reuse TAKATAK's existing production database or Supabase project without a separate, explicitly authorized isolated environment.
-2. Review `db/001_draft_storage.sql`, then apply it **only to the new Facturations database** using your approved database administration tool. This migration creates `invoice_customers`, `invoice_drafts`, and append-only `invoice_audit_events` for `DRAFT_CREATED`.
-3. Configure `FACTURATIONS_DATABASE_URL` and `WAVE_BUSINESS_ID` **together** in private server environment variables. Obtain the exact Wave business ID through the authenticated read-only `/api/wave/businesses` route; do not guess it.
-4. Restart **only** the separate Facturations app. Until both values are present, draft save/read endpoints return `STORAGE_NOT_CONFIGURED` (HTTP 503); previews and read-only Wave lookup remain available.
-5. Use a database credential restricted to only the new Facturations database, with TLS configured according to your database provider. Arrange encrypted backups, retention, access logging, restore testing, database roles and deletion policies before storing real customer information.
+1. Have MochaHost confirm a separate Node application/root, external HTTPS and trusted TLS reverse proxy with the raw Node port inaccessible. Add trusted-edge per-IP throttling and verify canonical Host handling. Do not modify an existing GROUPE TAKATAK service.
+2. Provision a **NEW** Facturations-only database and least-privilege runtime role; review and apply migrations `db/001` through `db/007` in numeric order **only there** using a controlled migration process, not against an existing TAKATAK database. Arrange encrypted backups, restoration testing, retention and restricted access before real data.
+3. Set `FACTURATIONS_DATABASE_URL` and `WAVE_BUSINESS_ID` privately **together** for storage. Set `FACTURATIONS_PUBLIC_ORIGIN` and `FACTURATIONS_TOTP_ENCRYPTION_KEY` privately **together** only once HTTPS staging and a verified invitation/MFA provisioning and recovery procedure are ready. The origin must be the exact external HTTPS origin without a path or trailing slash; the TOTP key must be a separately generated random 32 bytes in hexadecimal. Losing the key can make enrolled MFA secrets unrecoverable. See `docs/browser-staff-login.md` and `.env.example` for documented boundaries, NOT ready-to-paste credentials.
+4. Test owner/staff onboarding, every role/tenant denial, MFA/replay/expiry, browser sign-in/out, CSP and CSRF, failures, accessibility, mobile display and encrypted backup restoration on the isolated staging host. Verify Wave separately using an explicitly authorized isolated account. **Do not issue invoices, send emails, accept payments or expose a client portal without specific owner authorization and the audit completion gates.**
 
-Each saved draft is scoped to a server-configured business ID, uses a unique request key and a SHA-256 hash of the server-calculated preview, and creates a `DRAFT_CREATED` audit event in the same transaction. Retries do not create duplicate drafts/audit events. These controls do not replace full per-user identity, authorization and row-level security for a future client portal.
-
-GitHub Actions runs simulated unit/API tests and **real disposable PostgreSQL 16 integration tests** on Node 20/22. The test setup script refuses database addresses other than `localhost/facturations_test`. Neither test environment nor GitHub uses production credentials.
-
-## MochaHost and future milestones
-
-Wait for MochaHost to confirm independent DNS/SSL and Node.js support for `facturations.bolon.ca`. Deploy **only this repository** to a new application root, install dependencies and configure the environment privately. Do not touch any existing TAKATAK website, application, database or repository.
-
-See `docs/product-blueprint.md` for the planned secure customer portal, TAKATAK identity integration, Wave issuance with explicit human confirmation, email delivery, PDFs, payments and intelligent assistant workflow. These are **design plans, not deployed features**.
+This README records repository capabilities, not confirmation that `facturations.bolon.ca` exists or is operational. Review [AGENTS.md](AGENTS.md) and [audit #27](https://github.com/takatakca/Facturations/issues/27) before any further change.

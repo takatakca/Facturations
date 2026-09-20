@@ -2,6 +2,7 @@
 
 const { loadConfig } = require('./src/config');
 const { createServer } = require('./src/server');
+const { attachReadOnlyDashboardCookie } = require('./src/browser-dashboard-session');
 const { createDraftStore } = require('./src/draft-store');
 const { createDashboardStore } = require('./src/dashboard-store');
 const { createStaffAuthStore } = require('./src/staff-auth-store');
@@ -26,7 +27,9 @@ if (require.main === module) {
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
   }
-  const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger });
+  const server = attachReadOnlyDashboardCookie(
+    createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger })
+  );
   server.listen(config.port, () => {
     console.info(`TAKATAK Wave development service listening on port ${server.address().port}`);
   });

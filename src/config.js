@@ -24,12 +24,34 @@ function loadConfig(env = process.env) {
     throw new Error('FACTURATIONS_DATABASE_URL must be a PostgreSQL URL');
   }
 
+  // Browser login is opt-in and fails closed unless its separate encryption key,
+  // a dedicated database and exact external HTTPS origin are ALL configured.
+  const browserOrigin = (env.FACTURATIONS_PUBLIC_ORIGIN || '').trim();
+  const totpEncryptionKeyHex = (env.FACTURATIONS_TOTP_ENCRYPTION_KEY || '').trim();
+  if (Boolean(browserOrigin) !== Boolean(totpEncryptionKeyHex)) {
+    throw new Error('FACTURATIONS_PUBLIC_ORIGIN and FACTURATIONS_TOTP_ENCRYPTION_KEY must be configured together');
+  }
+  if (browserOrigin) {
+    let parsed;
+    try { parsed = new URL(browserOrigin); }
+    catch { throw new Error('FACTURATIONS_PUBLIC_ORIGIN must be an exact HTTPS origin'); }
+    if (parsed.protocol !== 'https:' || parsed.origin !== browserOrigin ||
+        parsed.username || parsed.password || parsed.search || parsed.hash || !databaseUrl) {
+      throw new Error('FACTURATIONS_PUBLIC_ORIGIN must be an exact HTTPS origin with a dedicated database');
+    }
+    if (!/^[a-f0-9]{64}$/i.test(totpEncryptionKeyHex)) {
+      throw new Error('FACTURATIONS_TOTP_ENCRYPTION_KEY must be 32 bytes encoded as hex');
+    }
+  }
+
   return Object.freeze({
     port,
     adminKey,
     waveToken: (env.WAVE_ACCESS_TOKEN || '').trim(),
     databaseUrl,
     businessId,
+    browserOrigin,
+    totpEncryptionKeyHex,
   });
 }
 

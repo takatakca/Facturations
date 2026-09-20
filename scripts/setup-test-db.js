@@ -15,11 +15,11 @@ async function main() {
   }
   const pool = new Pool({ connectionString: raw, connectionTimeoutMillis: 5000 });
   try {
-    for (const migration of ['001_draft_storage.sql', '002_immutable_drafts_audit.sql']) {
+    for (const migration of ['001_draft_storage.sql', '002_immutable_drafts_audit.sql', '003_staff_identity_sessions.sql']) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with immutable history protections');
+    console.info('Isolated test schema initialized with immutable history and staff auth foundation');
   } finally {
     await pool.end();
   }

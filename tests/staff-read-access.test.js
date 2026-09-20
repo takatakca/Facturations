@@ -22,7 +22,8 @@ async function withServer({ staffAuthStore, businessId = TENANT, adminKey = ADMI
       async listDrafts() { calls.list++; return { status: 'DRAFTS_ONLY', drafts: [] }; },
     },
     draftStore: {
-      async getDraft(id) { calls.detail++; return { id, status: 'DRAFT' }; },
+      async getDraft(id) { calls.detail++; return { id, status: 'DRAFT',
+        preview: { customer: { email: 'sensitive@example.test', address: 'fictional street' } } }; },
       async createDraft() { calls.write++; throw Error('Write must not be called'); },
     },
     fetchImpl: async () => { calls.wave++; throw Error('Wave must not be called'); },
@@ -55,24 +56,45 @@ test('read guard validates exact bearer format, business identity and staff role
   }
 });
 
-test('valid staff session reads only dashboard and saved drafts, not Wave or writes', async () => {
+test('STAFF session reads only aggregate and listing, not customer contacts in full draft details', async () => {
   const store = { async getSession(token) { return token === TOKEN ? STAFF : null; } };
   await withServer({ staffAuthStore: store }, async (base, calls) => {
-    for (const route of ['/api/dashboard/summary', '/api/drafts?page=1&pageSize=2', `/api/drafts/${DRAFT}`]) {
+    for (const route of ['/api/dashboard/summary', '/api/drafts?page=1&pageSize=2']) {
       const { response } = await read(base, route);
       assert.equal(response.status, 200, route);
       assert.equal(response.headers.get('cache-control'), 'no-store');
     }
-    for (const [route, method] of [
-      ['/api/wave/businesses', 'GET'],
-      ['/api/drafts/preview', 'POST'],
-      ['/api/drafts', 'POST'],
+    for (const [route, method, expectedError] of [
+      [`/api/drafts/${DRAFT}`, 'GET', 'OWNER_REQUIRED'],
+      ['/api/customers', 'GET', 'OWNER_REQUIRED'],
+      ['/api/wave/businesses', 'GET', 'STAFF_READ_ONLY'],
+      ['/api/drafts/preview', 'POST', 'STAFF_READ_ONLY'],
+      ['/api/drafts', 'POST', 'STAFF_READ_ONLY'],
     ]) {
       const { response, body } = await read(base, route, bearer, { method });
       assert.equal(response.status, 403, route);
-      assert.deepEqual(body, { error: 'STAFF_READ_ONLY' });
+      assert.deepEqual(body, { error: expectedError });
+      assert.equal(JSON.stringify(body).includes('sensitive@example.test'), false);
     }
-    assert.deepEqual(calls, { summary: 1, list: 1, detail: 1, write: 0, wave: 0 });
+    assert.deepEqual(calls, { summary: 1, list: 1, detail: 0, write: 0, wave: 0 });
+  });
+});
+
+test('OWNER and private admin may retrieve full draft, STAFF with admin header cannot elevate', async () => {
+  const store = { async getSession(token) { return token === TOKEN ? { ...STAFF, role: 'OWNER' } : null; } };
+  await withServer({ staffAuthStore: store }, async (base, calls) => {
+    const owner = await read(base, `/api/drafts/${DRAFT}`);
+    assert.equal(owner.response.status, 200);
+    assert.equal(owner.body.preview.customer.email, 'sensitive@example.test');
+    const admin = await read(base, `/api/drafts/${DRAFT}`, { 'X-Admin-Key': ADMIN });
+    assert.equal(admin.response.status, 200);
+    assert.equal(calls.detail, 2);
+  });
+  await withServer({ staffAuthStore: { async getSession() { return STAFF; } } }, async (base, calls) => {
+    const forbidden = await read(base, `/api/drafts/${DRAFT}`, { ...bearer, 'X-Admin-Key': ADMIN });
+    assert.equal(forbidden.response.status, 403);
+    assert.deepEqual(forbidden.body, { error: 'OWNER_REQUIRED' });
+    assert.equal(calls.detail, 0);
   });
 });
 

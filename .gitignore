@@ -1,0 +1,14 @@
+# NEVER commit credentials or developer machine files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+node_modules/
+coverage/
+*.log
+logs/
+.DS_Store
+.output/

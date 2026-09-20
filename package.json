@@ -1,8 +1,8 @@
 {
   "name": "takatak-wave",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
-  "description": "GROUPE TAKATAK — independent Wave connector and private draft persistence",
+  "description": "GROUPE TAKATAK — independent Wave connector, private drafts and read-only dashboard API",
   "main": "app.js",
   "type": "commonjs",
   "engines": { "node": ">=20.11.0" },
@@ -10,7 +10,7 @@
     "start": "node app.js",
     "dev": "node --env-file=.env app.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check app.js && node --check src/config.js && node --check src/server.js && node --check src/wave-client.js && node --check src/draft-preview.js && node --check src/draft-store.js && node --check tests/server.test.js && node --check tests/wave-client.test.js && node --check tests/config.test.js && node --check tests/draft-preview.test.js && node --check tests/draft-store.test.js"
+    "check": "node --check app.js && node --check src/config.js && node --check src/server.js && node --check src/wave-client.js && node --check src/draft-preview.js && node --check src/draft-store.js && node --check src/dashboard-store.js && node --check tests/server.test.js && node --check tests/wave-client.test.js && node --check tests/config.test.js && node --check tests/draft-preview.test.js && node --check tests/draft-store.test.js && node --check tests/draft-store.integration.test.js && node --check tests/dashboard.test.js && node --check tests/dashboard.integration.test.js"
   },
   "dependencies": { "pg": "^8.13.0" },
   "license": "UNLICENSED"

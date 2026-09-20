@@ -6,6 +6,7 @@ const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
 const { DashboardError, pageOptions } = require('./dashboard-store');
+const { resolveReadOnlyStaff } = require('./staff-read-access');
 
 const MAX_BODY_BYTES = 32768;
 
@@ -70,7 +71,8 @@ function parseListOptions(searchParams) {
   return pageOptions(searchParams.get('page') ?? '1', searchParams.get('pageSize') ?? '20');
 }
 
-function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null } = {}) {
+function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
+  staffAuthStore = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -97,9 +99,27 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         (isCollection && !['GET', 'POST'].includes(request.method))) {
       return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     }
-    if (!config.adminKey) return sendJson(response, 503, { error: 'ADMIN_NOT_CONFIGURED' });
-    if (!isAuthorized(request.headers['x-admin-key'], config.adminKey)) {
-      return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+
+    // Staff session credentials may read tenant-scoped drafts and dashboard ONLY.
+    // The temporary admin key remains server-to-server only, never in browser JavaScript.
+    // An Authorization header takes precedence: a bad staff token cannot fall back to an admin key.
+    if (request.headers.authorization !== undefined) {
+      let staff;
+      try {
+        staff = await resolveReadOnlyStaff({ authorization: request.headers.authorization,
+          store: staffAuthStore, businessId: config.businessId });
+      } catch {
+        return sendJson(response, 503, { error: 'AUTH_UNAVAILABLE' });
+      }
+      if (!staff) return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      if (!((isDashboard || isCollection || isGet) && request.method === 'GET')) {
+        return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
+      }
+    } else {
+      if (!config.adminKey) return sendJson(response, 503, { error: 'ADMIN_NOT_CONFIGURED' });
+      if (!isAuthorized(request.headers['x-admin-key'], config.adminKey)) {
+        return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      }
     }
 
     if (isDashboard || (isCollection && request.method === 'GET')) {

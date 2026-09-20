@@ -20,10 +20,10 @@ function customerListOptions(searchParams) {
   const pagination = pageOptions(searchParams.get('page') ?? '1', searchParams.get('pageSize') ?? '20');
   const rawSearch = searchParams.get('q');
   if (rawSearch === null) return Object.freeze({ ...pagination, search: null });
+  // Validate BEFORE trimming: leading/trailing control characters must never be normalized away.
+  if (/[\u0000-\u001f\u007f]/u.test(rawSearch)) throw new CustomerDirectoryError('INVALID_SEARCH');
   const search = rawSearch.trim();
-  if (search.length < 2 || search.length > 80 || /[\u0000-\u001f\u007f]/u.test(search)) {
-    throw new CustomerDirectoryError('INVALID_SEARCH');
-  }
+  if (search.length < 2 || search.length > 80) throw new CustomerDirectoryError('INVALID_SEARCH');
   // PostgreSQL ESCAPE '!' treats wildcard characters as literal customer input.
   const pattern = `%${search.replace(/[!%_]/g, ch => '!' + ch)}%`;
   return Object.freeze({ ...pagination, search: pattern });

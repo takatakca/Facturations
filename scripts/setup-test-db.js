@@ -22,11 +22,12 @@ async function main() {
       '004_staff_invitations.sql',
       '005_internal_draft_approvals.sql',
       '006_login_attempt_limits.sql',
+      '007_staff_totp.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, internal approvals and login limits');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits and MFA');
   } finally {
     await pool.end();
   }

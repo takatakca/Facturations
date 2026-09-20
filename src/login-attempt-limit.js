@@ -37,7 +37,7 @@ function createLoginAttemptLimit({ pool, businessId }) {
            WHEN limits.window_started_at <= now() - interval '15 minutes' THEN NULL
            WHEN limits.attempts >= 9 THEN now() + interval '15 minutes'
            ELSE NULL END
-       RETURNING blocked_until > now() AS blocked`,
+       RETURNING COALESCE(blocked_until > now(), false) AS blocked`,
       [tenant, identityHash]
     );
     if (result.rows.length !== 1 || typeof result.rows[0].blocked !== 'boolean') {

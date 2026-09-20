@@ -98,6 +98,18 @@ test('rejects malformed UTF-8 from Wave without altering a business name; accept
     rawBody: chunks(valid),
   }) });
   assert.deepEqual(result.businesses, [{ id: 'business-1', name: 'Café Démo' }]);
+
+  // An incomplete final multi-byte character must fail on the decoder's EOF flush.
+  // This is a synthetic incomplete response, not an observed Wave incident.
+  const dangling = new Uint8Array([...valid, 0xc3]);
+  await expectError(() => listBusinesses({ token: 'test-token', fetchImpl: mockFetch(200, {}, {
+    rawBody: new ReadableStream({
+      start(controller) {
+        controller.enqueue(dangling);
+        controller.close();
+      },
+    }),
+  }) }), 'WAVE_INVALID_RESPONSE', 502);
 });
 
 test('bounds the response size', async () => {

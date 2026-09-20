@@ -51,7 +51,7 @@ test('renderer escapes attacker-controlled names and prints draft-only amounts i
     assert.ok(!page.includes('<form'));
     assert.ok(!page.includes('synthetic-admin-key'));
     assert.ok(!page.includes(TOKEN));
-    assert.match(page, /no (?:invoices issued|issuance)/i.test(page) ? /Drafts only|Brouillons seulement/ : /Brouillons seulement|Drafts only/);
+    assert.match(page, /Drafts only|Brouillons seulement/);
   }
   assert.match(renderDashboard({ summary, drafts, language: 'fr' }), /ne sont ni des revenus/);
   assert.match(renderDashboard({ summary, drafts, language: 'en' }), /not revenue or payments/);
@@ -92,7 +92,7 @@ test('HTML endpoint requires a live staff session, bounds query and locks down b
     const response = await fetch(base + '/internal/dashboard?lang=en', { headers });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
-    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
     assert.equal(response.headers.get('x-frame-options'), 'DENY');
     assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);

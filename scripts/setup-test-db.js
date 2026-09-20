@@ -20,11 +20,12 @@ async function main() {
       '002_immutable_drafts_audit.sql',
       '003_staff_identity_sessions.sql',
       '004_staff_invitations.sql',
+      '005_internal_draft_approvals.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection and staff invitations');
+    console.info('Isolated test schema initialized with draft protection, staff invitations and internal approvals');
   } finally {
     await pool.end();
   }

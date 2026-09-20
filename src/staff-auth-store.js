@@ -5,6 +5,7 @@ const { promisify } = require('node:util');
 const scrypt = promisify(crypto.scrypt);
 const SCRYPT_OPTIONS = Object.freeze({ N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
 class StaffAuthError extends Error {
   constructor(code, statusCode = 401) {
@@ -157,7 +158,21 @@ function createStaffAuthStore({ pool, businessId }) {
     return result.rows.length === 1;
   }
 
-  return Object.freeze({ createPendingStaff, authenticate, getSession, revokeSession });
+  // Trusted backend-only operation for future security response and staff disablement.
+  // Never expose this directly as a public endpoint or accept a business ID from the caller.
+  async function revokeAllSessionsForStaff(staffId) {
+    if (typeof staffId !== 'string' || !UUID_PATTERN.test(staffId)) {
+      throw new StaffAuthError('INVALID_STAFF_ID', 422);
+    }
+    const result = await pool.query(
+      `UPDATE facturations_staff_sessions SET revoked_at=now()
+        WHERE business_id=$1 AND user_id=$2 AND revoked_at IS NULL RETURNING id`,
+      [tenant, staffId]
+    );
+    return result.rows.length;
+  }
+
+  return Object.freeze({ createPendingStaff, authenticate, getSession, revokeSession, revokeAllSessionsForStaff });
 }
 
 module.exports = { createStaffAuthStore, StaffAuthError, normalizeEmail };

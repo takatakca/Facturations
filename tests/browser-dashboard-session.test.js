@@ -78,7 +78,8 @@ test('cookie unlocks only read-only HTML via a live tenant session; never API or
     ]) {
       assert.equal((await fetch(base + '/internal/dashboard', { headers })).status, 401);
     }
-    assert.deepEqual(calls, { session: 3, summary: 1, list: 1 });
+    // Malformed bearer headers are rejected before the database getSession call.
+    assert.deepEqual(calls, { session: 2, summary: 1, list: 1 });
     assert.equal((await fetch(base + '/internal/dashboard', { method: 'POST', headers: { Cookie: COOKIE } })).status, 405);
   });
 });

@@ -1,0 +1,9 @@
+# Internal approvals — owner-only read-only ledger
+
+`GET /api/approvals?page=1&pageSize=20` lists internal decisions for the **one configured business**. This is a backend API only; there is no public sign-in or web dashboard. Authenticated `OWNER` bearer sessions may read it. Ordinary `STAFF`, customers and cross-business sessions are denied. The existing private `X-Admin-Key` remains strictly server-to-server and must never enter browser code.
+
+The response contains only approval ID, draft ID, approving staff ID, UTC approval timestamp and the immutable draft total in integer cents (encoded as a string), plus bounded pagination and `hasMore`. It excludes customer email, name, address, notes, the draft snapshot, idempotency keys and session tokens. Internal approval **does not** mean that a legal invoice was issued, synced to Wave, emailed, paid or earned as revenue. No issuance/payment/revenue totals are provided by this endpoint.
+
+Requires the isolated Facturations PostgreSQL database with migrations `001`–`005`, including `005_internal_draft_approvals.sql`. Query is parameterized and scoped by `business_id` both in the ledger table and its draft join. Access errors and database exceptions are sanitized; invalid or duplicate pagination parameters fail with a validation error. Tests exercise owner-only access, expired/foreign/invalid-session denial, no admin fallback, wildcard query rejection, tenant isolation, pagination, sensitive-field exclusion, and isolated PostgreSQL 16. No live Wave calls, emails, payments, migrations on existing databases, or production deployment.
+
+Next: audited initial owner enrollment, MFA, secure cookie/CSRF-based browser sign-in and mobile-first FR/EN dashboard. A real approval button and customer-facing invoice issuance require their own explicit authorizations and end-to-end staging validation.

@@ -73,7 +73,7 @@ test('isolated PostgreSQL: unverified identity, lockout, tenant isolation, expir
       assert.equal(await store.getSession(session.token), null);
 
       const second = await store.authenticate({ email, password: PASSWORD });
-      await pool.query("UPDATE facturations_staff_sessions SET expires_at=now()-interval '1 minute' WHERE business_id=$1 AND token_hash=$2",
+      await pool.query("UPDATE facturations_staff_sessions SET created_at=now()-interval '2 days', expires_at=now()-interval '1 minute' WHERE business_id=$1 AND token_hash=$2",
         [businessId, crypto.createHash('sha256').update(second.token).digest()]);
       assert.equal(await store.getSession(second.token), null);
       const third = await store.authenticate({ email, password: PASSWORD });

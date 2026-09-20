@@ -7,6 +7,7 @@ const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
 const { DashboardError, pageOptions } = require('./dashboard-store');
 const { CustomerDirectoryError, customerListOptions } = require('./customer-directory');
+const { ApprovalLedgerError, approvalPageOptions } = require('./approval-ledger');
 const { resolveReadOnlyStaff } = require('./staff-read-access');
 
 const MAX_BODY_BYTES = 32768;
@@ -73,7 +74,7 @@ function parseListOptions(searchParams) {
 }
 
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
-  staffAuthStore = null, customerDirectory = null } = {}) {
+  staffAuthStore = null, customerDirectory = null, approvalLedger = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -92,7 +93,8 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isWave = path === '/api/wave/businesses';
     const isDashboard = path === '/api/dashboard/summary';
     const isCustomers = path === '/api/customers';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers) {
+    const isApprovals = path === '/api/approvals';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
@@ -102,9 +104,8 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    // Staff sessions may list tenant-scoped draft summaries; full draft details include
-    // customer email/address and notes, so only OWNER may retrieve those details.
-    // Customer directory also requires OWNER. Admin key is server-to-server ONLY.
+    // Staff may list tenant-scoped draft summaries. Full drafts, customer contacts,
+    // and internal approvals are OWNER-only. Admin key stays server-to-server ONLY.
     if (request.headers.authorization !== undefined) {
       let staff;
       try {
@@ -114,16 +115,28 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 503, { error: 'AUTH_UNAVAILABLE' });
       }
       if (!staff) return sendJson(response, 401, { error: 'UNAUTHORIZED' });
-      if (!((isDashboard || isCollection || isGet || isCustomers) && request.method === 'GET')) {
+      if (!((isDashboard || isCollection || isGet || isCustomers || isApprovals) && request.method === 'GET')) {
         return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
       }
-      if ((isCustomers || isGet) && staff.role !== 'OWNER') {
+      if ((isCustomers || isGet || isApprovals) && staff.role !== 'OWNER') {
         return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
       }
     } else {
       if (!config.adminKey) return sendJson(response, 503, { error: 'ADMIN_NOT_CONFIGURED' });
       if (!isAuthorized(request.headers['x-admin-key'], config.adminKey)) {
         return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      }
+    }
+
+    if (isApprovals) {
+      if (!approvalLedger) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+      try {
+        return sendJson(response, 200, await approvalLedger.listApprovals(approvalPageOptions(url.searchParams)));
+      } catch (error) {
+        if (error instanceof ApprovalLedgerError || error instanceof DashboardError) {
+          return sendJson(response, error.statusCode, { error: error.code });
+        }
+        return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }
     }
 

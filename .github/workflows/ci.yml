@@ -1,4 +1,4 @@
-name: Phase 1 tests
+name: Wave connector and draft tests
 on:
   push:
   pull_request:

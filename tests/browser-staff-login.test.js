@@ -108,8 +108,21 @@ test('bilingual accessible HTML and cookie-only dashboard after fully verified l
     assert.deepEqual({ reserve: calls.reserve, auth: calls.auth, reset: calls.reset },
       { reserve: 1, auth: 1, reset: 1 });
     const cookieHeader = `${COOKIE_NAME}=${TOKEN}`;
-    assert.equal((await fetch(base + '/internal/dashboard', { headers: { Cookie: cookieHeader } })).status, 200);
+    for (const [lang, label] of [['fr', 'Se déconnecter'], ['en', 'Sign out']]) {
+      const dashboard = await fetch(base + `/internal/dashboard?lang=${lang}`, { headers: { Cookie: cookieHeader } });
+      assert.equal(dashboard.status, 200);
+      assert.match(dashboard.headers.get('content-security-policy'), /form-action 'self'/);
+      const html = await dashboard.text();
+      assert.ok(html.includes(`<form method="post" action="/internal/logout?lang=${lang}"><button class="signout" type="submit">${label}</button></form>`));
+      assert.doesNotMatch(html, /synthetic-private-admin-key/);
+      assert.doesNotMatch(html, new RegExp(TOKEN));
+    }
     assert.equal((await fetch(base + '/api/dashboard/summary', { headers: { Cookie: cookieHeader } })).status, 401);
+    const crossSite = await post(base, 'https://other.example.test', '/internal/logout?lang=en', {},
+      { Cookie: cookieHeader });
+    assert.equal(crossSite.status, 403);
+    assert.equal(calls.revoke, 0);
+    assert.equal((await fetch(base + '/internal/logout?lang=en', { headers: { Cookie: cookieHeader } })).status, 405);
     const logout = await post(base, origin, '/internal/logout?lang=en', {}, { Cookie: cookieHeader });
     assert.equal(logout.status, 303);
     assert.equal(logout.headers.get('location'), '/internal/login?lang=en');

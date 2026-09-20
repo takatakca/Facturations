@@ -127,8 +127,9 @@ function createStaffAuthStore({ pool, businessId, totpStore = null }) {
         throw new StaffAuthError('INVALID_CREDENTIALS');
       }
       // The one-time code must be verified and consumed BEFORE any session row is inserted.
-      // A caller-controlled value can never disable this check when MFA is configured.
-      if (requireTotp && (!TOTP_PATTERN.test(code) || !(await totpStore.verify(user.id, code)))) {
+      // Reuse this transaction's connection to avoid pool exhaustion while the
+      // staff row is locked. The TOTP consumption and session insert commit together.
+      if (requireTotp && (!TOTP_PATTERN.test(code) || !(await totpStore.verify(user.id, code, client)))) {
         throw new StaffAuthError('INVALID_CREDENTIALS');
       }
       await client.query(

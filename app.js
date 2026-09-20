@@ -8,7 +8,7 @@ if (require.main === module) {
   const server = createServer({ config });
   server.listen(config.port, () => {
     // Only non-sensitive startup information is logged.
-    console.info(`TAKATAK Wave Phase 1 listening on port ${server.address().port}`);
+    console.info(`TAKATAK Wave Phase 2 listening on port ${server.address().port}`);
   });
 }
 

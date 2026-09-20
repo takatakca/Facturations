@@ -1,77 +1,64 @@
 # GROUPE TAKATAK — Facturations
 
-**Phase 1: read-only Wave Accounting connector.** This is an independent Node.js application intended for `https://facturations.bolon.ca`. It reads business names and IDs using your Wave Accounting personal access token. It does **not** create, approve, send, edit or delete invoices, and it has no database, email feature, AI integration or working OAuth callback yet. Nothing deploys automatically.
+**Phase 2 development: read-only Wave Accounting connectivity plus an authenticated, stateless invoice draft preview.** Intended for a separate Node.js application at `https://facturations.bolon.ca` once MochaHost confirms the infrastructure. This project **does not save drafts, create Wave invoices, email clients, generate PDFs or implement OAuth**. There is no customer database, AI integration, or automatic deployment yet.
 
-This repository is **public by the owner's choice**. Never commit credentials, `.env`, invoice data, customer records or sensitive logs. Do not modify or restart any existing TAKATAK production service.
+This GitHub repository is **public by the owner's choice**. Never commit credentials, `.env`, customer information, invoices or private logs. Do not modify or restart existing TAKATAK production services.
 
-## Requirements
+## Requirements and local setup
 
-- Node.js 20.11+ or Node.js 22.
-- Personal Wave Accounting token for your own business, generated privately in the [Wave developer portal](https://developer.waveapps.com/hc/en-us).
-- A separate MochaHost Node.js application and SSL certificate for `facturations.bolon.ca` (after MochaHost confirms setup).
-
-## Start locally
+Node.js 20.11+ or 22. No third-party runtime dependencies or npm install required.
 
 ```bash
 git clone https://github.com/takatakca/Facturations.git
 cd Facturations
-node --version
 npm run check
 npm test
 cp .env.example .env
 openssl rand -hex 32
 ```
 
-Edit `.env` **on your own computer only**: put the generated random value into `TAKATAK_ADMIN_KEY` and your Wave token into `WAVE_ACCESS_TOKEN`. Leave `NODE_ENV=development` and `PORT=3000` for local development. Do not paste credentials into GitHub, ChatGPT, Messenger or screenshots. The project has **no third-party dependencies**; no `npm install` is necessary.
+Only on your own machine, enter the random key as `TAKATAK_ADMIN_KEY` and your personal Wave token as `WAVE_ACCESS_TOKEN` inside `.env`. Do not send them to ChatGPT, GitHub, Messenger or a screenshot. Run `npm run dev` and visit `http://127.0.0.1:3000/health`. Wave business lookup requires the token; the draft calculator does not.
 
-Start the service:
+The private header is for temporary **server-side testing only**, not customer authentication. Never put it in browser JavaScript, URLs or publicly served pages.
 
-```bash
-npm run dev
-```
+## Available endpoints
 
-From another terminal, test public health:
-
-```bash
-curl -i http://127.0.0.1:3000/health
-```
-
-Test your Wave connection while keeping the key out of shell history:
-
-```bash
-read -rs TAKATAK_ADMIN_KEY; echo
-curl -i -H "X-Admin-Key: ${TAKATAK_ADMIN_KEY}" http://127.0.0.1:3000/api/wave/businesses
-unset TAKATAK_ADMIN_KEY
-```
-
-The expected authenticated response contains `connected: true`, up to ten accessible Wave business names and IDs, `totalCount`, and pagination information. **Do not post that business data publicly.** Tests use simulated Wave responses, not a real token or live account.
-
-## Endpoints
-
-| Method | Path | Access |
+| Method | Route | Behavior |
 | --- | --- | --- |
-| GET | `/health` | Public, returns only service status |
-| GET | `/api/wave/businesses` | Requires private `X-Admin-Key` header; read-only Wave query |
-| Any | `/oauth/callback` | Not implemented; 404 expected during Phase 1 |
+| GET | `/health` | Non-sensitive health status |
+| GET | `/api/wave/businesses` | Requires `X-Admin-Key`, retrieves a read-only Wave business summary |
+| POST | `/api/drafts/preview` | Requires `X-Admin-Key` and `Content-Type: application/json`; validates input and calculates preview only |
+| Any | `/oauth/callback` | Not implemented (404 expected) |
+| Any | `/api/invoices` or `/api/email` | Not implemented (404 expected) |
 
-The administrator header is a **temporary server-side testing mechanism**, not a customer-login system. Never put it in browser JavaScript, URLs, apps or public documentation. The fixed upstream endpoint is `https://gql.waveapps.com/graphql/public`; the connector uses a fixed read-only query, timeout, response-size limit and sanitized errors.
+The preview request is limited to 32 KiB, 50 lines, 3 explicitly supplied taxes, Canadian dollars, valid calendar dates and whole-number cent amounts. It uses integer arithmetic, independent tax calculations on the **same discounted taxable subtotal**, and rounds each tax half up to the nearest cent. **No rate is automatically assumed to be legally applicable.** The caller must supply the appropriate tax configuration, and verify applicability, exemptions, rounding and reporting with an accountant before issuing actual invoices.
 
-## Deploy on MochaHost — only after support confirms DNS and SSL
+### Preview example (fictional information only)
 
-1. Create an **independent** Node.js app at `facturations.bolon.ca`, using a private application root such as `takatak-wave` and startup file `app.js`. Confirm Node.js version and Passenger port configuration with support.
-2. Deploy **only this repository** to that new application's root. Do not copy it into existing TAKATAK production application directories or public asset directories.
-3. In the new app's **private environment variables**, set `NODE_ENV=production`, `TAKATAK_ADMIN_KEY` (32+ random characters), and `WAVE_ACCESS_TOKEN`. Let Passenger/cPanel supply its required port, if applicable. Do not publish `.env`.
-4. Restart **only the new invoicing app**, then check `https://facturations.bolon.ca/health`. Test the protected route privately using your admin header; never put a secret in the URL.
-5. Do not change `takatak.ca`, any existing app, its database, its GitHub repository or its configuration.
+`rateMilliPercent` means 1/1000 of a percent: `5000` represents 5.000%, and `9975` represents 9.975%. These values are merely illustrative and do not determine what taxes legally apply. Each line must specify `taxable` as a boolean, and `discountCents` is the **total discount for that line**, not a per-unit discount.
 
-## Troubleshooting
+```json
+{
+  "currency": "CAD",
+  "customer": { "name": "Example Customer", "email": "customer@example.test" },
+  "invoiceDate": "2026-09-20",
+  "dueDate": "2026-10-20",
+  "notes": "Example only — not an invoice",
+  "lines": [
+    { "description": "Website services", "quantity": 2, "unitPriceCents": 10005, "discountCents": 10, "taxable": true },
+    { "description": "Untaxed example", "quantity": 1, "unitPriceCents": 200, "taxable": false }
+  ],
+  "taxes": [
+    { "code": "GST", "label": "Example GST", "rateMilliPercent": 5000 },
+    { "code": "QST", "label": "Example QST", "rateMilliPercent": 9975 }
+  ]
+}
+```
 
-- `ADMIN_NOT_CONFIGURED`: configure a 32+-character admin key and restart this app.
-- `UNAUTHORIZED`: supply the correct key in `X-Admin-Key`, not in a URL.
-- `WAVE_NOT_CONFIGURED`: add your private Wave token and restart this app.
-- `WAVE_AUTH_FAILED` / `WAVE_ACCESS_DENIED`: inspect the token and its permissions privately in Wave.
-- `WAVE_GRAPHQL_ERROR`: investigate current Wave query schema and permissions without sharing raw sensitive responses.
-- `WAVE_TIMEOUT` / `WAVE_UNAVAILABLE`: investigate outbound HTTPS from MochaHost.
-- `/oauth/callback` returns 404: expected; entering a redirect URI in Wave does not implement an OAuth handler.
+Submit the JSON only from a secure backend/test client with your private administrator header (never from an unauthenticated web page). The example returns subtotal `20200` cents, illustrative taxes `1000` and `1995` cents, and total `23195` cents, plus explicit `PREVIEW_ONLY`, `persisted: false`, `waveSynced: false` and `emailed: false`. No invoice number is assigned.
 
-Before implementing invoices, add user authentication, business isolation, human approval, idempotency, audit logging and appropriate storage controls. GitHub Actions will run the mocked tests on Node.js 20 and 22 without any secrets.
+## Deployment remains pending
+
+Do not deploy until MochaHost confirms the separate `facturations.bolon.ca` DNS/SSL and Node.js environment. Configure `NODE_ENV=production`, `TAKATAK_ADMIN_KEY` and `WAVE_ACCESS_TOKEN` **only in that application's private environment** and start using `app.js`. Do not place credentials in GitHub or the document root. Never restart or change `takatak.ca` or another production service.
+
+Before progressing from previews to persistent customer records and actual invoicing, build a dedicated database, proper user authentication, access control, audit logs, business isolation, invoice numbering, approval workflow, idempotency and validated Wave integration. The tests use mocked Wave responses; they do not prove live Wave or MochaHost connectivity.

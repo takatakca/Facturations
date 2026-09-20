@@ -1,8 +1,8 @@
 {
   "name": "takatak-wave",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "GROUPE TAKATAK — independent read-only Wave Accounting connection (Phase 1)",
+  "description": "GROUPE TAKATAK — independent Wave business connection and invoice draft previews (Phase 2)",
   "main": "app.js",
   "type": "commonjs",
   "engines": { "node": ">=20.11.0" },
@@ -10,7 +10,7 @@
     "start": "node app.js",
     "dev": "node --env-file=.env app.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check app.js && node --check src/config.js && node --check src/server.js && node --check src/wave-client.js && node --check tests/server.test.js && node --check tests/wave-client.test.js && node --check tests/config.test.js"
+    "check": "node --check app.js && node --check src/config.js && node --check src/server.js && node --check src/wave-client.js && node --check src/draft-preview.js && node --check tests/server.test.js && node --check tests/wave-client.test.js && node --check tests/config.test.js && node --check tests/draft-preview.test.js"
   },
   "license": "UNLICENSED"
 }

@@ -102,9 +102,9 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    // Staff session credentials may read tenant-scoped data only. Customer contacts
-    // require OWNER; ordinary STAFF sessions never receive contact information.
-    // The temporary admin key is strictly server-to-server and must not enter browsers.
+    // Staff sessions may list tenant-scoped draft summaries; full draft details include
+    // customer email/address and notes, so only OWNER may retrieve those details.
+    // Customer directory also requires OWNER. Admin key is server-to-server ONLY.
     if (request.headers.authorization !== undefined) {
       let staff;
       try {
@@ -117,7 +117,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       if (!((isDashboard || isCollection || isGet || isCustomers) && request.method === 'GET')) {
         return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
       }
-      if (isCustomers && staff.role !== 'OWNER') {
+      if ((isCustomers || isGet) && staff.role !== 'OWNER') {
         return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
       }
     } else {

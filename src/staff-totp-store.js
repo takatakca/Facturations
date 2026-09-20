@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[89ab][a-f0-9]{12}$/i;
 const CODE = /^[0-9]{6}$/;
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -17,7 +17,7 @@ function base32Encode(bytes) {
   let encoded = '';
   for (const byte of bytes) {
     accumulator = (accumulator << 8) | byte;
-    bits += 5;
+    bits += 8;
     while (bits >= 5) {
       bits -= 5;
       encoded += ALPHABET[(accumulator >>> bits) & 31];

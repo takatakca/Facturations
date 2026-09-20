@@ -4,7 +4,9 @@ const { loadConfig } = require('./src/config');
 const { createServer } = require('./src/server');
 const { attachReadOnlyDashboardCookie } = require('./src/browser-dashboard-session');
 const { attachBrowserStaffLogin } = require('./src/browser-staff-login');
+const { attachBrowserWorkspaceRoutes } = require('./src/browser-workspace-routes');
 const { createDraftStore } = require('./src/draft-store');
+const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
 const { createDashboardStore } = require('./src/dashboard-store');
 const { createStaffAuthStore } = require('./src/staff-auth-store');
 const { createStaffTotpStore } = require('./src/staff-totp-store');
@@ -20,6 +22,7 @@ if (require.main === module) {
   let attemptLimit = null;
   let customerDirectory = null;
   let approvalLedger = null;
+  let workspaceStore = null;
   if (config.databaseUrl && config.businessId) {
     // Database module is required only for the dedicated app; no existing TAKATAK DB is accessed.
     const { Pool } = require('pg');
@@ -31,15 +34,19 @@ if (require.main === module) {
       ? createStaffTotpStore({ pool, businessId: config.businessId,
         encryptionKeyHex: config.totpEncryptionKeyHex }) : null;
     staffAuthStore = createStaffAuthStore({ pool, businessId: config.businessId, totpStore });
-    if (config.browserOrigin) attemptLimit = createLoginAttemptLimit({ pool, businessId: config.businessId });
+    if (config.browserOrigin) {
+      attemptLimit = createLoginAttemptLimit({ pool, businessId: config.businessId });
+      workspaceStore = createDraftWorkspaceStore({ pool, businessId: config.businessId });
+    }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
   }
   const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger });
   if (config.browserOrigin) {
-    // This wrapper must precede the read-only dashboard cookie listener.
-    // Browser login stays absent unless HTTPS origin, separate key and DB are configured.
+    // Wrap once per service; never pass the shared administrative key to the browser.
     attachBrowserStaffLogin(server, { origin: config.browserOrigin, staffAuthStore, attemptLimit });
+    attachBrowserWorkspaceRoutes(server, { origin: config.browserOrigin,
+      encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

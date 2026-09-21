@@ -55,14 +55,13 @@ test('FR/EN search forms are private POSTs, escaped, and never add client data t
     assert.match(html, /Fictional &amp; &lt;client&gt;/);
     assert.doesNotMatch(html, /\?lang=(fr|en)&amp;q=/);
     assert.doesNotMatch(html, /<script|Fictional & <client>/);
-    assert.match(html, /form-action 'self'/);
   }
   assert.match(renderRecentWorkspaces({ status: 'WORKSPACES_ONLY', workspaces: [] }, 'en', 'old'),
     /No saved drafts match this search/);
   assert.throws(() => renderRecentWorkspaces(listing, 'fr', 'x'.repeat(81)), TypeError);
 });
 
-test('search route validates same-origin form, bounds body, denies credentials and does not log a query in URLs', async () => {
+test('search route validates same-origin form, bounds body, denies credentials and never puts names in URLs', async () => {
   const calls = [];
   await withServer({ async list(args) {
     calls.push(args);
@@ -73,6 +72,7 @@ test('search route validates same-origin form, bounds body, denies credentials a
     assert.equal(ok.status, 200);
     assert.equal(ok.headers['cache-control'], 'private, no-store');
     assert.equal(ok.headers['referrer-policy'], 'no-referrer');
+    assert.match(ok.headers['content-security-policy'], /form-action 'self'/);
     assert.equal(ok.headers['access-control-allow-origin'], undefined);
     assert.match(ok.body, /value="Fictional &amp; &lt;client&gt;"/);
     assert.deepEqual(calls.map(call => call.query), ['Fictional & <client>']);
@@ -90,8 +90,7 @@ test('search route validates same-origin form, bounds body, denies credentials a
       ['q=old', { 'X-Admin-Key': 'synthetic-admin' }, 401],
       ['q=old', { Cookie: `${COOKIE_NAME}=bad` }, 401],
       ['q=old', { 'Content-Type': 'application/json' }, 415],
-      ['q=x&q=y', {}, 422],
-      ['bad=x', {}, 422],
+      ['q=x&q=y', {}, 422], ['bad=x', {}, 422],
       ['q=' + 'x'.repeat(81), {}, 422],
       ['q=%0A', {}, 422],
       ['q=' + 'x'.repeat(520), {}, 413],
@@ -168,11 +167,9 @@ test('PostgreSQL: find draft beyond 20, literal %/_ search, owner/tenant scope a
       assert.ok(!recentRows.workspaces.some(item => item.id === old.id));
       for (const query of ['fictional_%_', '%_', 'ARCHIVE']) {
         const filtered = await recent.list({ token: owner.token, query });
-        if (query === 'fictional_%_' || query === '%_' || query === 'ARCHIVE') {
-          assert.equal(filtered.workspaces.length, 1);
-          assert.equal(filtered.workspaces[0].id, old.id);
-          assert.deepEqual(Object.keys(filtered.workspaces[0]).sort(), ['customerName', 'id', 'revision', 'updatedAt']);
-        }
+        assert.equal(filtered.workspaces.length, 1);
+        assert.equal(filtered.workspaces[0].id, old.id);
+        assert.deepEqual(Object.keys(filtered.workspaces[0]).sort(), ['customerName', 'id', 'revision', 'updatedAt']);
       }
       assert.equal((await recent.list({ token: owner.token, query: 'nothing matches' })).workspaces.length, 0);
       assert.equal((await recent.list({ token: colleague.token, query: '%_' })).workspaces.length, 1);

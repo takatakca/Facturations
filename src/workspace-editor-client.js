@@ -123,7 +123,7 @@
     lineFields.forEach((fields, index) => {
       const line = row.content.lines?.[index] || {};
       fields.description.value = line.description ?? '';
-      fields.quantity.value = line.quantity ?? '';
+      fields.quantity.value = line.quantity === undefined || line.quantity === null ? '' : String(line.quantity);
       fields.price.value = money(line.unitPriceCents);
       fields.discount.value = money(line.discountCents);
       fields.taxable.checked = line.taxable === true;

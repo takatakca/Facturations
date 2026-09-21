@@ -5,17 +5,21 @@ on:
     paths:
       - 'scripts/browser-smoke.js'
       - 'scripts/browser-smoke-en-narrow.js'
+      - 'scripts/browser-smoke-workspace-search.js'
       - 'src/browser-workspace-editor.js'
       - 'src/workspace-editor-client.js'
       - 'src/browser-workspace-preview.js'
+      - 'src/browser-recent-workspaces.js'
       - '.github/workflows/browser-smoke.yml'
   pull_request:
     paths:
       - 'scripts/browser-smoke.js'
       - 'scripts/browser-smoke-en-narrow.js'
+      - 'scripts/browser-smoke-workspace-search.js'
       - 'src/browser-workspace-editor.js'
       - 'src/workspace-editor-client.js'
       - 'src/browser-workspace-preview.js'
+      - 'src/browser-recent-workspaces.js'
       - '.github/workflows/browser-smoke.yml'
 
 permissions:
@@ -47,3 +51,5 @@ jobs:
         run: node scripts/browser-smoke.js
       - name: English narrow-viewport browser smoke with fictional data
         run: node scripts/browser-smoke-en-narrow.js
+      - name: Bilingual private workspace search in Chromium with synthetic HTTPS fixtures
+        run: node scripts/browser-smoke-workspace-search.js

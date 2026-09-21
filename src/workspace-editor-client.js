@@ -14,6 +14,7 @@
       incompatible: 'Ce contenu ne peut pas être édité sans risque sur cet écran limité à cinq articles. Aucune modification autorisée.',
       confirm: 'Recharger la version du serveur et perdre toutes les modifications non enregistrées ?',
       error: 'Erreur inattendue. Rien n’a été confirmé comme enregistré.',
+      preview: 'Voir l’aperçu de la version enregistrée',
     },
     en: {
       loading: 'Loading your private workspace…', ready: 'Ready. No changes saved yet.',
@@ -25,6 +26,7 @@
       incompatible: 'This content cannot be edited safely on this five-line screen. Editing is disabled.',
       confirm: 'Reload the server version and discard all unsaved changes?',
       error: 'Unexpected error. No save has been confirmed.',
+      preview: 'Preview the saved version',
     },
   };
   const t = COPY[language];
@@ -39,6 +41,16 @@
   const save = el('save');
   const reload = el('reload');
   const status = el('status');
+  // Link is created only in a real DOM, never with a guessed workspace identifier.
+  // Its target is a private, read-only route that rechecks the staff session and owner.
+  const preview = typeof document.createElement === 'function' ? document.createElement('a') : null;
+  if (preview) {
+    preview.id = 'preview';
+    preview.textContent = t.preview;
+    preview.hidden = true;
+    preview.setAttribute('aria-label', t.preview);
+    form.querySelector('.actions').append(preview);
+  }
   const lineFields = Array.from({ length: 5 }, (_, i) => {
     const key = `line-${i + 1}-`;
     return { description: el(key + 'description'), quantity: el(key + 'quantity'),
@@ -66,6 +78,10 @@
   function controls() {
     save.disabled = blocked || busy || !csrfToken || !dirty;
     reload.disabled = blocked || busy || !id;
+    if (preview) {
+      preview.hidden = blocked || busy || !id || revision === null;
+      if (!preview.hidden) preview.href = '/internal/workspaces/' + id + '/preview?lang=' + language;
+    }
   }
   function simple(value) { return value === undefined || value === null || typeof value === 'string'; }
   function allowedRecord(value, keys) {

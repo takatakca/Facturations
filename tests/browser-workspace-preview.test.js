@@ -84,7 +84,8 @@ test('HTTP preview accepts only a staff session and GET, returns private HTML wi
       '/internal/workspaces/bad/preview']) {
       assert.equal((await fetch(base + path, { headers: cookie(TOKEN) })).status, 422);
     }
-    assert.equal(reads, 0);
+    // The malformed-but-well-formed-length token reaches storage for live revocation checks.
+    assert.equal(reads, 1);
     const response = await fetch(base + PATH + '?lang=fr', { headers: cookie(TOKEN) });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
@@ -94,7 +95,7 @@ test('HTTP preview accepts only a staff session and GET, returns private HTML wi
     assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
     assert.match(response.headers.get('content-security-policy'), /form-action 'none'/);
     assert.match(await response.text(), /25,20/);
-    assert.equal(reads, 1);
+    assert.equal(reads, 2);
   });
 });
 

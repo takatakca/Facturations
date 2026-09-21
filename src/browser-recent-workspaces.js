@@ -103,9 +103,10 @@ function readSearchBody(request) {
         const body = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
         const params = new URLSearchParams(body);
         if ([...params.keys()].length !== 1 || params.getAll('q').length !== 1) return reject(422);
-        const query = params.get('q').trim();
-        if (query.length > 80 || /[\u0000-\u001f\u007f]/.test(query)) return reject(422);
-        resolve(query);
+        const submitted = params.get('q');
+        // Reject control characters BEFORE trim; otherwise an encoded newline becomes an empty search.
+        if (submitted.length > 80 || /[\u0000-\u001f\u007f]/.test(submitted)) return reject(422);
+        resolve(submitted.trim());
       } catch { reject(422); }
     });
   });

@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scripts/browser-smoke.js'
+      - 'scripts/browser-smoke-en-narrow.js'
       - 'src/browser-workspace-editor.js'
       - 'src/workspace-editor-client.js'
       - 'src/browser-workspace-preview.js'
@@ -11,6 +12,7 @@ on:
   pull_request:
     paths:
       - 'scripts/browser-smoke.js'
+      - 'scripts/browser-smoke-en-narrow.js'
       - 'src/browser-workspace-editor.js'
       - 'src/workspace-editor-client.js'
       - 'src/browser-workspace-preview.js'
@@ -41,5 +43,7 @@ jobs:
             echo 'Chrome/Chromium missing: browser smoke cannot be silently skipped' >&2
             exit 1
           fi
-      - name: Browser smoke with fictional data and no external services
+      - name: French browser smoke with fictional data
         run: node scripts/browser-smoke.js
+      - name: English narrow-viewport browser smoke with fictional data
+        run: node scripts/browser-smoke-en-narrow.js

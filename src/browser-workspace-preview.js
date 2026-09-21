@@ -16,7 +16,7 @@ const COPY = Object.freeze({
     subtotal: 'Sous-total', taxes: 'Taxes indiquées', taxTotal: 'Total des taxes', grand: 'Total calculé',
     noTaxes: 'Aucune taxe indiquée dans le brouillon.', notes: 'Notes', revision: 'Révision enregistrée',
     disclaimer: 'Calcul de prévisualisation, sans émission, envoi, paiement ni écriture Wave. Les taxes indiquées sont celles du brouillon : leur applicabilité et leur taux doivent être vérifiés avant toute facture réelle.',
-    incomplete: 'Cet espace de travail ne contient pas encore toutes les données nécessaires au calcul (client, courriel, dates, articles et taxes). L’éditeur actuel ne permet pas encore de compléter tous ces champs.',
+    incomplete: 'Cet espace de travail ne contient pas encore toutes les données nécessaires au calcul (client, courriel, dates et articles). Complétez ou corrigez les champs dans l’éditeur, enregistrez, puis ouvrez à nouveau cet aperçu. Aucune taxe n’est ajoutée automatiquement.',
   }),
   en: Object.freeze({
     title: 'Calculated draft preview', badge: 'PREVIEW ONLY · NO INVOICE ISSUED',
@@ -26,7 +26,7 @@ const COPY = Object.freeze({
     subtotal: 'Subtotal', taxes: 'Specified taxes', taxTotal: 'Total tax', grand: 'Calculated total',
     noTaxes: 'No taxes specified in this draft.', notes: 'Notes', revision: 'Saved revision',
     disclaimer: 'Calculation preview only: no issuance, sending, payment or Wave write. Taxes are taken from this draft; their applicability and rates must be verified before any real invoice.',
-    incomplete: 'This workspace does not yet contain all the data required to calculate a preview (customer, email, dates, items and taxes). The current editor cannot yet complete all these fields.',
+    incomplete: 'This workspace does not yet contain all the data required to calculate a preview (customer, email, dates and items). Complete or correct the fields in the editor, save, then open this preview again. No taxes are added automatically.',
   }),
 });
 const HEADERS = Object.freeze({

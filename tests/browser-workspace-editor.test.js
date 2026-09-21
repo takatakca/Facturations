@@ -70,6 +70,8 @@ test('FR/EN private HTML contains five accessible line rows, three optional tax 
       assert.match(html, /id="line-5-price"/);
       assert.match(html, /id="tax-3-rate"/);
       assert.match(html, /\/internal\/recent-workspaces\?lang=/);
+      assert.match(html, /<a id="preview" hidden>/);
+      assert.doesNotMatch(html, /<a id="preview"[^>]*href=/);
       assert.doesNotMatch(html, new RegExp(TOKEN));
       assert.doesNotMatch(html, /fictional-internal|csrfToken|<script(?! src)/);
     }
@@ -89,26 +91,31 @@ test('FR/EN private HTML contains five accessible line rows, three optional tax 
 });
 
 // Actual browser JS under Node VM: synthetic cookie routes, no external services or storage.
-function browserHarness({ existing = null } = {}) {
+function browserHarness({ existing = null, delayedLoad = false } = {}) {
   const events = new Map();
   const windowEvents = new Map();
   const ids = ['editor', 'customer', 'email', 'address', 'invoiceDate', 'dueDate',
-    'notes', 'save', 'reload', 'status'];
+    'notes', 'save', 'reload', 'preview', 'status'];
   for (let n = 1; n <= 5; n++) for (const key of ['description', 'quantity', 'price', 'discount', 'taxable']) {
     ids.push(`line-${n}-${key}`);
   }
   for (let n = 1; n <= 3; n++) for (const key of ['code', 'label', 'rate']) ids.push(`tax-${n}-${key}`);
   const elements = Object.fromEntries(ids.map(id => [id, {
-    value: '', checked: false, disabled: true, dataset: {}, textContent: '',
+    value: '', checked: false, disabled: true, hidden: id === 'preview',
+    dataset: {}, textContent: '',
     addEventListener(type, listener) { events.set(id + ':' + type, listener); },
+    removeAttribute(name) { if (name === 'href') delete this.href; },
   }]));
   const calls = [];
   const server = { current: existing, conflict: false };
   const historyUrls = [];
+  let releaseLoad;
+  let loadGate = delayedLoad ? new Promise(resolve => { releaseLoad = resolve; }) : null;
   const fetchMock = async (path, options = {}) => {
     calls.push({ path, options });
     if (path === '/internal/workspaces/csrf') return { ok: true, json: async () => ({ csrfToken }) };
     if (path === '/internal/workspaces/' + ID && (!options.method || options.method === 'GET')) {
+      if (loadGate) { const gate = loadGate; loadGate = null; await gate; }
       return server.current ? { ok: true, json: async () => server.current } : { ok: false, status: 404 };
     }
     if (server.conflict) return { ok: false, status: 409 };
@@ -135,6 +142,7 @@ function browserHarness({ existing = null } = {}) {
   vm.runInNewContext(readFileSync(join(__dirname, '../src/workspace-editor-client.js'), 'utf8'),
     context, { timeout: 1000 });
   return { elements, events, windowEvents, calls, server, historyUrls,
+    releaseLoad: () => releaseLoad?.(),
     settle: async () => { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); },
     submit: async () => events.get('editor:submit')({ preventDefault() {} }),
     edit: (id, value) => { elements[id].value = value; events.get('editor:input')(); },
@@ -144,6 +152,8 @@ function browserHarness({ existing = null } = {}) {
 test('browser saves complete fictional line, explicit tax, contact and dates; server computes preview', async () => {
   const h = browserHarness(); await h.settle();
   assert.equal(h.elements.save.disabled, false);
+  assert.equal(h.elements.customer.disabled, false);
+  assert.equal(h.elements.preview.hidden, true);
   h.edit('customer', 'Fictional client');
   h.edit('email', 'fictional@example.test');
   h.edit('address', '123 Example Street');
@@ -171,6 +181,11 @@ test('browser saves complete fictional line, explicit tax, contact and dates; se
   assert.deepEqual(h.historyUrls, ['/internal/editor?lang=fr&id=' + ID]);
   assert.match(h.elements.status.textContent, /Enregistré sur le serveur/);
   assert.equal(h.elements.save.disabled, true);
+  assert.equal(h.elements.preview.hidden, false);
+  assert.equal(h.elements.preview.href, '/internal/workspaces/' + ID + '/preview?lang=fr');
+  h.edit('notes', 'Unsaved change');
+  assert.equal(h.elements.preview.hidden, true);
+  assert.equal(h.elements.preview.href, undefined);
   const write = h.calls.find(item => item.options.method === 'POST');
   assert.equal(write.options.headers['X-Facturations-CSRF'], csrfToken);
   assert.equal(write.options.credentials, 'same-origin');
@@ -187,6 +202,7 @@ test('reopen preserves metadata and explicit tax flags; a revision conflict does
   const h = browserHarness({ existing: initial }); await h.settle();
   assert.equal(h.elements['line-1-price'].value, '15.50');
   assert.equal(h.elements['tax-1-rate'].value, '1.000');
+  assert.equal(h.elements.preview.hidden, false);
   h.edit('notes', 'Edited note');
   await h.submit();
   assert.equal(h.server.current.revision, 2);
@@ -199,6 +215,29 @@ test('reopen preserves metadata and explicit tax flags; a revision conflict does
   assert.equal(h.elements['line-1-price'].value, '20.00');
   assert.match(h.elements.status.textContent, /Conflit de révision/);
   assert.equal(h.elements.save.disabled, false);
+  assert.equal(h.elements.preview.hidden, true);
+  const leave = { preventDefault() {}, returnValue: null };
+  h.windowEvents.get('beforeunload')(leave);
+  assert.equal(leave.returnValue, '');
+});
+
+test('pending load locks inputs and never overwrites programmatic edits or fabricates a preview', async () => {
+  const initial = { id: ID, revision: 1, content: { currency: 'CAD', customer: { name: 'Saved name' }, notes: 'Saved notes' },
+    status: 'WORK_IN_PROGRESS', invoiceIssued: false, emailed: false };
+  const h = browserHarness({ existing: initial, delayedLoad: true });
+  await h.settle();
+  assert.equal(h.elements.customer.disabled, true);
+  assert.equal(h.elements['line-1-price'].disabled, true);
+  assert.equal(h.elements.save.disabled, true);
+  assert.equal(h.elements.preview.hidden, true);
+  h.elements.notes.value = 'Unsaved input while GET is pending';
+  h.releaseLoad(); await h.settle();
+  assert.equal(h.elements.notes.value, 'Unsaved input while GET is pending');
+  assert.notEqual(h.elements.customer.value, 'Saved name');
+  assert.match(h.elements.status.textContent, /changé pendant le chargement/);
+  assert.equal(h.elements.save.disabled, true); // No revision was loaded; editing remains locked.
+  assert.equal(h.elements.preview.hidden, true);
+  assert.equal(h.calls.filter(call => call.options.method === 'PUT').length, 0);
   const leave = { preventDefault() {}, returnValue: null };
   h.windowEvents.get('beforeunload')(leave);
   assert.equal(leave.returnValue, '');

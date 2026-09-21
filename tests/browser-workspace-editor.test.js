@@ -69,6 +69,8 @@ test('FR/EN private HTML contains five accessible line rows, three optional tax 
       assert.match(html, /id="invoiceDate" type="date"/);
       assert.match(html, /id="line-5-price"/);
       assert.match(html, /id="tax-3-rate"/);
+      assert.match(html, /id="editing-fields" class="editing-fields" disabled/);
+      assert.match(html, /id="preview"[^>]* hidden/);
       assert.match(html, /\/internal\/recent-workspaces\?lang=/);
       assert.doesNotMatch(html, new RegExp(TOKEN));
       assert.doesNotMatch(html, /fictional-internal|csrfToken|<script(?! src)/);
@@ -92,14 +94,15 @@ test('FR/EN private HTML contains five accessible line rows, three optional tax 
 function browserHarness({ existing = null } = {}) {
   const events = new Map();
   const windowEvents = new Map();
-  const ids = ['editor', 'customer', 'email', 'address', 'invoiceDate', 'dueDate',
+  // Keep the mock DOM in sync with the actual editor HTML, including preview and fieldset.
+  const ids = ['editor', 'editing-fields', 'preview', 'customer', 'email', 'address', 'invoiceDate', 'dueDate',
     'notes', 'save', 'reload', 'status'];
   for (let n = 1; n <= 5; n++) for (const key of ['description', 'quantity', 'price', 'discount', 'taxable']) {
     ids.push(`line-${n}-${key}`);
   }
   for (let n = 1; n <= 3; n++) for (const key of ['code', 'label', 'rate']) ids.push(`tax-${n}-${key}`);
   const elements = Object.fromEntries(ids.map(id => [id, {
-    value: '', checked: false, disabled: true, dataset: {}, textContent: '',
+    value: '', checked: false, disabled: true, hidden: true, href: '', dataset: {}, textContent: '',
     addEventListener(type, listener) { events.set(id + ':' + type, listener); },
   }]));
   const calls = [];
@@ -171,6 +174,8 @@ test('browser saves complete fictional line, explicit tax, contact and dates; se
   assert.deepEqual(h.historyUrls, ['/internal/editor?lang=fr&id=' + ID]);
   assert.match(h.elements.status.textContent, /Enregistré sur le serveur/);
   assert.equal(h.elements.save.disabled, true);
+  assert.equal(h.elements.preview.hidden, false);
+  assert.equal(h.elements.preview.href, '/internal/workspaces/' + ID + '/preview?lang=fr');
   const write = h.calls.find(item => item.options.method === 'POST');
   assert.equal(write.options.headers['X-Facturations-CSRF'], csrfToken);
   assert.equal(write.options.credentials, 'same-origin');
@@ -199,6 +204,7 @@ test('reopen preserves metadata and explicit tax flags; a revision conflict does
   assert.equal(h.elements['line-1-price'].value, '20.00');
   assert.match(h.elements.status.textContent, /Conflit de révision/);
   assert.equal(h.elements.save.disabled, false);
+  assert.equal(h.elements.preview.hidden, true);
   const leave = { preventDefault() {}, returnValue: null };
   h.windowEvents.get('beforeunload')(leave);
   assert.equal(leave.returnValue, '');

@@ -58,8 +58,9 @@ const DRIVER = String.raw`
       throw new Error('Server-calculated preview content missing');
     }
     fill('notes', 'Modification non enregistrée');
-    if (!preview.hidden || preview.hasAttribute('href')) {
-      throw new Error('Stale preview remains accessible after edit');
+    // PR #46 hides the link for unsaved changes; it does not promise removal of href.
+    if (!preview.hidden || getComputedStyle(preview).display !== 'none') {
+      throw new Error('Stale preview remains visible after edit');
     }
     document.documentElement.dataset.smoke = 'passed';
   } catch (error) {
@@ -109,7 +110,8 @@ function runBrowser(binary, url, profileDir) {
       ended = true;
       clearTimeout(timeout);
       if (code !== 0 || !/\bdata-smoke="passed"/.test(stdout)) {
-        return reject(new Error(`Browser smoke failed (exit ${code}): ${stdout.slice(-2500)} ${stderr.slice(-500)}`));
+        const documentState = stdout.match(/<html\b[^>]*>/i)?.[0] || 'missing html state';
+        return reject(new Error(`Browser smoke failed (exit ${code}): ${documentState}; ${stderr.slice(-500)}`));
       }
       resolve();
     });

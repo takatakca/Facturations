@@ -1,38 +1,10 @@
 name: Isolated Chromium MFA and PostgreSQL journey
 
+# The integration journey spans authentication, cookies, HTTP routes and db/*.sql.
+# Do not path-filter it: a dependency-only change must still exercise real Chrome.
 on:
   push:
-    paths:
-      - 'scripts/browser-smoke-mfa-postgres.js'
-      - '.github/workflows/browser-mfa-postgres.yml'
-      - 'src/browser-staff-login.js'
-      - 'src/browser-recent-workspaces.js'
-      - 'src/recent-workspace-store.js'
-      - 'src/staff-auth-store.js'
-      - 'src/staff-totp-store.js'
-      - 'src/login-attempt-limit.js'
-      - 'src/draft-workspace-store.js'
-      - 'src/dashboard-store.js'
-      - 'src/dashboard-view.js'
-      - 'src/server.js'
-      - 'scripts/setup-test-db.js'
-      - 'migrations/**'
   pull_request:
-    paths:
-      - 'scripts/browser-smoke-mfa-postgres.js'
-      - '.github/workflows/browser-mfa-postgres.yml'
-      - 'src/browser-staff-login.js'
-      - 'src/browser-recent-workspaces.js'
-      - 'src/recent-workspace-store.js'
-      - 'src/staff-auth-store.js'
-      - 'src/staff-totp-store.js'
-      - 'src/login-attempt-limit.js'
-      - 'src/draft-workspace-store.js'
-      - 'src/dashboard-store.js'
-      - 'src/dashboard-view.js'
-      - 'src/server.js'
-      - 'scripts/setup-test-db.js'
-      - 'migrations/**'
 
 permissions:
   contents: read

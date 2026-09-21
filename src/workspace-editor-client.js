@@ -30,6 +30,8 @@
   const t = COPY[language];
   const el = name => document.getElementById(name);
   const form = el('editor');
+  const fields = el('editing-fields');
+  const preview = el('preview');
   const customer = el('customer');
   const email = el('email');
   const address = el('address');
@@ -64,8 +66,14 @@
     status.dataset.error = error ? 'true' : 'false';
   }
   function controls() {
-    save.disabled = blocked || busy || !csrfToken || !dirty;
+    // A pending initial load or reload must never overwrite keystrokes entered mid-request.
+    // After a failed initial load, the existing UUID is not safe to save until its revision loads.
+    fields.disabled = blocked || busy || !csrfToken || Boolean(id && revision === null);
+    save.disabled = blocked || busy || !csrfToken || !dirty || Boolean(id && revision === null);
     reload.disabled = blocked || busy || !id;
+    const saved = !blocked && !busy && !dirty && Boolean(id) && Number.isSafeInteger(revision) && revision >= 1;
+    preview.hidden = !saved;
+    if (saved) preview.href = '/internal/workspaces/' + id + '/preview?lang=' + language;
   }
   function simple(value) { return value === undefined || value === null || typeof value === 'string'; }
   function allowedRecord(value, keys) {
@@ -120,19 +128,19 @@
     invoiceDate.value = row.content.invoiceDate ?? '';
     dueDate.value = row.content.dueDate ?? '';
     notes.value = row.content.notes ?? '';
-    lineFields.forEach((fields, index) => {
+    lineFields.forEach((field, index) => {
       const line = row.content.lines?.[index] || {};
-      fields.description.value = line.description ?? '';
-      fields.quantity.value = line.quantity === undefined || line.quantity === null ? '' : String(line.quantity);
-      fields.price.value = money(line.unitPriceCents);
-      fields.discount.value = money(line.discountCents);
-      fields.taxable.checked = line.taxable === true;
+      field.description.value = line.description ?? '';
+      field.quantity.value = line.quantity === undefined || line.quantity === null ? '' : String(line.quantity);
+      field.price.value = money(line.unitPriceCents);
+      field.discount.value = money(line.discountCents);
+      field.taxable.checked = line.taxable === true;
     });
-    taxFields.forEach((fields, index) => {
+    taxFields.forEach((field, index) => {
       const tax = row.content.taxes?.[index] || {};
-      fields.code.value = tax.code ?? '';
-      fields.label.value = tax.label ?? '';
-      fields.rate.value = taxRate(tax.rateMilliPercent);
+      field.code.value = tax.code ?? '';
+      field.label.value = tax.label ?? '';
+      field.rate.value = taxRate(tax.rateMilliPercent);
     });
     dirty = false;
     controls();
@@ -143,11 +151,11 @@
     return JSON.stringify({
       customer: customer.value, email: email.value, address: address.value,
       invoiceDate: invoiceDate.value, dueDate: dueDate.value, notes: notes.value,
-      lines: lineFields.map(fields => ({ description: fields.description.value,
-        quantity: fields.quantity.value, price: fields.price.value,
-        discount: fields.discount.value, taxable: fields.taxable.checked })),
-      taxes: taxFields.map(fields => ({ code: fields.code.value,
-        label: fields.label.value, rate: fields.rate.value })),
+      lines: lineFields.map(field => ({ description: field.description.value,
+        quantity: field.quantity.value, price: field.price.value,
+        discount: field.discount.value, taxable: field.taxable.checked })),
+      taxes: taxFields.map(field => ({ code: field.code.value,
+        label: field.label.value, rate: field.rate.value })),
     });
   }
   function invalid() { const error = new Error('Invalid input'); error.status = 422; throw error; }
@@ -177,12 +185,12 @@
     if (!validDate(invoiceDate.value) || !validDate(dueDate.value) ||
         (invoiceDate.value && dueDate.value && dueDate.value < invoiceDate.value)) invalid();
     const lines = [];
-    lineFields.forEach((fields, index) => {
-      const description = fields.description.value.trim();
-      const quantity = fields.quantity.value.trim();
-      const price = fields.price.value.trim();
-      const discount = fields.discount.value.trim();
-      if (!description && !quantity && !price && !discount && !fields.taxable.checked) return;
+    lineFields.forEach((field, index) => {
+      const description = field.description.value.trim();
+      const quantity = field.quantity.value.trim();
+      const price = field.price.value.trim();
+      const discount = field.discount.value.trim();
+      if (!description && !quantity && !price && !discount && !field.taxable.checked) return;
       if (!description || description.length > 250 || !/^\d{1,4}$/.test(quantity)) invalid();
       const count = Number(quantity);
       if (count < 1 || count > 1000) invalid();
@@ -190,13 +198,13 @@
       const discountCents = discount ? cents(discount) : 0;
       if (discountCents > count * unitPriceCents) invalid();
       lines.push({ ...(content.lines?.[index] || {}), description,
-        quantity: count, unitPriceCents, discountCents, taxable: fields.taxable.checked });
+        quantity: count, unitPriceCents, discountCents, taxable: field.taxable.checked });
     });
     const taxes = [];
-    taxFields.forEach((fields, index) => {
-      const code = fields.code.value.trim().toUpperCase();
-      const label = fields.label.value.trim();
-      const rate = fields.rate.value.trim();
+    taxFields.forEach((field, index) => {
+      const code = field.code.value.trim().toUpperCase();
+      const label = field.label.value.trim();
+      const rate = field.rate.value.trim();
       if (!code && !label && !rate) return;
       if (!/^[A-Z0-9_-]{1,20}$/.test(code) || !label || label.length > 80 ||
           taxes.some(tax => tax.code === code)) invalid();
@@ -242,7 +250,7 @@
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (blocked || busy || !csrfToken || !dirty) return;
+    if (blocked || busy || !csrfToken || !dirty || (id && revision === null)) return;
     let data;
     try { data = payload(); } catch (error) { failure(error); return; }
     busy = true; controls(); message(t.pending);

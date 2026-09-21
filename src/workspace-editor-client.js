@@ -10,6 +10,7 @@
       pending: 'Enregistrement en cours…', unavailable: 'Service indisponible. Vos modifications restent dans ce formulaire.',
       unauthorized: 'Session expirée. Gardez cette page ouverte et reconnectez-vous dans un autre onglet.',
       conflict: 'Conflit de révision : rien n’a été remplacé. Copiez vos modifications avant de recharger la version enregistrée.',
+      changedDuringLoad: 'Le formulaire a changé pendant le chargement. Rien n’a été remplacé; rechargez uniquement après avoir conservé votre saisie.',
       invalid: 'Vérifiez les champs : dates, articles complets, prix à deux décimales, rabais, taxes et taux à trois décimales. Rien n’a été enregistré.',
       incompatible: 'Ce contenu ne peut pas être édité sans risque sur cet écran limité à cinq articles. Aucune modification autorisée.',
       confirm: 'Recharger la version du serveur et perdre toutes les modifications non enregistrées ?',
@@ -21,6 +22,7 @@
       pending: 'Saving…', unavailable: 'Service unavailable. Your changes remain in this form.',
       unauthorized: 'Session expired. Keep this page open and sign in again in another tab.',
       conflict: 'Revision conflict: nothing was overwritten. Copy your changes before reloading the saved version.',
+      changedDuringLoad: 'The form changed while loading. Nothing was overwritten; preserve your input before reloading.',
       invalid: 'Check dates, complete lines, two-decimal prices, discounts, tax codes and three-decimal tax rates. Nothing was saved.',
       incompatible: 'This content cannot be edited safely on this five-line screen. Editing is disabled.',
       confirm: 'Reload the server version and discard all unsaved changes?',
@@ -38,6 +40,7 @@
   const notes = el('notes');
   const save = el('save');
   const reload = el('reload');
+  const preview = el('preview');
   const status = el('status');
   const lineFields = Array.from({ length: 5 }, (_, i) => {
     const key = `line-${i + 1}-`;
@@ -48,6 +51,9 @@
     const key = `tax-${i + 1}-`;
     return { code: el(key + 'code'), label: el(key + 'label'), rate: el(key + 'rate') };
   });
+  const editableFields = [customer, email, address, invoiceDate, dueDate, notes,
+    ...lineFields.flatMap(fields => Object.values(fields)),
+    ...taxFields.flatMap(fields => Object.values(fields))];
   const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
   const params = new URLSearchParams(location.search);
   let id = params.get('id');
@@ -64,8 +70,16 @@
     status.dataset.error = error ? 'true' : 'false';
   }
   function controls() {
-    save.disabled = blocked || busy || !csrfToken || !dirty;
+    // An existing workspace cannot be edited before its revision has been loaded.
+    // A disabled input also prevents a late GET from overwriting ordinary typing.
+    const locked = blocked || busy || !csrfToken || (Boolean(id) && revision === null);
+    editableFields.forEach(field => { field.disabled = locked; });
+    save.disabled = locked || !dirty;
     reload.disabled = blocked || busy || !id;
+    // This is a link to the saved revision, never a preview of unsaved edits.
+    preview.hidden = !id || revision === null || blocked || busy || dirty;
+    if (!preview.hidden) preview.href = '/internal/workspaces/' + id + '/preview?lang=' + language;
+    else preview.removeAttribute('href');
   }
   function simple(value) { return value === undefined || value === null || typeof value === 'string'; }
   function allowedRecord(value, keys) {
@@ -224,20 +238,30 @@
   async function load() {
     if (!id) { dirty = true; message(t.ready); controls(); return; }
     busy = true; controls(); message(t.loading);
-    try { apply(await request('/internal/workspaces/' + id)); }
-    catch (error) { failure(error); }
+    const before = formSnapshot();
+    try {
+      const row = await request('/internal/workspaces/' + id);
+      // Defense in depth: even programmatic/autofill edits during a pending GET
+      // must never be silently replaced by its eventual response.
+      if (formSnapshot() !== before) {
+        dirty = true;
+        message(t.changedDuringLoad, true);
+        return;
+      }
+      apply(row);
+    } catch (error) { failure(error); }
     finally { busy = false; controls(); }
   }
   form.addEventListener('input', () => {
-    if (blocked) return;
+    if (blocked || busy) return;
     dirty = true;
-    if (!busy) message(t.unsaved);
+    message(t.unsaved);
     controls();
   });
   form.addEventListener('change', () => {
-    if (blocked) return;
+    if (blocked || busy) return;
     dirty = true;
-    if (!busy) message(t.unsaved);
+    message(t.unsaved);
     controls();
   });
   form.addEventListener('submit', async event => {
@@ -274,6 +298,7 @@
   });
   async function start() {
     message(t.loading);
+    controls(); // Lock all input before the first asynchronous fetch starts.
     if (id && !uuid.test(id)) { blocked = true; message(t.incompatible, true); controls(); return; }
     try {
       const value = await request('/internal/workspaces/csrf');

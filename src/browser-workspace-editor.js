@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { readStaffSessionCookie } = require('./staff-session-cookie');
 
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{12}$/i;
 const CLIENT = readFileSync(join(__dirname, 'workspace-editor-client.js'), 'utf8');
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
@@ -24,6 +24,7 @@ const COPY = Object.freeze({
     linesTitle: 'Articles (5 maximum sur cet écran)', taxesTitle: 'Taxes (3 maximum)',
     taxesNotice: 'Aucun taux de taxe n’est prérempli. Vérifiez vous-même les taux et leur applicabilité avant toute utilisation réelle.',
     save: 'Enregistrer le brouillon', reload: 'Recharger la version enregistrée',
+    preview: 'Voir l’aperçu de la version enregistrée (si complète)',
     dashboard: 'Tableau de bord', recent: 'Mes brouillons enregistrés', language: 'English', other: 'en',
     notice: 'Brouillon de travail uniquement. Aucun envoi, aucune émission, aucun paiement. L’aperçu n’est disponible qu’après enregistrement et seulement si les renseignements sont complets.',
   }),
@@ -38,6 +39,7 @@ const COPY = Object.freeze({
     linesTitle: 'Line items (up to 5 on this screen)', taxesTitle: 'Taxes (up to 3)',
     taxesNotice: 'No tax rates are prefilled. Verify rates and applicability before any real use.',
     save: 'Save workspace', reload: 'Reload saved version',
+    preview: 'View saved-revision preview (if complete)',
     dashboard: 'Dashboard', recent: 'My saved drafts', language: 'Français', other: 'fr',
     notice: 'Working draft only. No sending, issuance or payment. Preview is available only after saving complete details.',
   }),
@@ -68,7 +70,7 @@ function renderEditor(language, workspaceId = null) {
   }).join('');
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title} — GROUPE TAKATAK</title>
 <style>
-:root{color-scheme:light;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.55}main{max-width:900px;margin:0 auto;padding:clamp(18px,4vw,48px)}header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:26px}.brand{font-weight:800;letter-spacing:.1em;color:#14536b;font-size:.85rem}.links{display:flex;gap:16px;flex-wrap:wrap}a{color:#194a91;font-weight:650;text-underline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.8rem);line-height:1.12;margin:10px 0}.muted{color:#566781}.tag{display:inline-block;background:#e8f0ff;color:#224a91;padding:5px 12px;border-radius:999px;font-weight:700;font-size:.82rem}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;padding:clamp(18px,4vw,34px);box-shadow:0 4px 18px #0c1c300a;margin-top:25px}label{display:block;margin:18px 0 7px;font-weight:700}input,textarea{display:block;width:100%;font:inherit;color:inherit;background:#fff;padding:12px 14px;border:1px solid #afc0d4;border-radius:10px;margin-top:6px}textarea{resize:vertical;min-height:95px}input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #4d7dc8;outline-offset:3px}h2{font-size:1.2rem;margin-top:34px}.two,.three{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.item{border:1px solid #dce5ef;border-radius:12px;margin:16px 0;padding:10px 16px 16px;min-width:0}legend{font-weight:750;padding:0 6px}.check{display:flex;align-items:center;gap:10px}.check input{width:20px;height:20px;margin:0;flex-shrink:0}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}button{font:inherit;font-weight:700;border:1px solid #b7c8df;border-radius:10px;padding:12px 18px;background:white;color:#173e76;cursor:pointer}button.primary{background:#164b9b;color:#fff;border-color:#164b9b}button:disabled{opacity:.55;cursor:not-allowed}#status{padding:12px 14px;background:#eaf1ff;border-radius:10px;color:#234576;margin-top:18px;overflow-wrap:anywhere}#status[data-error="true"]{background:#fff0ed;color:#903728}.foot{margin:22px 0;color:#566781;font-size:.88rem}@media(max-width:620px){.two,.three{grid-template-columns:1fr}}
+:root{color-scheme:light;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.55}main{max-width:900px;margin:0 auto;padding:clamp(18px,4vw,48px)}header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:26px}.brand{font-weight:800;letter-spacing:.1em;color:#14536b;font-size:.85rem}.links{display:flex;gap:16px;flex-wrap:wrap}a{color:#194a91;font-weight:650;text-underline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.8rem);line-height:1.12;margin:10px 0}.muted{color:#566781}.tag{display:inline-block;background:#e8f0ff;color:#224a91;padding:5px 12px;border-radius:999px;font-weight:700;font-size:.82rem}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;padding:clamp(18px,4vw,34px);box-shadow:0 4px 18px #0c1c300a;margin-top:25px}label{display:block;margin:18px 0 7px;font-weight:700}input,textarea{display:block;width:100%;font:inherit;color:inherit;background:#fff;padding:12px 14px;border:1px solid #afc0d4;border-radius:10px;margin-top:6px}textarea{resize:vertical;min-height:95px}input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #4d7dc8;outline-offset:3px}h2{font-size:1.2rem;margin-top:34px}.two,.three{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.item{border:1px solid #dce5ef;border-radius:12px;margin:16px 0;padding:10px 16px 16px;min-width:0}legend{font-weight:750;padding:0 6px}.check{display:flex;align-items:center;gap:10px}.check input{width:20px;height:20px;margin:0;flex-shrink:0}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}button{font:inherit;font-weight:700;border:1px solid #b7c8df;border-radius:10px;padding:12px 18px;background:white;color:#173e76;cursor:pointer}button.primary{background:#164b9b;color:#fff;border-color:#164b9b}button:disabled{opacity:.55;cursor:not-allowed}#preview{display:inline-flex;align-items:center;border:1px solid #b7c8df;border-radius:10px;padding:12px 18px}#preview[hidden]{display:none}#status{padding:12px 14px;background:#eaf1ff;border-radius:10px;color:#234576;margin-top:18px;overflow-wrap:anywhere}#status[data-error="true"]{background:#fff0ed;color:#903728}.foot{margin:22px 0;color:#566781;font-size:.88rem}@media(max-width:620px){.two,.three{grid-template-columns:1fr}}
 </style><script src="/internal/editor-client.js" defer></script></head><body><main>
 <header><div class="brand">GROUPE TAKATAK</div><nav class="links" aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.dashboard}</a><a href="/internal/recent-workspaces?lang=${language}">${t.recent}</a><a lang="${t.other}" href="/internal/editor?lang=${t.other}${suffix}">${t.language}</a></nav></header>
 <span class="tag">${t.subtitle}</span><h1>${t.title}</h1><p class="muted">${t.intro}</p>
@@ -80,7 +82,7 @@ function renderEditor(language, workspaceId = null) {
 <label for="notes">${t.notes}</label><textarea id="notes" maxlength="1000"></textarea>
 <h2>${t.linesTitle}</h2>${lines}
 <h2>${t.taxesTitle}</h2><p class="muted">${t.taxesNotice}</p>${taxes}
-<div class="actions"><button id="save" class="primary" type="submit" disabled>${t.save}</button><button id="reload" type="button" disabled>${t.reload}</button></div>
+<div class="actions"><button id="save" class="primary" type="submit" disabled>${t.save}</button><button id="reload" type="button" disabled>${t.reload}</button><a id="preview" hidden>${t.preview}</a></div>
 <p id="status" role="status" aria-live="polite"></p></form></section><p class="foot">${t.notice}</p>
 </main></body></html>`;
 }

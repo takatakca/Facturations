@@ -1,0 +1,81 @@
+name: Isolated Chromium MFA and PostgreSQL journey
+
+on:
+  push:
+    paths:
+      - 'scripts/browser-smoke-mfa-postgres.js'
+      - '.github/workflows/browser-mfa-postgres.yml'
+      - 'src/browser-staff-login.js'
+      - 'src/browser-recent-workspaces.js'
+      - 'src/recent-workspace-store.js'
+      - 'src/staff-auth-store.js'
+      - 'src/staff-totp-store.js'
+      - 'src/login-attempt-limit.js'
+      - 'src/draft-workspace-store.js'
+      - 'src/dashboard-store.js'
+      - 'src/dashboard-view.js'
+      - 'src/server.js'
+      - 'scripts/setup-test-db.js'
+      - 'migrations/**'
+  pull_request:
+    paths:
+      - 'scripts/browser-smoke-mfa-postgres.js'
+      - '.github/workflows/browser-mfa-postgres.yml'
+      - 'src/browser-staff-login.js'
+      - 'src/browser-recent-workspaces.js'
+      - 'src/recent-workspace-store.js'
+      - 'src/staff-auth-store.js'
+      - 'src/staff-totp-store.js'
+      - 'src/login-attempt-limit.js'
+      - 'src/draft-workspace-store.js'
+      - 'src/dashboard-store.js'
+      - 'src/dashboard-view.js'
+      - 'src/server.js'
+      - 'scripts/setup-test-db.js'
+      - 'migrations/**'
+
+permissions:
+  contents: read
+
+jobs:
+  chrome-mfa-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: facturations_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-not-production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d facturations_test"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      FACTURATIONS_TEST_DATABASE_URL: postgresql://postgres:test-only-not-production@127.0.0.1:5432/facturations_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install from lockfile without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Initialize disposable database
+        run: node scripts/setup-test-db.js
+      - name: Find real Chrome or Chromium (never silently skip)
+        shell: bash
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v chromium)" >> "$GITHUB_ENV"
+          elif command -v chromium-browser >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v chromium-browser)" >> "$GITHUB_ENV"
+          else
+            echo 'Chrome/Chromium missing: integrated smoke cannot be skipped' >&2
+            exit 1
+          fi
+      - name: Real Chrome FR/EN, real MFA, real PostgreSQL (fictional data only)
+        run: node scripts/browser-smoke-mfa-postgres.js

@@ -55,7 +55,7 @@ function harness({ existing = false, loadDeferred = false } = {}) {
     window: { addEventListener() {} }, location: { search: existing ? '?lang=fr&id=' + ID : '?lang=fr' },
     crypto: { randomUUID: () => '33333333-3333-4333-8333-333333333333' },
     history: { replaceState() {} }, URLSearchParams, Object, Number, JSON, Error,
-    fetch: fetchMock, confirm: () => false,
+    fetch: fetchMock, confirm: () => true, // Explicitly consent to discard simulated unsaved input on retry.
   }, { timeout: 1000 });
   return { elements, listeners, calls, server, pendingGets,
     settle: async () => { await new Promise(setImmediate); await new Promise(setImmediate); },

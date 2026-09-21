@@ -8,11 +8,13 @@ const COPY = Object.freeze({
     back: 'Tableau de bord', other: 'en', language: 'English',
     empty: 'Aucun brouillon enregistré. Commencez un nouveau brouillon.',
     unnamed: 'Sans nom de client', revision: 'Révision', updated: 'Mis à jour',
+    preview: 'Aperçu calculé (si complet)',
     note: 'Vos 20 espaces de travail les plus récents. Ce ne sont pas des factures émises.' }),
   en: Object.freeze({ title: 'My working drafts', new: 'New draft',
     back: 'Dashboard', other: 'fr', language: 'Français',
     empty: 'No saved drafts yet. Start a new draft.',
     unnamed: 'Unnamed customer', revision: 'Revision', updated: 'Updated',
+    preview: 'Calculated preview (if complete)',
     note: 'Your 20 most recent workspaces. These are not issued invoices.' }),
 });
 const HEADERS = Object.freeze({
@@ -44,10 +46,11 @@ function renderRecentWorkspaces(result, language = 'fr') {
     const label = row.customerName?.trim() || t.unnamed;
     const date = escapeHtml(row.updatedAt.slice(0, 16).replace('T', ' ')) + ' UTC';
     return `<li><a href="/internal/editor?lang=${language}&amp;id=${row.id}">${escapeHtml(label)}</a>` +
-      `<span class="meta">${t.revision} ${row.revision} · ${t.updated} ${date}</span></li>`;
+      `<span class="meta">${t.revision} ${row.revision} · ${t.updated} ${date}</span>` +
+      `<a class="preview" href="/internal/workspaces/${row.id}/preview?lang=${language}">${t.preview}</a></li>`;
   }).join('');
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title} — GROUPE TAKATAK</title>
-<style>:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.5}main{max-width:850px;margin:auto;padding:clamp(18px,4vw,48px)}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}.brand{font-size:.85rem;font-weight:800;letter-spacing:.1em;color:#14536b}nav{display:flex;flex-wrap:wrap;gap:16px}a{color:#194a91;font-weight:700;text-underline-offset:3px;overflow-wrap:anywhere}a:focus-visible{outline:3px solid #4d7dc8;outline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.8rem);margin:30px 0 8px}p{color:#52647c}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;padding:clamp(18px,4vw,32px);margin:26px 0}ul{list-style:none;padding:0;margin:0}li{padding:18px 0;border-top:1px solid #e9eef5}li:first-child{border-top:0}.meta{display:block;color:#52647c;font-size:.86rem;margin-top:5px}.new{display:inline-block;background:#164b9b;color:#fff;border-radius:9px;padding:11px 16px;text-decoration:none}</style></head>
+<style>:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.5}main{max-width:850px;margin:auto;padding:clamp(18px,4vw,48px)}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}.brand{font-size:.85rem;font-weight:800;letter-spacing:.1em;color:#14536b}nav{display:flex;flex-wrap:wrap;gap:16px}a{color:#194a91;font-weight:700;text-underline-offset:3px;overflow-wrap:anywhere}a:focus-visible{outline:3px solid #4d7dc8;outline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.8rem);margin:30px 0 8px}p{color:#52647c}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;padding:clamp(18px,4vw,32px);margin:26px 0}ul{list-style:none;padding:0;margin:0}li{padding:18px 0;border-top:1px solid #e9eef5}li:first-child{border-top:0}.meta{display:block;color:#52647c;font-size:.86rem;margin-top:5px}.preview{display:inline-block;margin-top:9px;font-size:.9rem}.new{display:inline-block;background:#164b9b;color:#fff;border-radius:9px;padding:11px 16px;text-decoration:none}</style></head>
 <body><main><header><div class="brand">GROUPE TAKATAK</div><nav aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.back}</a><a href="/internal/recent-workspaces?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header>
 <h1>${t.title}</h1><p>${t.note}</p><a class="new" href="/internal/editor?lang=${language}">${t.new}</a>
 <section class="panel" aria-label="${t.title}">${items ? `<ul>${items}</ul>` : `<p>${t.empty}</p>`}</section></main></body></html>`;
@@ -99,4 +102,4 @@ function attachBrowserRecentWorkspaces(server, { origin, recentStore }) {
   return server;
 }
 
-module.exports = { attachBrowserRecentWorkspaces, renderRecentWorkspaces }; 
+module.exports = { attachBrowserRecentWorkspaces, renderRecentWorkspaces };

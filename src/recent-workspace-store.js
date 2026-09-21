@@ -5,6 +5,7 @@ const { WorkspaceError } = require('./draft-workspace-store');
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const LIMIT = 20;
+const MAX_SEARCH_LENGTH = 80;
 
 // Read-only, bounded listing. Authorization and owner/tenant filtering happen in
 // the SAME SQL statement, so an invalid session cannot enumerate any records.
@@ -15,10 +16,18 @@ function createRecentWorkspaceStore({ pool, businessId }) {
   }
   const tenant = businessId.trim();
 
-  async function list({ token }) {
+  // Search is a literal substring (not a LIKE pattern); never search notes or contacts.
+  // The browser submits it in a POST body, not a URL, to avoid leaking customer names
+  // through history, access logs or referrer headers.
+  async function list({ token, query = '' }) {
     if (typeof token !== 'string' || !TOKEN.test(token)) {
       throw new WorkspaceError('UNAUTHORIZED', 401);
     }
+    if (typeof query !== 'string' || query.length > MAX_SEARCH_LENGTH || /[\u0000-\u001f\u007f]/.test(query)) {
+      throw new WorkspaceError('INVALID_SEARCH', 422);
+    }
+    const search = query.trim();
+    if (search.length > MAX_SEARCH_LENGTH) throw new WorkspaceError('INVALID_SEARCH', 422);
     const digest = crypto.createHash('sha256').update(token).digest();
     let result;
     try {
@@ -42,10 +51,11 @@ function createRecentWorkspaceStore({ pool, businessId }) {
              SELECT id,revision,updated_at,content
                FROM facturations_draft_workspaces
               WHERE business_id=$1 AND owner_staff_id=active_staff.id
+                AND ($3 = '' OR strpos(lower(coalesce(content #>> '{customer,name}', '')), lower($3)) > 0)
               ORDER BY updated_at DESC,id DESC LIMIT 20
            ) w ON TRUE
           ORDER BY w.updated_at DESC NULLS LAST,w.id DESC NULLS LAST`,
-        [tenant, digest]
+        [tenant, digest, search]
       );
     } catch {
       throw new WorkspaceError('STORAGE_UNAVAILABLE', 503);
@@ -65,4 +75,4 @@ function createRecentWorkspaceStore({ pool, businessId }) {
   return Object.freeze({ list });
 }
 
-module.exports = { createRecentWorkspaceStore, LIMIT };
+module.exports = { createRecentWorkspaceStore, LIMIT, MAX_SEARCH_LENGTH };

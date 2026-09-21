@@ -1,26 +1,10 @@
 name: Isolated Chromium editor smoke
 
+# Editor browser behavior depends on calculation, preview, stores and shared UI code.
+# Do not path-filter: a change to an imported module must still run this journey.
 on:
   push:
-    paths:
-      - 'scripts/browser-smoke.js'
-      - 'scripts/browser-smoke-en-narrow.js'
-      - 'scripts/browser-smoke-workspace-search.js'
-      - 'src/browser-workspace-editor.js'
-      - 'src/workspace-editor-client.js'
-      - 'src/browser-workspace-preview.js'
-      - 'src/browser-recent-workspaces.js'
-      - '.github/workflows/browser-smoke.yml'
   pull_request:
-    paths:
-      - 'scripts/browser-smoke.js'
-      - 'scripts/browser-smoke-en-narrow.js'
-      - 'scripts/browser-smoke-workspace-search.js'
-      - 'src/browser-workspace-editor.js'
-      - 'src/workspace-editor-client.js'
-      - 'src/browser-workspace-preview.js'
-      - 'src/browser-recent-workspaces.js'
-      - '.github/workflows/browser-smoke.yml'
 
 permissions:
   contents: read

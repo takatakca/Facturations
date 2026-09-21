@@ -1,0 +1,7 @@
+# Parcours Chrome + MFA + PostgreSQL — contrôle de préproduction
+
+Le workflow `.github/workflows/browser-mfa-postgres.yml` crée une base **PostgreSQL 16 jetable** nommée `facturations_test` et lance Chrome réel en français puis en anglais contre les vrais contrôleurs de connexion et de recherche. Le test crée exclusivement un compte `example.test` dans cette base, confirme son TOTP par provisionnement de confiance fictif, conserve 22 brouillons de travail puis vérifie qu'un brouillon ancien est retrouvé après un vrai POST. Les connexions Chrome doivent produire des sessions distinctes, dont les codes TOTP ne sont pas réutilisables. Le navigateur ne peut pas lire le cookie HttpOnly. Aucune ligne `invoice_drafts` n'est créée.
+
+L'hôte **HTTPS est uniquement `127.0.0.1`**, avec certificat auto-signé généré puis détruit. L'option Chrome d'ignorer ce certificat existe uniquement dans le processus de test. Aucun accès Wave, compte réel, courriel, paiement, facture officielle ni déploiement.
+
+**Ne pas confondre avec une certification de préproduction :** ce test ne vérifie ni `facturations.bolon.ca`, ni un certificat reconnu, ni le reverse-proxy réel, ni la limite de débit à la périphérie, ni un appareil mobile physique. Revue indépendante, protection `main` (#41), vérification de la configuration HTTPS sur l'hôte isolé et validation comptable/fiscale demeurent des portes obligatoires.

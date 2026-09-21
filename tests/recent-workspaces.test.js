@@ -72,7 +72,8 @@ test('HTML listing fails closed for missing, revoked, wrong or admin/bearer cred
     assert.equal((await fetch(base + '/internal/recent-workspaces', { headers: {
       Authorization: `Bearer ${TOKEN}`, ...cookie,
     } })).status, 401);
-    assert.equal((await fetch(base + '/internal/recent-workspaces', { headers: cookie, method: 'POST' })).status, 405);
+    // POST is now a valid read-only search method, but never without same-origin proof.
+    assert.equal((await fetch(base + '/internal/recent-workspaces', { headers: cookie, method: 'POST' })).status, 403);
     for (const path of ['/internal/recent-workspaces?lang=fr&lang=en',
       '/internal/recent-workspaces?token=anything', '/internal/recent-workspaces?lang=es']) {
       assert.equal((await fetch(base + path, { headers: cookie })).status, 422);

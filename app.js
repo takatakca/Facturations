@@ -6,6 +6,8 @@ const { attachReadOnlyDashboardCookie } = require('./src/browser-dashboard-sessi
 const { attachBrowserStaffLogin } = require('./src/browser-staff-login');
 const { attachBrowserWorkspaceRoutes } = require('./src/browser-workspace-routes');
 const { attachBrowserWorkspaceEditor } = require('./src/browser-workspace-editor');
+const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspaces');
+const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
 const { createDraftStore } = require('./src/draft-store');
 const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
 const { createDashboardStore } = require('./src/dashboard-store');
@@ -24,6 +26,7 @@ if (require.main === module) {
   let customerDirectory = null;
   let approvalLedger = null;
   let workspaceStore = null;
+  let recentStore = null;
   if (config.databaseUrl && config.businessId) {
     // Database module is required only for the dedicated app; no existing TAKATAK DB is accessed.
     const { Pool } = require('pg');
@@ -38,6 +41,7 @@ if (require.main === module) {
     if (config.browserOrigin) {
       attemptLimit = createLoginAttemptLimit({ pool, businessId: config.businessId });
       workspaceStore = createDraftWorkspaceStore({ pool, businessId: config.businessId });
+      recentStore = createRecentWorkspaceStore({ pool, businessId: config.businessId });
     }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
@@ -49,6 +53,7 @@ if (require.main === module) {
     attachBrowserWorkspaceRoutes(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
     attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore });
+    attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

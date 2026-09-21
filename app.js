@@ -7,6 +7,7 @@ const { attachBrowserStaffLogin } = require('./src/browser-staff-login');
 const { attachBrowserWorkspaceRoutes } = require('./src/browser-workspace-routes');
 const { attachBrowserWorkspaceEditor } = require('./src/browser-workspace-editor');
 const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspaces');
+const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
 const { createDraftStore } = require('./src/draft-store');
 const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
@@ -54,6 +55,7 @@ if (require.main === module) {
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
     attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore });
     attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore });
+    attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

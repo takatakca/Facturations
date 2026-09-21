@@ -2,6 +2,7 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const { TextDecoder } = require('node:util');
 const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
@@ -73,7 +74,7 @@ function readJson(request) {
     request.on('end', () => {
       if (finished) return;
       finished = true;
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      try { resolve(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)))); }
       catch { reject({ code: 'INVALID_JSON', statusCode: 400 }); }
     });
     request.on('error', () => fail('INVALID_REQUEST', 400));

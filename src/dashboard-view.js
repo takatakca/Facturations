@@ -11,6 +11,7 @@ const COPY = Object.freeze({
     recent: 'Brouillons récents', customer: 'Client', invoiceDate: 'Date de facture',
     dueDate: 'Échéance', total: 'Total', status: 'État', empty: 'Aucun brouillon pour le moment.',
     draft: 'Brouillon', logout: 'Se déconnecter', editor: 'Nouveau brouillon de travail',
+    savedWorkspaces: 'Mes brouillons enregistrés',
     footer: 'Lecture seule. Aucune émission, aucun courriel, aucun paiement.',
   }),
   en: Object.freeze({
@@ -21,6 +22,7 @@ const COPY = Object.freeze({
     recent: 'Recent drafts', customer: 'Customer', invoiceDate: 'Invoice date',
     dueDate: 'Due date', total: 'Total', status: 'Status', empty: 'No drafts yet.',
     draft: 'Draft', logout: 'Sign out', editor: 'New working draft',
+    savedWorkspaces: 'My saved drafts',
     footer: 'Read-only. No issuance, email or payment.',
   }),
 });
@@ -68,7 +70,7 @@ function renderDashboard({ summary, drafts, language = 'fr' }) {
   }).join('');
   const content = rows || `<tr><td colspan="5" class="empty">${t.empty}</td></tr>`;
   // The only form is POST to the existing same-origin, origin-checked logout route.
-  // The editor link contains no token or customer data; it is separately session-guarded.
+  // The navigation links contain no tokens or customer data; their targets recheck live sessions.
   return `<!doctype html>
 <html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${t.title} — GROUPE TAKATAK</title>
@@ -79,8 +81,8 @@ header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:cen
 .brand{font-weight:800;letter-spacing:.08em;font-size:.83rem;color:#14536b}h1{font-size:clamp(2rem,5vw,3rem);line-height:1.1;margin:8px 0}
 p{margin:0}.muted{color:#52647c}.tag,.pill{display:inline-block;border-radius:999px;padding:5px 12px;background:#e5f5ed;color:#0e5d38;font-weight:650;font-size:.82rem}
 .tag{background:#e8f0ff;color:#224a91}.actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.actions form{margin:0}
-.signout,.editor-link{font:inherit;font-weight:700;font-size:.88rem;color:#173e76;background:white;border:1px solid #b7c8df;border-radius:9px;padding:10px 14px;cursor:pointer}.editor-link{text-decoration:none;background:#164b9b;color:white;border-color:#164b9b}
-.signout:hover{background:#edf3fc}.editor-link:hover{background:#103a88}.signout:focus-visible,.editor-link:focus-visible{outline:3px solid #3567b7;outline-offset:3px}
+.signout,.editor-link{font:inherit;font-weight:700;font-size:.88rem;color:#173e76;background:white;border:1px solid #b7c8df;border-radius:9px;padding:10px 14px;cursor:pointer}.editor-link{text-decoration:none;background:#164b9b;color:white;border-color:#164b9b}.saved-link{text-decoration:none;font-size:.88rem;font-weight:700;color:#173e76;border:1px solid #b7c8df;border-radius:9px;padding:10px 14px;background:white}
+.signout:hover,.saved-link:hover{background:#edf3fc}.editor-link:hover{background:#103a88}.signout:focus-visible,.editor-link:focus-visible,.saved-link:focus-visible{outline:3px solid #3567b7;outline-offset:3px}
 .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:26px 0}
 .metric,.panel{background:white;border:1px solid #dce5ef;border-radius:18px;box-shadow:0 4px 18px rgba(12,28,48,.04)}
 .metric{padding:24px}.metric .label{color:#52647c;font-size:.92rem}.metric strong{display:block;font-size:clamp(1.4rem,3vw,2rem);overflow-wrap:anywhere;margin-top:7px;font-variant-numeric:tabular-nums}
@@ -91,7 +93,7 @@ td{overflow-wrap:anywhere}td.numeric{text-align:right;white-space:nowrap;font-va
 footer{color:#52647c;font-size:.83rem;padding:24px 0}@media(max-width:700px){.metrics{grid-template-columns:1fr}.metric{padding:18px}th,td{padding:12px 15px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important}}
 </style></head><body><main>
-<header><div><p class="brand">GROUPE TAKATAK</p><h1>${t.title}</h1><p class="muted">${t.subtitle}</p></div><div class="actions"><span class="tag">${t.draftOnly}</span><a class="editor-link" href="/internal/editor?lang=${language}">${t.editor}</a><form method="post" action="/internal/logout?lang=${language}"><button class="signout" type="submit">${t.logout}</button></form></div></header>
+<header><div><p class="brand">GROUPE TAKATAK</p><h1>${t.title}</h1><p class="muted">${t.subtitle}</p></div><div class="actions"><span class="tag">${t.draftOnly}</span><a class="editor-link" href="/internal/editor?lang=${language}">${t.editor}</a><a class="saved-link" href="/internal/recent-workspaces?lang=${language}">${t.savedWorkspaces}</a><form method="post" action="/internal/logout?lang=${language}"><button class="signout" type="submit">${t.logout}</button></form></div></header>
 <section class="metrics" aria-label="${t.title}">
 <div class="metric"><span class="label">${t.drafts}</span><strong>${escapeHtml(count(summary.draftCount))}</strong></div>
 <div class="metric"><span class="label">${t.customers}</span><strong>${escapeHtml(count(summary.customerCount))}</strong></div>

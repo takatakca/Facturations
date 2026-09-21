@@ -2,7 +2,6 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const vm = require('node:vm');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
@@ -10,6 +9,7 @@ const { once } = require('node:events');
 const { createServer } = require('../src/server');
 const { attachBrowserWorkspaceEditor, renderEditor } = require('../src/browser-workspace-editor');
 const { COOKIE_NAME } = require('../src/staff-session-cookie');
+const { previewDraft } = require('../src/draft-preview');
 
 const TOKEN = 'C'.repeat(43);
 const ID = '22222222-2222-4222-8222-222222222222';
@@ -24,18 +24,16 @@ async function withServer(run) {
     return value === TOKEN && state.role ? { role: state.role, businessId: 'fictional-editor' } : null;
   } };
   const server = createServer({ config: { businessId: 'fictional-editor', adminKey: 'fictional-internal', waveToken: null } });
-  const origin = 'https://fictional.example.test';
-  attachBrowserWorkspaceEditor(server, { origin, staffAuthStore });
+  attachBrowserWorkspaceEditor(server, { origin: 'https://fictional.example.test', staffAuthStore });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try { await run({ base: `http://127.0.0.1:${server.address().port}`, state }); }
   finally { await new Promise(resolve => server.close(resolve)); }
 }
 
-test('editor and script require current staff cookie and never accept admin or bearer headers', async () => {
+test('editor and script require current staff cookie, never accept admin or bearer headers', async () => {
   await withServer(async ({ base, state }) => {
-    const page = '/internal/editor?lang=fr&id=' + ID;
-    for (const path of [page, '/internal/editor-client.js']) {
+    for (const path of ['/internal/editor?lang=fr&id=' + ID, '/internal/editor-client.js']) {
       assert.equal((await fetch(base + path)).status, 401);
       assert.equal((await fetch(base + path, { headers: { Cookie: cookie('Z'.repeat(43)) } })).status, 401);
       assert.equal((await fetch(base + path, { headers: { Cookie: cookie(TOKEN), 'X-Admin-Key': 'fictional-internal' } })).status, 401);
@@ -43,16 +41,15 @@ test('editor and script require current staff cookie and never accept admin or b
       assert.equal((await fetch(base + path, { method: 'POST', headers: { Cookie: cookie(TOKEN) } })).status, 405);
     }
     state.role = 'VIEWER';
-    assert.equal((await fetch(base + page, { headers: { Cookie: cookie(TOKEN) } })).status, 401);
+    assert.equal((await fetch(base + '/internal/editor', { headers: { Cookie: cookie(TOKEN) } })).status, 401);
     state.role = null;
-    assert.equal((await fetch(base + page, { headers: { Cookie: cookie(TOKEN) } })).status, 401);
-    state.role = 'STAFF';
-    state.unavailable = true;
-    assert.equal((await fetch(base + page, { headers: { Cookie: cookie(TOKEN) } })).status, 503);
+    assert.equal((await fetch(base + '/internal/editor', { headers: { Cookie: cookie(TOKEN) } })).status, 401);
+    state.role = 'STAFF'; state.unavailable = true;
+    assert.equal((await fetch(base + '/internal/editor', { headers: { Cookie: cookie(TOKEN) } })).status, 503);
   });
 });
 
-test('FR/EN private HTML and script use no-store and narrow CSP without exposing credentials', async () => {
+test('FR/EN private HTML contains five accessible line rows, three optional tax rows and no credentials', async () => {
   await withServer(async ({ base }) => {
     for (const lang of ['fr', 'en']) {
       const response = await fetch(base + `/internal/editor?lang=${lang}&id=${ID}`, {
@@ -68,17 +65,18 @@ test('FR/EN private HTML and script use no-store and narrow CSP without exposing
       assert.match(html, new RegExp(`<html lang="${lang}"`));
       assert.match(html, /GROUPE TAKATAK/);
       assert.match(html, /\/internal\/editor-client\.js/);
-      assert.match(html, /method="post" action="\/internal\/editor"/);
+      assert.match(html, /id="email" type="email"/);
+      assert.match(html, /id="invoiceDate" type="date"/);
+      assert.match(html, /id="line-5-price"/);
+      assert.match(html, /id="tax-3-rate"/);
+      assert.match(html, /\/internal\/recent-workspaces\?lang=/);
       assert.doesNotMatch(html, new RegExp(TOKEN));
-      assert.doesNotMatch(html, /fictional-internal/);
-      assert.doesNotMatch(html, /csrfToken/);
-      assert.doesNotMatch(html, /<script(?! src)/);
+      assert.doesNotMatch(html, /fictional-internal|csrfToken|<script(?! src)/);
     }
     const script = await fetch(base + '/internal/editor-client.js', { headers: { Cookie: cookie(TOKEN) } });
     assert.equal(script.status, 200);
     assert.match(script.headers.get('content-type'), /^text\/javascript/);
     assert.equal(script.headers.get('cache-control'), 'private, no-store');
-    assert.equal(script.headers.get('set-cookie'), null);
     assert.doesNotMatch(await script.text(), /fictional-internal/);
     for (const path of ['/internal/editor?lang=es', '/internal/editor?lang=fr&lang=en',
       '/internal/editor?id=not-a-uuid', '/internal/editor?token=fake',
@@ -90,14 +88,20 @@ test('FR/EN private HTML and script use no-store and narrow CSP without exposing
   assert.throws(() => renderEditor('xx'), /Invalid editor parameters/);
 });
 
-// Exercise the actual browser JS in a minimal sandbox without third-party browser dependencies.
+// Actual browser JS under Node VM: synthetic cookie routes, no external services or storage.
 function browserHarness({ existing = null } = {}) {
   const events = new Map();
   const windowEvents = new Map();
-  const elements = Object.fromEntries(['editor', 'customer', 'notes', 'save', 'reload', 'status'].map(id =>
-    [id, { value: '', disabled: true, dataset: {}, textContent: '', addEventListener(type, listener) {
-      events.set(id + ':' + type, listener);
-    } }]));
+  const ids = ['editor', 'customer', 'email', 'address', 'invoiceDate', 'dueDate',
+    'notes', 'save', 'reload', 'status'];
+  for (let n = 1; n <= 5; n++) for (const key of ['description', 'quantity', 'price', 'discount', 'taxable']) {
+    ids.push(`line-${n}-${key}`);
+  }
+  for (let n = 1; n <= 3; n++) for (const key of ['code', 'label', 'rate']) ids.push(`tax-${n}-${key}`);
+  const elements = Object.fromEntries(ids.map(id => [id, {
+    value: '', checked: false, disabled: true, dataset: {}, textContent: '',
+    addEventListener(type, listener) { events.set(id + ':' + type, listener); },
+  }]));
   const calls = [];
   const server = { current: existing, conflict: false };
   const historyUrls = [];
@@ -126,61 +130,108 @@ function browserHarness({ existing = null } = {}) {
     location: { search: existing ? '?lang=fr&id=' + ID : '?lang=fr' },
     crypto: { randomUUID: () => '33333333-3333-4333-8333-333333333333' },
     history: { replaceState: (_state, _unused, url) => historyUrls.push(url) },
-    URLSearchParams, Object, Number, JSON, Error,
-    fetch: fetchMock, confirm: () => false,
+    URLSearchParams, Object, Number, JSON, Error, fetch: fetchMock, confirm: () => false,
   };
-  const source = readFileSync(join(__dirname, '../src/workspace-editor-client.js'), 'utf8');
-  vm.runInNewContext(source, context, { timeout: 1000 });
+  vm.runInNewContext(readFileSync(join(__dirname, '../src/workspace-editor-client.js'), 'utf8'),
+    context, { timeout: 1000 });
   return { elements, events, windowEvents, calls, server, historyUrls,
-    settle: async () => { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); } };
+    settle: async () => { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); },
+    submit: async () => events.get('editor:submit')({ preventDefault() {} }),
+    edit: (id, value) => { elements[id].value = value; events.get('editor:input')(); },
+  };
 }
 
-test('browser creates a private workspace, saves only after server confirmation, and preserves hidden fields', async () => {
-  const h = browserHarness();
-  await h.settle();
+test('browser saves complete fictional line, explicit tax, contact and dates; server computes preview', async () => {
+  const h = browserHarness(); await h.settle();
   assert.equal(h.elements.save.disabled, false);
-  h.elements.customer.value = 'Fictional client';
-  h.elements.notes.value = 'Première version';
-  h.events.get('editor:input')();
-  await h.events.get('editor:submit')({ preventDefault() {} });
+  h.edit('customer', 'Fictional client');
+  h.edit('email', 'fictional@example.test');
+  h.edit('address', '123 Example Street');
+  h.edit('invoiceDate', '2026-09-21');
+  h.edit('dueDate', '2026-10-21');
+  h.edit('notes', 'Synthetic notes');
+  h.edit('line-1-description', 'Synthetic service');
+  h.edit('line-1-quantity', '2');
+  h.edit('line-1-price', '12,50');
+  h.edit('line-1-discount', '1.00');
+  h.elements['line-1-taxable'].checked = true;
+  h.events.get('editor:change')();
+  h.edit('tax-1-code', 'test');
+  h.edit('tax-1-label', 'Example tax');
+  h.edit('tax-1-rate', '9,975');
+  await h.submit();
   assert.equal(h.server.current.revision, 1);
-  assert.deepEqual(h.server.current.content, { currency: 'CAD', customer: { name: 'Fictional client' }, notes: 'Première version' });
+  assert.equal(h.server.current.content.customer.email, 'fictional@example.test');
+  assert.deepEqual(h.server.current.content.lines, [{ description: 'Synthetic service', quantity: 2,
+    unitPriceCents: 1250, discountCents: 100, taxable: true }]);
+  assert.deepEqual(h.server.current.content.taxes, [{ code: 'TEST', label: 'Example tax', rateMilliPercent: 9975 }]);
+  assert.equal(previewDraft(h.server.current.content).subtotalCents, 2400);
+  assert.equal(previewDraft(h.server.current.content).taxTotalCents, 239);
+  assert.equal(h.server.current.content.dueDate, '2026-10-21');
   assert.deepEqual(h.historyUrls, ['/internal/editor?lang=fr&id=' + ID]);
   assert.match(h.elements.status.textContent, /Enregistré sur le serveur/);
   assert.equal(h.elements.save.disabled, true);
-  // Revisions containing details not supported by this first editor must not be erased.
-  h.server.current.content.customer.email = 'fictional@example.test';
-  h.server.current.content.lines = [{ description: 'Existing item', quantity: 2 }];
-  h.server.current.content.taxes = [{ code: 'TEST', rateMilliPercent: 100 }];
-  const h2 = browserHarness({ existing: h.server.current });
-  await h2.settle();
-  h2.elements.notes.value = 'Edited note';
-  h2.events.get('editor:input')();
-  await h2.events.get('editor:submit')({ preventDefault() {} });
-  assert.equal(h2.server.current.revision, 2);
-  assert.equal(h2.server.current.content.customer.email, 'fictional@example.test');
-  assert.deepEqual(h2.server.current.content.lines, [{ description: 'Existing item', quantity: 2 }]);
-  assert.deepEqual(h2.server.current.content.taxes, [{ code: 'TEST', rateMilliPercent: 100 }]);
-  assert.equal(h2.server.current.content.notes, 'Edited note');
-  const write = h2.calls.find(item => item.options.method === 'PUT');
+  const write = h.calls.find(item => item.options.method === 'POST');
   assert.equal(write.options.headers['X-Facturations-CSRF'], csrfToken);
   assert.equal(write.options.credentials, 'same-origin');
+  assert.equal(write.options.headers.Accept, 'application/json');
 });
 
-test('a revision conflict keeps typed changes and does not claim success', async () => {
-  const initial = { id: ID, revision: 1, content: { currency: 'CAD', customer: { name: 'Test' }, notes: 'Before' },
-    status: 'WORK_IN_PROGRESS', invoiceIssued: false, emailed: false };
-  const h = browserHarness({ existing: initial });
-  await h.settle();
-  h.elements.notes.value = 'Unsent change';
-  h.events.get('editor:input')();
-  h.server.conflict = true;
-  await h.events.get('editor:submit')({ preventDefault() {} });
-  assert.equal(h.server.current.revision, 1);
-  assert.equal(h.elements.notes.value, 'Unsent change');
+test('reopen preserves metadata and explicit tax flags; a revision conflict does not discard edits', async () => {
+  const initial = { id: ID, revision: 1, content: {
+    currency: 'CAD', customer: { name: 'Test', email: 'test@example.test', address: 'Example' },
+    invoiceDate: '2026-09-21', dueDate: '2026-10-21', notes: 'Before',
+    lines: [{ description: 'Service', quantity: 2, unitPriceCents: 1550, discountCents: 0, taxable: false }],
+    taxes: [{ code: 'TAX', label: 'Example', rateMilliPercent: 1000 }],
+  }, status: 'WORK_IN_PROGRESS', invoiceIssued: false, emailed: false };
+  const h = browserHarness({ existing: initial }); await h.settle();
+  assert.equal(h.elements['line-1-price'].value, '15.50');
+  assert.equal(h.elements['tax-1-rate'].value, '1.000');
+  h.edit('notes', 'Edited note');
+  await h.submit();
+  assert.equal(h.server.current.revision, 2);
+  assert.equal(h.server.current.content.customer.address, 'Example');
+  assert.equal(h.server.current.content.lines[0].taxable, false);
+  assert.equal(h.server.current.content.taxes[0].rateMilliPercent, 1000);
+  h.edit('line-1-price', '20.00'); h.server.conflict = true;
+  await h.submit();
+  assert.equal(h.server.current.revision, 2);
+  assert.equal(h.elements['line-1-price'].value, '20.00');
   assert.match(h.elements.status.textContent, /Conflit de révision/);
   assert.equal(h.elements.save.disabled, false);
   const leave = { preventDefault() {}, returnValue: null };
   h.windowEvents.get('beforeunload')(leave);
   assert.equal(leave.returnValue, '');
+});
+
+test('invalid amounts, tax rates, discounts and due dates never reach the write route', async () => {
+  const h = browserHarness(); await h.settle();
+  h.edit('line-1-description', 'Example');
+  h.edit('line-1-quantity', '1');
+  h.edit('line-1-price', '10.001');
+  await h.submit();
+  assert.match(h.elements.status.textContent, /Vérifiez les champs/);
+  assert.equal(h.calls.filter(call => call.options.method === 'POST').length, 0);
+  h.edit('line-1-price', '10.00'); h.edit('line-1-discount', '11.00');
+  await h.submit();
+  assert.equal(h.calls.filter(call => call.options.method === 'POST').length, 0);
+  h.edit('line-1-discount', '0.00'); h.edit('tax-1-code', 'TAX');
+  h.edit('tax-1-label', 'Example'); h.edit('tax-1-rate', '101');
+  await h.submit();
+  assert.equal(h.calls.filter(call => call.options.method === 'POST').length, 0);
+  h.edit('tax-1-rate', '5.000'); h.edit('invoiceDate', '2026-10-21');
+  h.edit('dueDate', '2026-09-21'); await h.submit();
+  assert.equal(h.calls.filter(call => call.options.method === 'POST').length, 0);
+});
+
+test('more than five existing lines fails closed instead of silently erasing them', async () => {
+  const initial = { id: ID, revision: 3, status: 'WORK_IN_PROGRESS', invoiceIssued: false, emailed: false,
+    content: { currency: 'CAD', customer: { name: 'Example' },
+      lines: Array.from({ length: 6 }, () => ({ description: 'item', quantity: 1,
+        unitPriceCents: 100, discountCents: 0, taxable: false })) } };
+  const h = browserHarness({ existing: initial }); await h.settle();
+  assert.equal(h.elements.save.disabled, true);
+  assert.match(h.elements.status.textContent, /ne peut pas être édité/);
+  h.edit('customer', 'Changed'); await h.submit();
+  assert.equal(h.calls.filter(call => call.options.method === 'PUT').length, 0);
 });

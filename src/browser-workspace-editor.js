@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { readStaffSessionCookie } = require('./staff-session-cookie');
 
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{12}$/i;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const CLIENT = readFileSync(join(__dirname, 'workspace-editor-client.js'), 'utf8');
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',

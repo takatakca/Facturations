@@ -20,13 +20,18 @@ class WaveError extends Error {
   }
 }
 
+function decodeUtf8(decoder, bytes, options) {
+  try { return decoder.decode(bytes, options); }
+  catch { throw new WaveError('WAVE_INVALID_RESPONSE', 502); }
+}
+
 async function readLimitedBody(response) {
   if (!response.body || typeof response.body.getReader !== 'function') {
     throw new WaveError('WAVE_INVALID_RESPONSE', 502);
   }
 
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let bytes = 0;
   let text = '';
 
@@ -38,9 +43,9 @@ async function readLimitedBody(response) {
       if (bytes > MAX_RESPONSE_BYTES) {
         throw new WaveError('WAVE_RESPONSE_TOO_LARGE', 502);
       }
-      text += decoder.decode(value, { stream: true });
+      text += decodeUtf8(decoder, value, { stream: true });
     }
-    text += decoder.decode();
+    text += decodeUtf8(decoder);
     return JSON.parse(text);
   } catch (error) {
     if (error instanceof WaveError) throw error;

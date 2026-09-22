@@ -1,0 +1,41 @@
+name: Isolated Chromium editor smoke
+
+# Editor browser behavior depends on calculation, preview, stores and shared UI code.
+# Do not path-filter: a change to an imported module must still run this journey.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Locate installed Chrome or Chromium (fail rather than skip)
+        shell: bash
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v chromium)" >> "$GITHUB_ENV"
+          elif command -v chromium-browser >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v chromium-browser)" >> "$GITHUB_ENV"
+          else
+            echo 'Chrome/Chromium missing: browser smoke cannot be silently skipped' >&2
+            exit 1
+          fi
+      - name: French browser smoke with fictional data
+        run: node scripts/browser-smoke.js
+      - name: English narrow-viewport browser smoke with fictional data
+        run: node scripts/browser-smoke-en-narrow.js
+      - name: Bilingual private workspace search in Chromium with synthetic HTTPS fixtures
+        run: node scripts/browser-smoke-workspace-search.js
+      - name: Automatic draft save in real Chromium without a manual save click
+        run: node scripts/browser-smoke-autosave.js

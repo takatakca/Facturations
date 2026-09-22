@@ -1,21 +1,22 @@
 # GROUPE TAKATAK — Facturations
 
-**En développement — aucune facture réelle ne doit être émise.** Application Node.js indépendante destinée à un environnement et une base PostgreSQL **exclusifs à Facturations**, distincts des services TAKATAK existants. Le dépôt est **public** : ne jamais committer de `.env`, jetons, mots de passe, données clients réelles, factures, sauvegardes ou journaux sensibles. Ni `facturations.bolon.ca` ni une connexion Wave réelle n'ont été homologués. L'[audit de préparation #27](https://github.com/takatakca/Facturations/issues/27) et la [PR de revue globale #63](https://github.com/takatakca/Facturations/pull/63) distinguent code proposé, tests et blocages. **Les fonctionnalités ci-dessous sont proposées sur la branche de la PR #63, non fusionnées dans `main`.**
+**Application en développement, non déployée : aucune facture réelle ne doit être émise.** Le dépôt est public : ne jamais y placer des secrets, données clients, factures, sauvegardes ou journaux sensibles. Facturations exige un hébergement et une base PostgreSQL exclusivement dédiés, sans toucher aux services TAKATAK existants. Ni le site `facturations.bolon.ca` ni Wave réel n'ont été homologués. Les fonctionnalités décrites ci-dessous sont **proposées dans la [PR #63](https://github.com/takatakca/Facturations/pull/63)** et ne figurent pas toutes sur `main`.
 
-## Parcours interne présent dans la PR #63
+## Parcours interne proposé
 
-- Connexion du personnel FR/EN par mot de passe et TOTP activé, session révocable dans PostgreSQL et cookie `Secure`, `HttpOnly`, `SameSite=Strict`. Invitations et enrôlement initial exigent encore une procédure d'exploitation de confiance; aucune livraison d'invitation ni récupération MFA réelle n'est prête.
-- Tableau de bord privé, éditeur mobile FR/EN, recherche et historique des espaces de travail propres à chaque employé/entreprise. Sauvegarde manuelle et **automatique après trois secondes sans saisie**, côté serveur et avec révisions. Aucune sauvegarde automatique garantie en cas de fermeture avant le délai, de panne, de conflit entre onglets ou de réseau absent. Une erreur de session/conflit/stockage interrompt les nouveaux essais automatiques.
-- Aperçu calculé **CAD seulement** avec montants en cents et taxes **explicitement fournies**; aucune détermination automatique de l'applicabilité fiscale. Le propriétaire peut vérifier une révision enregistrée, confirmer une **conversion distincte** en copie immuable `invoice_drafts` (migration 009), puis confirmer séparément une **approbation interne**. La conversion fige l'espace source, rejette ses nouvelles sauvegardes avec HTTP 409 et redirige ses anciennes pages vers la révision immuable pour le propriétaire autorisé. Cette approbation **n'est pas une émission**.
-- Annuaire de clients et brouillons immuables isolés par entreprise, création idempotente, journal `DRAFT_CREATED`, vérifications serveur du destinataire et du total, recherche privée. Le connecteur Wave existant se limite à une **requête GraphQL en lecture seule** de la liste des entreprises, lorsqu'un jeton autorisé est configuré.
+Connexion privée FR/EN du personnel avec mot de passe, MFA TOTP et session révocable; tableau de bord, éditeur mobile, recherche et historique des brouillons de travail. La sauvegarde automatique intervient après trois secondes sans saisie, côté serveur et avec révisions; elle n'est pas garantie lors d'une fermeture prématurée, d'une panne, d'un conflit entre onglets ou d'une perte de réseau. L'aperçu est calculé en cents, CAD seulement, avec taxes explicitement saisies — **aucune décision fiscale automatisée**.
 
-Les routes navigateur privées utilisent une session vérifiée en base, des contrôles de rôle/propriété et d'entreprise. Les écritures de brouillons exigent une protection CSRF et l'origine/Host attendus. Le cookie navigateur **n'autorise aucune écriture `/api/*`** ni action Wave. Le processus Node est HTTP derrière un futur proxy HTTPS de confiance; la configuration d'une origine HTTPS ne constitue pas une preuve de TLS réel.
+Le propriétaire peut figer volontairement une révision enregistrée en brouillon immuable PostgreSQL, puis l'approuver **séparément en interne seulement**. Les anciens liens d'édition d'un brouillon figé redirigent le propriétaire vers sa révision; un onglet ancien reçoit HTTP 409 à la sauvegarde. La fiche approuvée propose une version privée A4 FR/EN **BROUILLON NON ÉMIS / UNISSUED DRAFT** que le navigateur peut imprimer ou enregistrer en PDF. Ce document n'est ni une facture officielle numérotée ni un PDF immuable archivé par le serveur.
 
-**Non livré / non vérifié :** facture officielle numérotée et émission, synchronisation Wave en écriture, PDF de facture immuable, courriel client, paiement/rapprochement, portail client, assistant IA/vocal connecté, transfert STAFF → OWNER, récupération MFA, restauration de sauvegarde, validation fiscale/comptable et homologation HTTPS publique. Les suites Chrome existantes ne couvrent **pas encore dans une seule navigation** MFA → autosave → conversion → approbation. Les PR sont en brouillon : pas de fusion ni de déploiement.
+Le répertoire clients privé FR/EN est réservé au propriétaire : consultation, recherche par nom/courriel sans les mettre dans l'URL, pagination, **ajout de clients et correction de coordonnées**. Les changements sont contrôlés par session/CSRF/origine, inscrits en transaction PostgreSQL avec révision et journal sans duplication des coordonnées; une fiche concurrente ou un courriel déjà enregistré entraîne 409. Les copies immuables des brouillons ne changent **jamais** lorsque le répertoire est corrigé. Voir [`docs/owner-customer-directory.md`](docs/owner-customer-directory.md), [`docs/owner-customer-contacts.md`](docs/owner-customer-contacts.md) et [`docs/owner-printable-draft.md`](docs/owner-printable-draft.md).
 
-## Installation de développement et tests jetables
+Les cookies navigateur n'autorisent aucune écriture `/api/*` ni action Wave. Le connecteur Wave existant ne propose qu'une lecture de la liste des entreprises avec un jeton autorisé. La configuration d'une origine HTTPS dans Node ne prouve pas à elle seule la présence d'un certificat ni d'un proxy sécurisé.
 
-Node.js >= 20.11 et npm; PostgreSQL 16 **local jetable** pour les tests d'intégration, jamais une base TAKATAK existante. Depuis une extraction propre :
+**Non livrés ou non vérifiés :** émission officielle et numérotation, écriture Wave, PDF officiel immuable et stockage, envoi client, paiements/remboursements, portail client, assistant IA/vocal, récupération MFA, restauration sauvegarde, revue fiscale/comptable et homologation TLS publique. Les suites Chrome existantes ne couvrent pas encore l'ensemble du parcours dans une seule navigation ni les nouveaux formulaires de fiches clients.
+
+## Installation de développement et base de tests jetable
+
+Node.js >=20.11, npm, PostgreSQL 16 **local et jetable uniquement** pour les tests d'intégration. Depuis une extraction propre :
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
@@ -24,49 +25,39 @@ npm test
 cp .env.example .env
 ```
 
-Le fichier **`package-lock.json` est présent**; `npm ci` respecte ses versions. Les tests PostgreSQL requièrent `FACTURATIONS_TEST_DATABASE_URL` pointant **uniquement** vers `127.0.0.1` ou `localhost` et `/facturations_test`. Initialiser cette base jetable avec `node scripts/setup-test-db.js` uniquement après avoir vérifié la cible. Ne définir **jamais** `FACTURATIONS_DATABASE_URL` pour le processus de tests. La CI exécute `npm ci`, l'audit des dépendances de production, `npm run check` et `npm test` sous Node 20/22 avec PostgreSQL 16; des parcours Chrome séparés utilisent des identités fictives `example.test`.
+`package-lock.json` est présent. Pour les tests PostgreSQL, `FACTURATIONS_TEST_DATABASE_URL` doit pointer exclusivement vers `localhost` ou `127.0.0.1` et la base `/facturations_test`; ne jamais définir `FACTURATIONS_DATABASE_URL` dans le processus de test. Vérifier la cible avant `node scripts/setup-test-db.js`. Ce script applique uniquement dans cette base jetable les migrations **001 à 010**, dont 008 (espaces révisables), 009 (conversion immuable) et 010 (révision/journal des fiches clients). La CI exécute `npm ci`, audit production, `npm run check`, `npm test` sous Node 20/22 et des parcours Chrome séparés avec données fictives.
 
-Pour le mode local non connecté : garder `.env` privé, `npm run dev`, puis examiner `http://127.0.0.1:3000/health`. Sans `TAKATAK_ADMIN_KEY`, les routes administratives privées restent indisponibles. Ne jamais inclure de clé administrative, identifiant de base ou jeton Wave dans le navigateur.
+Pour le mode local non connecté, garder `.env` privé, lancer `npm run dev` puis consulter `http://127.0.0.1:3000/health`. Sans `TAKATAK_ADMIN_KEY`, les routes administratives privées restent indisponibles. Ne placer aucun secret ou jeton Wave dans le navigateur.
 
-## Routes internes principales dans la branche de revue
+## Routes principales proposées
 
-| Méthode | Route | Limite |
+| Méthode | Route | Portée |
 | --- | --- | --- |
-| GET | `/health` | Processus vivant seulement, pas une preuve de mise en service |
-| GET / POST | `/internal/login?lang=fr\|en`, `/internal/login` | Formulaire FR/EN et MFA, si configuration privée complète |
+| GET | `/health` | Processus vivant uniquement |
+| GET / POST | `/internal/login?lang=fr\|en` | Connexion et MFA, si configuration complète |
 | POST | `/internal/logout` | Révocation de session |
 | GET | `/internal/dashboard?lang=fr\|en` | Tableau de bord privé |
-| GET | `/internal/editor?lang=fr\|en` | Éditeur; option `id` pour reprendre un espace |
-| GET | `/internal/recent-workspaces?lang=fr\|en` | Historique et recherche privés |
+| GET | `/internal/editor?lang=fr\|en` | Éditeur, option `id` pour reprendre |
+| GET / POST | `/internal/recent-workspaces?lang=fr\|en` | Historique/recherche privés |
+| GET / POST | `/internal/customers?lang=fr\|en` | Répertoire propriétaire, recherche POST sans noms dans l'URL |
+| GET / POST | `/internal/customer-contact?lang=fr\|en` | Création de contact OWNER; option `id` pour correction avec révision |
 | GET | `/internal/workspaces/csrf` | Jeton CSRF lié à la session |
-| POST / GET / PUT | `/internal/workspaces`, `/internal/workspaces/:uuid` | Création, chargement et sauvegarde conditionnée par révision/CSRF |
-| GET | `/internal/workspaces/:uuid/preview?lang=fr\|en` | Aperçu calculé, **non émis** |
-| GET / POST | `/internal/submit/:uuid?lang=fr\|en` | Confirmation OWNER et conversion en copie immuable, **non approuvée automatiquement** |
-| GET / POST | `/internal/review/:uuid?lang=fr\|en` | Révision OWNER et approbation **interne seulement** |
-| GET | `/internal/review?lang=fr\|en` | Liste privée de brouillons immuables |
-| GET | `/api/wave/businesses` | Administrateur serveur uniquement; liste Wave en lecture seule |
+| POST / GET / PUT | `/internal/workspaces`, `/internal/workspaces/:uuid` | Création, chargement et sauvegarde révisée |
+| GET | `/internal/workspaces/:uuid/preview?lang=fr\|en` | Aperçu non émis |
+| GET / POST | `/internal/submit/:uuid?lang=fr\|en` | Soumission OWNER explicite, non approuvée automatiquement |
+| GET / POST | `/internal/review/:uuid?lang=fr\|en` | Approbation interne OWNER uniquement |
+| GET | `/internal/review/:uuid/print?lang=fr\|en` | Document imprimable privé, non émis |
+| GET | `/internal/review?lang=fr\|en` | Liste de brouillons immuables |
+| GET | `/api/wave/businesses` | Administrateur serveur, lecture seule |
 
-`/api/drafts`, `/api/customers`, `/api/approvals` et les autres routes `/api/*` restent séparées des cookies navigateur : consulter `src/server.js` et les règles de rôle avant tout usage. Un identifiant UUID dans l'URL n'est **jamais** une autorisation. Le retour sur une ancienne page d'un espace déjà soumis redirige uniquement un OWNER qui est toujours propriétaire et authentifié; un ancien onglet non rechargé reçoit 409 à la sauvegarde.
+Les routes `/api/*` restent séparées des cookies navigateur; un UUID n'est jamais une autorisation. Une modification du répertoire clients ne modifie pas les anciennes factures en préparation.
 
-Exemple fictif de contenu CAD (aucune taxe automatique) :
+## Conditions AVANT toute fusion ou préproduction
 
-```json
-{
-  "currency": "CAD",
-  "customer": { "name": "Example Customer", "email": "customer@example.test" },
-  "invoiceDate": "2026-09-20",
-  "dueDate": "2026-10-20",
-  "lines": [{ "description": "Example service", "quantity": 2, "unitPriceCents": 1500, "discountCents": 0, "taxable": false }],
-  "taxes": []
-}
-```
+1. L'exploitant doit confirmer une application et une base **Facturations seules**, DNS/certificat HTTPS publics, proxy de confiance, port Node inaccessible directement, limitation IP et comptes SQL à droits minimaux. Ne pas toucher aux services TAKATAK existants.
+2. Faire examiner et appliquer sur cette **seule base dédiée** les migrations `db/001` à `db/010`, dans l'ordre, avec plan de sauvegarde chiffrée et preuve de restauration avant données réelles. L'ajout de 010 est requis pour l'édition des fiches clients.
+3. Conserver `FACTURATIONS_DATABASE_URL`, `WAVE_BUSINESS_ID` et la clé secrète `FACTURATIONS_TOTP_ENCRYPTION_KEY` hors du dépôt; configurer `FACTURATIONS_PUBLIC_ORIGIN` uniquement sur le HTTPS exact et après une procédure fiable d'enrôlement/récupération MFA. `NODE_ENV=production` ne masque pas les routes privées.
+4. Vérifier sur staging isolé TLS/proxy/Host, refus STAFF/inter-entreprises, CSRF, révisions, formulaires FR/EN/mobile, sauvegarde/restauration et impression fictive; le préflight lecture seule `scripts/staging-readonly-preflight.js` n'a pas été lancé contre le site public.
+5. Exiger la revue humaine indépendante de la [PR #63](https://github.com/takatakca/Facturations/pull/63) et la protection effective de `main` ([issue #41](https://github.com/takatakca/Facturations/issues/41)) avant fusion. Tester séparément autorisations et mappings Wave, émission, PDF, courriel, paiements et fiscalité.
 
-## Préalables à toute préproduction — PAS une procédure de déploiement
-
-1. Confirmer auprès de l'exploitant une application et une base **Facturations seules**, DNS et vrai certificat HTTPS, proxy de confiance et port Node inaccessible directement, protection IP, rôle SQL minimal et journaux expurgés. Ne toucher à aucun service TAKATAK en exploitation.
-2. Faire revoir et appliquer dans l'ordre les migrations dédiées `db/001` à **`db/009`**, **uniquement sur la base dédiée**; 008 fournit les espaces révisables et 009 leur lien immuable vers les brouillons soumis. Vérifier les droits SQL, les sauvegardes chiffrées et **une restauration effective** avant données réelles.
-3. Configurer secrètement `FACTURATIONS_DATABASE_URL` et `WAVE_BUSINESS_ID` ensemble; activer `FACTURATIONS_PUBLIC_ORIGIN` et la clé hexadécimale aléatoire privée `FACTURATIONS_TOTP_ENCRYPTION_KEY` ensemble **seulement** si l'origine HTTPS exacte et un processus vérifié d'enrôlement/récupération MFA sont prêts. `NODE_ENV=production` ne désactive pas les routes privées. Perdre la clé peut rendre les secrets TOTP enrôlés irrécupérables.
-4. Tester sur la préproduction isolée TLS/proxy/Host, accès OWNER et STAFF, refus inter-entreprises, CSRF, révisions, parcours FR/EN/mobile, sauvegarde/restauration et limites réseau. Le contrôle **anonyme et en lecture seule** `scripts/staging-readonly-preflight.js` décrit dans `docs/staging-readonly-preflight.md` n'a **pas** été exécuté contre l'hébergement public.
-5. Exiger une revue indépendante de la [PR #63](https://github.com/takatakca/Facturations/pull/63) et la protection réelle de `main` ([issue #41](https://github.com/takatakca/Facturations/issues/41)) avant toute fusion. Vérifier séparément capacités/permissions Wave, correspondance des rabais et taxes, émission, PDF, courriel et paiements avec tests et autorisations appropriés.
-
-**Aucune facture émise, aucun courriel client, paiement, appel Wave en écriture, fusion ou déploiement n'est autorisé par ces instructions.** Lire [AGENTS.md](AGENTS.md) et [l'audit #27](https://github.com/takatakca/Facturations/issues/27) avant toute modification.
+**Aucune facture réelle, aucun courriel client, paiement, appel Wave en écriture, fusion ou déploiement n'est autorisé par ce document.** Lire [AGENTS.md](AGENTS.md) et [l'audit #27](https://github.com/takatakca/Facturations/issues/27) avant tout changement.

@@ -128,6 +128,8 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       return sendJson(response, 401, { error: 'UNAUTHORIZED' });
     }
 
+    // Navigation is presentation only; the review route rechecks live OWNER and tenant rights.
+    let ownerReview = false;
     // Staff may list tenant-scoped draft summaries. Full drafts, customer contacts,
     // and internal approvals are OWNER-only. Admin key stays server-to-server ONLY.
     if (request.headers.authorization !== undefined) {
@@ -139,6 +141,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 503, { error: 'AUTH_UNAVAILABLE' });
       }
       if (!staff) return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      ownerReview = Boolean(config.browserOrigin && staff.role === 'OWNER');
       if (!((isDashboard || isCollection || isGet || isCustomers || isApprovals || isHtml) && request.method === 'GET')) {
         return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
       }
@@ -163,7 +166,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         const [summary, drafts] = await Promise.all([
           dashboardStore.getSummary(), dashboardStore.listDrafts(pageOptions('1', '20')),
         ]);
-        return sendHtml(response, renderDashboard({ summary, drafts, language }));
+        return sendHtml(response, renderDashboard({ summary, drafts, language, ownerReview }));
       } catch {
         return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }

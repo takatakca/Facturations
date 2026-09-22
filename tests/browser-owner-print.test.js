@@ -18,7 +18,7 @@ const TOKEN = 'A'.repeat(43);
 const ORIGIN = 'https://fictional.example.test';
 const BUSINESS = 'print-fixture';
 const content = () => ({ currency: 'CAD', customer: { name: '<img src=x onerror=alert(1)> Société',
-  email: 'recipient@example.test', address: 'Fictional office\nMontréal' },
+  email: 'recipient@example.test', address: 'Fictional office, Montréal' },
   invoiceDate: '2026-09-20', dueDate: '2026-10-20', notes: '<script>never execute</script>',
   lines: [{ description: 'Service & design', quantity: 2, unitPriceCents: 1500,
     discountCents: 200, taxable: true }],
@@ -58,7 +58,7 @@ test('FR/EN print view represents exact saved cents, escapes content and never c
     assert.match(html, /@media print/);
     assert.match(html, /&lt;script&gt;never execute&lt;\/script&gt;/);
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
-    assert.doesNotMatch(html, /<script|onerror=/);
+    assert.doesNotMatch(html, /<script\b|<img\b/i);
     assert.match(html, /Fictional tax/);
     assert.match(html, /5\.000%/);
     assert.match(html, /2,800|2\.800|28[,.]00/); // The discounted net is CAD 28.00.

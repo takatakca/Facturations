@@ -12,7 +12,7 @@ permissions:
 jobs:
   chrome-mfa-postgres:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 12
     services:
       postgres:
         image: postgres:16
@@ -53,3 +53,5 @@ jobs:
         run: node scripts/browser-smoke-mfa-postgres.js
       - name: Real Chrome FR/EN, actual MFA and revisioned PostgreSQL autosave (fictional data only)
         run: node scripts/browser-smoke-mfa-postgres-autosave.js
+      - name: Real Chrome FR/EN, autosave to immutable submission, internal approval and unissued print
+        run: node scripts/browser-smoke-owner-review.js

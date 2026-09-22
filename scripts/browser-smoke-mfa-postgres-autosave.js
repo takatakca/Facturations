@@ -24,7 +24,8 @@ const { createDashboardStore } = require('../src/dashboard-store');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
 const PASSWORD = 'fictional-only-Strong-password-2026!';
-const LANGUAGES = Object.freeze(['fr', 'en']);
+// PostgreSQL orders the synthetic emails lexicographically: autosave-en precedes autosave-fr.
+const LANGUAGES = Object.freeze(['en', 'fr']);
 
 function requireDisposableDatabase() {
   if (!DATABASE) throw new Error('Disposable FACTURATIONS_TEST_DATABASE_URL required');

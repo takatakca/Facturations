@@ -1,7 +1,7 @@
 name: Isolated Chromium MFA and PostgreSQL journey
 
-# The integration journey spans authentication, cookies, HTTP routes and db/*.sql.
-# Do not path-filter it: a dependency-only change must still exercise real Chrome.
+# The integration journeys span authentication, cookies, HTTP routes and db/*.sql.
+# Do not path-filter: dependency-only changes must exercise real Chrome.
 on:
   push:
   pull_request:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   chrome-mfa-postgres:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 9
     services:
       postgres:
         image: postgres:16
@@ -51,3 +51,5 @@ jobs:
           fi
       - name: Real Chrome FR/EN, real MFA, real PostgreSQL (fictional data only)
         run: node scripts/browser-smoke-mfa-postgres.js
+      - name: Real Chrome FR/EN, actual MFA and revisioned PostgreSQL autosave (fictional data only)
+        run: node scripts/browser-smoke-mfa-postgres-autosave.js

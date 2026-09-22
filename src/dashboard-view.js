@@ -12,6 +12,7 @@ const COPY = Object.freeze({
     dueDate: 'Échéance', total: 'Total', status: 'État', empty: 'Aucun brouillon pour le moment.',
     draft: 'Brouillon', logout: 'Se déconnecter', editor: 'Nouveau brouillon de travail',
     savedWorkspaces: 'Mes brouillons enregistrés', review: 'Réviser les brouillons',
+    directory: 'Répertoire clients',
     footer: 'Lecture seule. Aucune émission, aucun courriel, aucun paiement.',
   }),
   en: Object.freeze({
@@ -23,6 +24,7 @@ const COPY = Object.freeze({
     dueDate: 'Due date', total: 'Total', status: 'Status', empty: 'No drafts yet.',
     draft: 'Draft', logout: 'Sign out', editor: 'New working draft',
     savedWorkspaces: 'My saved drafts', review: 'Review drafts',
+    directory: 'Customer directory',
     footer: 'Read-only. No issuance, email or payment.',
   }),
 });
@@ -70,11 +72,12 @@ function renderDashboard({ summary, drafts, language = 'fr', ownerReview = false
       `<td><span class="pill">${t.draft}</span></td></tr>`;
   }).join('');
   const content = rows || `<tr><td colspan="5" class="empty">${t.empty}</td></tr>`;
-  // Only live OWNER sessions on configured private installations receive this navigation link.
-  // The review route independently checks the cookie, OWNER role and configured tenant.
+  // Only live OWNER sessions on configured private installations receive these navigation links.
+  // The review and customer-directory routes independently check cookie, OWNER and tenant.
   const ownerLink = ownerReview ? `<a class="saved-link" href="/internal/review?lang=${language}">${t.review}</a>` : '';
+  const directoryLink = ownerReview ? `<a class="saved-link" href="/internal/customers?lang=${language}">${t.directory}</a>` : '';
   // The only form is POST to the existing same-origin, origin-checked logout route.
-  // The navigation links contain no tokens or customer data; their targets recheck live sessions.
+  // Navigation links contain no tokens or customer data; targets recheck live sessions.
   return `<!doctype html>
 <html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${t.title} — GROUPE TAKATAK</title>
@@ -97,7 +100,7 @@ td{overflow-wrap:anywhere}td.numeric{text-align:right;white-space:nowrap;font-va
 footer{color:#52647c;font-size:.83rem;padding:24px 0}@media(max-width:700px){.metrics{grid-template-columns:1fr}.metric{padding:18px}th,td{padding:12px 15px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important}}
 </style></head><body><main>
-<header><div><p class="brand">GROUPE TAKATAK</p><h1>${t.title}</h1><p class="muted">${t.subtitle}</p></div><div class="actions"><span class="tag">${t.draftOnly}</span><a class="editor-link" href="/internal/editor?lang=${language}">${t.editor}</a><a class="saved-link" href="/internal/recent-workspaces?lang=${language}">${t.savedWorkspaces}</a>${ownerLink}<form method="post" action="/internal/logout?lang=${language}"><button class="signout" type="submit">${t.logout}</button></form></div></header>
+<header><div><p class="brand">GROUPE TAKATAK</p><h1>${t.title}</h1><p class="muted">${t.subtitle}</p></div><div class="actions"><span class="tag">${t.draftOnly}</span><a class="editor-link" href="/internal/editor?lang=${language}">${t.editor}</a><a class="saved-link" href="/internal/recent-workspaces?lang=${language}">${t.savedWorkspaces}</a>${ownerLink}${directoryLink}<form method="post" action="/internal/logout?lang=${language}"><button class="signout" type="submit">${t.logout}</button></form></div></header>
 <section class="metrics" aria-label="${t.title}">
 <div class="metric"><span class="label">${t.drafts}</span><strong>${escapeHtml(count(summary.draftCount))}</strong></div>
 <div class="metric"><span class="label">${t.customers}</span><strong>${escapeHtml(count(summary.customerCount))}</strong></div>

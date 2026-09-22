@@ -1,0 +1,9 @@
+# Fiches clients privées — GROUPE TAKATAK
+
+Fonction proposée dans la PR #63, **pas déployée**. Après la migration `010_customer_contact_changes.sql` exécutée exclusivement sur la base dédiée à Facturations, le propriétaire authentifié peut ouvrir `/internal/customers?lang=fr` ou `?lang=en`, ajouter une fiche ou corriger le nom, le courriel et l'adresse d'une fiche existante. Les liens de correction contiennent seulement l'identifiant UUID, jamais les coordonnées.
+
+La création et la correction utilisent un formulaire FR/EN, une session propriétaire active, un jeton CSRF lié à cette session et à la fiche, des vérifications d'origine/Host, une taille de requête limitée et une transaction PostgreSQL. Le courriel normalisé est unique pour chaque entreprise. Chaque modification incrémente `contact_revision` et inscrit une action `CREATED` ou `UPDATED` dans `facturations_customer_contact_events` sans dupliquer les coordonnées dans le journal. Si une autre page a modifié la fiche entre-temps, l'enregistrement renvoie **409** et exige de recharger pour revoir les données. Un deuxième envoi de création avec le même courriel renvoie également **409**.
+
+**Important :** une modification du répertoire ne modifie **jamais** les copies immuables `invoice_drafts` ni leurs destinataires, dates ou totaux. Les adresses ne sont pas vérifiées automatiquement; aucune émission, écriture Wave, facture, PDF officiel, courriel ni paiement n'est déclenché. Une revue comptable et des tests avec compte factice sur préproduction HTTPS isolée restent nécessaires.
+
+La CI générale vérifie la syntaxe, les migrations sur PostgreSQL jetable et les parcours déjà existants; elle ne constitue **pas encore** un test dédié complet des nouveaux formulaires de création/correction ni une validation sur le site réel. Ne pas fusionner ni déployer sans ces preuves, sans protection de `main` et sans revue humaine indépendante.

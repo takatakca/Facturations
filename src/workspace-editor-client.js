@@ -60,6 +60,26 @@
   let dirty = false;
   let busy = false;
   let blocked = false;
+  // An edit schedules one server save after a quiet period; never persist customer data locally.
+  const AUTOSAVE_DELAY_MS = 3000;
+  let autosaveTimer = null;
+  let autosavePaused = false; // Stop silent retries after a conflict, expired session or outage.
+
+  function cancelAutosave() {
+    if (autosaveTimer !== null && typeof clearTimeout === 'function') clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  function scheduleAutosave() {
+    cancelAutosave();
+    if (blocked || busy || autosavePaused || typeof setTimeout !== 'function' ||
+        typeof clearTimeout !== 'function') return;
+    autosaveTimer = setTimeout(() => {
+      autosaveTimer = null;
+      // The existing submit handler owns CSRF, creation idempotency, revision CAS and errors.
+      if (!blocked && !busy && !autosavePaused && csrfToken && dirty &&
+          (!id || revision !== null) && !fields.disabled && !save.disabled) form.requestSubmit();
+    }, AUTOSAVE_DELAY_MS);
+  }
 
   function message(value, error = false) {
     status.textContent = value;
@@ -115,6 +135,7 @@
   function apply(row) {
     if (!rowValid(row) || (id && row.id !== id)) {
       blocked = true;
+      cancelAutosave();
       message(t.incompatible, true);
       controls();
       return false;
@@ -143,6 +164,7 @@
       field.rate.value = taxRate(tax.rateMilliPercent);
     });
     dirty = false;
+    autosavePaused = false;
     controls();
     message(t.saved + revision);
     return true;
@@ -230,6 +252,7 @@
     else message(t.error, true);
   }
   async function load() {
+    cancelAutosave();
     if (!id) { dirty = true; message(t.ready); controls(); return; }
     busy = true; controls(); message(t.loading);
     try { apply(await request('/internal/workspaces/' + id)); }
@@ -241,15 +264,18 @@
     dirty = true;
     if (!busy) message(t.unsaved);
     controls();
+    scheduleAutosave();
   });
   form.addEventListener('change', () => {
     if (blocked) return;
     dirty = true;
     if (!busy) message(t.unsaved);
     controls();
+    scheduleAutosave();
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    cancelAutosave();
     if (blocked || busy || !csrfToken || !dirty || (id && revision === null)) return;
     let data;
     try { data = payload(); } catch (error) { failure(error); return; }
@@ -268,8 +294,14 @@
       // UUID is a locator, not a credential. No customer data enters the URL.
       history.replaceState(null, '', '/internal/editor?lang=' + language + '&id=' + id);
       dirty = formSnapshot() !== before;
+      autosavePaused = false;
       message(dirty ? t.unsaved : t.saved + revision);
-    } catch (error) { failure(error); }
+    } catch (error) {
+      // No silent retries on conflict, revoked session or unavailable storage.
+      // Invalid incomplete fields remain editable and can schedule after the next input.
+      if (error.status !== 422 && error.status !== 413) autosavePaused = true;
+      failure(error);
+    }
     finally { busy = false; controls(); }
   });
   reload.addEventListener('click', async () => {
@@ -280,6 +312,7 @@
     if (!dirty) return;
     event.preventDefault(); event.returnValue = '';
   });
+  window.addEventListener('pagehide', cancelAutosave);
   async function start() {
     message(t.loading);
     if (id && !uuid.test(id)) { blocked = true; message(t.incompatible, true); controls(); return; }

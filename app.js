@@ -11,6 +11,7 @@ const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-previ
 const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
 const { attachBrowserOwnerPrint } = require('./src/browser-owner-print');
 const { attachBrowserCustomerDirectory } = require('./src/browser-customer-directory');
+const { attachBrowserCustomerContact } = require('./src/browser-customer-contact');
 const { attachBrowserWorkspaceSubmission } = require('./src/browser-workspace-submission');
 const { attachBrowserSubmittedWorkspaceGuard } = require('./src/browser-submitted-workspace-guard');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
@@ -23,6 +24,7 @@ const { createStaffAuthStore } = require('./src/staff-auth-store');
 const { createStaffTotpStore } = require('./src/staff-totp-store');
 const { createLoginAttemptLimit } = require('./src/login-attempt-limit');
 const { createCustomerDirectory } = require('./src/customer-directory');
+const { createCustomerContactStore } = require('./src/customer-contact-store');
 const { createApprovalLedger } = require('./src/approval-ledger');
 
 if (require.main === module) {
@@ -32,6 +34,7 @@ if (require.main === module) {
   let staffAuthStore = null;
   let attemptLimit = null;
   let customerDirectory = null;
+  let customerContactStore = null;
   let approvalLedger = null;
   let draftApprovalStore = null;
   let workspaceSubmissionStore = null;
@@ -55,6 +58,7 @@ if (require.main === module) {
       recentStore = createRecentWorkspaceStore({ pool, businessId: config.businessId });
       draftApprovalStore = createDraftApprovalStore({ pool, businessId: config.businessId });
       workspaceSubmissionStore = createWorkspaceSubmissionStore({ pool, businessId: config.businessId });
+      customerContactStore = createCustomerContactStore({ pool, businessId: config.businessId });
     }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
@@ -82,6 +86,8 @@ if (require.main === module) {
       staffAuthStore, draftStore, approvalStore: draftApprovalStore });
     attachBrowserCustomerDirectory(server, { origin: config.browserOrigin, businessId: config.businessId,
       staffAuthStore, customerDirectory });
+    attachBrowserCustomerContact(server, { origin: config.browserOrigin, businessId: config.businessId,
+      encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, contactStore: customerContactStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

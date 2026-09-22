@@ -8,8 +8,10 @@ const { attachBrowserWorkspaceRoutes } = require('./src/browser-workspace-routes
 const { attachBrowserWorkspaceEditor } = require('./src/browser-workspace-editor');
 const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspaces');
 const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
+const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
 const { createDraftStore } = require('./src/draft-store');
+const { createDraftApprovalStore } = require('./src/draft-approval-store');
 const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
 const { createDashboardStore } = require('./src/dashboard-store');
 const { createStaffAuthStore } = require('./src/staff-auth-store');
@@ -26,6 +28,7 @@ if (require.main === module) {
   let attemptLimit = null;
   let customerDirectory = null;
   let approvalLedger = null;
+  let draftApprovalStore = null;
   let workspaceStore = null;
   let recentStore = null;
   if (config.databaseUrl && config.businessId) {
@@ -43,6 +46,7 @@ if (require.main === module) {
       attemptLimit = createLoginAttemptLimit({ pool, businessId: config.businessId });
       workspaceStore = createDraftWorkspaceStore({ pool, businessId: config.businessId });
       recentStore = createRecentWorkspaceStore({ pool, businessId: config.businessId });
+      draftApprovalStore = createDraftApprovalStore({ pool, businessId: config.businessId });
     }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
@@ -56,6 +60,9 @@ if (require.main === module) {
     attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore });
     attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore });
     attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore });
+    attachBrowserOwnerReview(server, { origin: config.browserOrigin,
+      encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
+      staffAuthStore, dashboardStore, draftStore, approvalStore: draftApprovalStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

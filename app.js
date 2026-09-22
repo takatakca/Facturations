@@ -9,9 +9,11 @@ const { attachBrowserWorkspaceEditor } = require('./src/browser-workspace-editor
 const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspaces');
 const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
 const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
+const { attachBrowserWorkspaceSubmission } = require('./src/browser-workspace-submission');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
 const { createDraftStore } = require('./src/draft-store');
 const { createDraftApprovalStore } = require('./src/draft-approval-store');
+const { createWorkspaceSubmissionStore } = require('./src/workspace-submission-store');
 const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
 const { createDashboardStore } = require('./src/dashboard-store');
 const { createStaffAuthStore } = require('./src/staff-auth-store');
@@ -29,6 +31,7 @@ if (require.main === module) {
   let customerDirectory = null;
   let approvalLedger = null;
   let draftApprovalStore = null;
+  let workspaceSubmissionStore = null;
   let workspaceStore = null;
   let recentStore = null;
   if (config.databaseUrl && config.businessId) {
@@ -47,6 +50,7 @@ if (require.main === module) {
       workspaceStore = createDraftWorkspaceStore({ pool, businessId: config.businessId });
       recentStore = createRecentWorkspaceStore({ pool, businessId: config.businessId });
       draftApprovalStore = createDraftApprovalStore({ pool, businessId: config.businessId });
+      workspaceSubmissionStore = createWorkspaceSubmissionStore({ pool, businessId: config.businessId });
     }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
@@ -59,10 +63,13 @@ if (require.main === module) {
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
     attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore });
     attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore });
-    attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore });
+    attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore, staffAuthStore });
     attachBrowserOwnerReview(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
       staffAuthStore, dashboardStore, draftStore, approvalStore: draftApprovalStore });
+    attachBrowserWorkspaceSubmission(server, { origin: config.browserOrigin,
+      encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
+      staffAuthStore, workspaceStore, submissionStore: workspaceSubmissionStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

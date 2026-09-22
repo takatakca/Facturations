@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const http = require('node:http');
 const { once } = require('node:events');
 const { createServer } = require('../src/server');
 const { attachBrowserOwnerReview } = require('../src/browser-owner-review');
@@ -63,8 +64,26 @@ async function withServer(stores, run, tenant = TENANT) {
 function getHeaders(token = TOKEN) { return { Cookie: `__Host-facturations-session=${token}` }; }
 function postHeaders(token = TOKEN) { return { ...getHeaders(token), Host: 'fictional.example.test',
   Origin: ORIGIN, 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/x-www-form-urlencoded' }; }
+// Unlike fetch(), node:http sends the exact synthetic Host/Origin/fetch-metadata headers.
+// This loopback-only transport is a test fixture; real TLS/MFA are tested separately.
+function rawPost(base, path, body, headers = postHeaders()) {
+  const url = new URL(base + path);
+  return new Promise((resolve, reject) => {
+    const request = http.request({ hostname: url.hostname, port: url.port,
+      path: url.pathname + url.search, method: 'POST',
+      headers: { ...headers, 'Content-Length': Buffer.byteLength(body) } }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('error', reject);
+      response.on('end', () => resolve({ status: response.statusCode,
+        text: async () => Buffer.concat(chunks).toString('utf8') }));
+    });
+    request.on('error', reject);
+    request.end(body);
+  });
+}
 async function sendPost(base, csrf, overrides = {}, headers = postHeaders(), path = PATH) {
-  return fetch(base + path, { method: 'POST', headers, body: bodyFor(csrf, overrides), redirect: 'manual' });
+  return rawPost(base, path, bodyFor(csrf, overrides), headers);
 }
 function readCsrf(html) {
   const match = /name="csrf" value="([A-Za-z0-9_-]{43})"/.exec(html);
@@ -118,7 +137,7 @@ test('owner sees escaped immutable snapshot and deliberate unchecked internal-on
     assert.doesNotMatch(html, /<script>/);
     assert.match(html, /APPROVE_DRAFT_ONLY/);
     assert.match(html, /name="expectedCustomerEmail" value="fictional@example.test"/);
-    assert.match(html, /Aucune facture émise ou envoyée|aucune facture Wave/i);
+    assert.match(html, /ne crée pas une facture Wave/i);
     assert.equal((html.match(/type="checkbox"/g) || []).length, 4);
     assert.doesNotMatch(html, /type="checkbox"[^>]*checked/);
     assert.doesNotMatch(html, new RegExp(TOKEN));
@@ -133,8 +152,8 @@ test('owner POST requires exact Origin, CSRF, reviewed fields and preserved expe
   await withServer(stores, async base => {
     const html = await (await fetch(base + PATH, { headers: getHeaders() })).text();
     const csrf = readCsrf(html);
-    for (const headers of [postHeaders(TOKEN), { ...postHeaders(), Origin: 'https://other.example.test' },
-      { ...postHeaders(), Host: 'other.example.test' }, { ...postHeaders(), 'Sec-Fetch-Site': 'cross-site' }].slice(1)) {
+    for (const headers of [{ ...postHeaders(), Origin: 'https://other.example.test' },
+      { ...postHeaders(), Host: 'other.example.test' }, { ...postHeaders(), 'Sec-Fetch-Site': 'cross-site' }]) {
       assert.equal((await sendPost(base, csrf, {}, headers)).status, 403);
     }
     assert.equal((await sendPost(base, 'X'.repeat(43))).status, 403);
@@ -142,8 +161,7 @@ test('owner POST requires exact Origin, CSRF, reviewed fields and preserved expe
     assert.equal((await sendPost(base, csrf, { taxesReviewed: 'no' })).status, 422);
     assert.equal((await sendPost(base, csrf, { expectedTotalCents: '25.00' })).status, 422);
     assert.equal((await sendPost(base, csrf, {}, { ...postHeaders(), 'Content-Type': 'application/json' })).status, 415);
-    const duplicated = await fetch(base + PATH, { method: 'POST', headers: postHeaders(),
-      body: bodyFor(csrf) + '&csrf=' + csrf });
+    const duplicated = await rawPost(base, PATH, bodyFor(csrf) + '&csrf=' + csrf);
     assert.equal(duplicated.status, 422);
     assert.equal(stores.state.writes, 0);
     const accepted = await sendPost(base, csrf);

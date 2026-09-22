@@ -8,6 +8,7 @@ const { createServer } = require('../src/server');
 
 const TOKEN = 'R'.repeat(43);
 const TENANT = 'fictional-owner-nav';
+const STAFF_ID = '55555555-5555-4555-8555-555555555555';
 const summary = { status: 'DRAFTS_ONLY', draftCount: '0', customerCount: '0',
   draftTotalCents: '0', revenueAvailable: false, issuedInvoicesAvailable: false,
   paymentsAvailable: false };
@@ -18,7 +19,7 @@ async function withServer(browserOrigin, run) {
   const server = createServer({ config: {
     businessId: TENANT, browserOrigin, adminKey: 'synthetic-admin-nav-key', waveToken: null,
   }, staffAuthStore: { async getSession(token) {
-    return token === TOKEN ? { businessId: state.tenant, role: state.role } : null;
+    return token === TOKEN ? { id: STAFF_ID, businessId: state.tenant, role: state.role } : null;
   } }, dashboardStore: { async getSummary() { return summary; },
     async listDrafts() { return drafts; } } });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -43,7 +44,9 @@ test('live session role and configured private origin decide owner navigation; s
     const request = () => fetch(base + '/internal/dashboard?lang=fr', {
       headers: { Authorization: `Bearer ${TOKEN}` },
     });
-    assert.match(await (await request()).text(), /href="\/internal\/review\?lang=fr"/);
+    const owner = await request();
+    assert.equal(owner.status, 200);
+    assert.match(await owner.text(), /href="\/internal\/review\?lang=fr"/);
     state.role = 'STAFF';
     const staff = await request();
     assert.equal(staff.status, 200);

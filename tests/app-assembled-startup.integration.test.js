@@ -80,7 +80,8 @@ test('assembled app boots with dedicated disposable PostgreSQL settings and deni
         assert.equal(response.headers.get('set-cookie'), null);
       }
       const wave = await get('/api/wave/businesses');
-      assert.equal(wave.status, 401, 'No Wave access without private admin credentials');
+      assert.equal(wave.status, 503, 'Unconfigured Wave fails closed without an upstream request');
+      assert.equal(wave.headers.get('set-cookie'), null);
     } finally {
       if (child.exitCode === null) child.kill('SIGTERM');
       const killTimer = setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 2500);

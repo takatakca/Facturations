@@ -10,6 +10,7 @@ const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspac
 const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
 const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
 const { attachBrowserWorkspaceSubmission } = require('./src/browser-workspace-submission');
+const { attachBrowserSubmittedWorkspaceGuard } = require('./src/browser-submitted-workspace-guard');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
 const { createDraftStore } = require('./src/draft-store');
 const { createDraftApprovalStore } = require('./src/draft-approval-store');
@@ -34,10 +35,11 @@ if (require.main === module) {
   let workspaceSubmissionStore = null;
   let workspaceStore = null;
   let recentStore = null;
+  let pool = null;
   if (config.databaseUrl && config.businessId) {
     // Database module is required only for the dedicated app; no existing TAKATAK DB is accessed.
     const { Pool } = require('pg');
-    const pool = new Pool({ connectionString: config.databaseUrl, max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 });
+    pool = new Pool({ connectionString: config.databaseUrl, max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 });
     pool.on('error', () => { /* Do not log database connection strings, customer data or credentials. */ });
     draftStore = createDraftStore({ pool, businessId: config.businessId });
     dashboardStore = createDashboardStore({ pool, businessId: config.businessId });
@@ -70,6 +72,10 @@ if (require.main === module) {
     attachBrowserWorkspaceSubmission(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
       staffAuthStore, workspaceStore, submissionStore: workspaceSubmissionStore });
+    // Navigating back to a submitted workspace must open its immutable owner review,
+    // never a misleading editable page. POST requests retain their original handlers.
+    attachBrowserSubmittedWorkspaceGuard(server, { origin: config.browserOrigin,
+      pool, businessId: config.businessId });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

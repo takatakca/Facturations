@@ -9,6 +9,7 @@ const { attachBrowserWorkspaceEditor } = require('./src/browser-workspace-editor
 const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspaces');
 const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
 const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
+const { attachBrowserOwnerPrint } = require('./src/browser-owner-print');
 const { attachBrowserWorkspaceSubmission } = require('./src/browser-workspace-submission');
 const { attachBrowserSubmittedWorkspaceGuard } = require('./src/browser-submitted-workspace-guard');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
@@ -76,6 +77,8 @@ if (require.main === module) {
     // never a misleading editable page. POST requests retain their original handlers.
     attachBrowserSubmittedWorkspaceGuard(server, { origin: config.browserOrigin,
       pool, businessId: config.businessId });
+    attachBrowserOwnerPrint(server, { origin: config.browserOrigin, businessId: config.businessId,
+      staffAuthStore, draftStore, approvalStore: draftApprovalStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

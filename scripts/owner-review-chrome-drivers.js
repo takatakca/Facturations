@@ -27,7 +27,8 @@ function loginDriver(lang, email, password, code) {
 }
 
 function editorDriver(lang) {
-  return `
+  // String.raw is essential: JavaScript regexp escapes must survive interpolation.
+  return String.raw`
 (async () => {
   const lang = ${JSON.stringify(lang)};
   const get = id => document.getElementById(id);

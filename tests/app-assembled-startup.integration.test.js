@@ -69,11 +69,13 @@ test('assembled app boots with dedicated disposable PostgreSQL settings and deni
         '/internal/editor?lang=fr',
         `/internal/editor?lang=fr&id=${UUID}`,
         '/internal/recent-workspaces?lang=fr',
+        '/internal/customers?lang=fr',
         '/internal/workspaces/csrf',
         `/internal/workspaces/${UUID}/preview?lang=fr`,
         `/internal/submit/${UUID}?lang=fr`,
         '/internal/review?lang=fr',
         `/internal/review/${UUID}?lang=fr`,
+        `/internal/review/${UUID}/print?lang=fr`,
       ]) {
         const response = await get(path);
         assert.equal(response.status, 401, `Anonymous route must deny access: ${path}`);

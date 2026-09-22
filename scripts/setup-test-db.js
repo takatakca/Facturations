@@ -25,11 +25,12 @@ async function main() {
       '007_staff_totp.sql',
       '008_draft_workspaces.sql',
       '009_workspace_submissions.sql',
+      '010_customer_contact_changes.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces and immutable submissions');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions and customer contact history');
   } finally {
     await pool.end();
   }

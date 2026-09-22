@@ -1,54 +1,54 @@
 # GROUPE TAKATAK — Facturations
 
-**Status: development / NOT ready for real customers or invoicing.** Independent Node.js application intended for a NEW, isolated `facturations.bolon.ca` hosting environment only after MochaHost confirms its DNS, HTTPS and dedicated application. No real Wave connection, production deployment, client enrollment or invoice send has been verified. The repository is PUBLIC: never commit `.env`, passwords, access tokens, real customer information, invoices, database dumps or logs.
+**En développement — aucune facture réelle ne doit être émise.** Application Node.js indépendante destinée à un environnement et une base PostgreSQL **exclusifs à Facturations**, distincts des services TAKATAK existants. Le dépôt est **public** : ne jamais committer de `.env`, jetons, mots de passe, données clients réelles, factures, sauvegardes ou journaux sensibles. Ni `facturations.bolon.ca` ni une connexion Wave réelle n'ont été homologués. L'[audit de préparation #27](https://github.com/takatakca/Facturations/issues/27) et la [PR de revue globale #63](https://github.com/takatakca/Facturations/pull/63) distinguent code proposé, tests et blocages. **Les fonctionnalités ci-dessous sont proposées sur la branche de la PR #63, non fusionnées dans `main`.**
 
-The single source of truth for remaining blockers and verified work is [the readiness audit](https://github.com/takatakca/Facturations/issues/27). `docs/product-blueprint.md` and `docs/first-run-guidance.md` describe planned work, NOT delivered features. A passing CI run is not an end-to-end release sign-off.
+## Parcours interne présent dans la PR #63
 
-## Implemented, with important boundaries
+- Connexion du personnel FR/EN par mot de passe et TOTP activé, session révocable dans PostgreSQL et cookie `Secure`, `HttpOnly`, `SameSite=Strict`. Invitations et enrôlement initial exigent encore une procédure d'exploitation de confiance; aucune livraison d'invitation ni récupération MFA réelle n'est prête.
+- Tableau de bord privé, éditeur mobile FR/EN, recherche et historique des espaces de travail propres à chaque employé/entreprise. Sauvegarde manuelle et **automatique après trois secondes sans saisie**, côté serveur et avec révisions. Aucune sauvegarde automatique garantie en cas de fermeture avant le délai, de panne, de conflit entre onglets ou de réseau absent. Une erreur de session/conflit/stockage interrompt les nouveaux essais automatiques.
+- Aperçu calculé **CAD seulement** avec montants en cents et taxes **explicitement fournies**; aucune détermination automatique de l'applicabilité fiscale. Le propriétaire peut vérifier une révision enregistrée, confirmer une **conversion distincte** en copie immuable `invoice_drafts` (migration 009), puis confirmer séparément une **approbation interne**. La conversion fige l'espace source, rejette ses nouvelles sauvegardes avec HTTP 409 et redirige ses anciennes pages vers la révision immuable pour le propriétaire autorisé. Cette approbation **n'est pas une émission**.
+- Annuaire de clients et brouillons immuables isolés par entreprise, création idempotente, journal `DRAFT_CREATED`, vérifications serveur du destinataire et du total, recherche privée. Le connecteur Wave existant se limite à une **requête GraphQL en lecture seule** de la liste des entreprises, lorsqu'un jeton autorisé est configuré.
 
-- CAD-only deterministic preview, with bounded line items and user-supplied tax definitions; tax applicability and fiscal correctness are **not** automatically determined.
-- Tenant-scoped PostgreSQL customer records, immutable and idempotently saved **invoice draft snapshots**, draft-only summary/listing, owner-only customer directory and internal approval ledger. A separate, staff-owned **revisioned workspace** exists from migration 008 with server-side create/load/save and expected-revision conflict detection. This is NOT an automatic browser autosave or an issued invoice; a customer's directory profile may retain older details while each invoice draft preserves its own recipient snapshot.
-- Trusted backend foundations for staff accounts, invitations, hashed/revocable sessions, encrypted TOTP and email-scoped PostgreSQL login throttling. Invitations are **not** delivered or recovered automatically; no production enrollment process is available.
-- An **opt-in** bilingual FR/EN browser sign-in and sign-out with password + activated TOTP, exact configured HTTPS Origin/Host checks and a Secure/HttpOnly/SameSite=Strict session cookie. The cookie authorizes the read-only HTML dashboard at `/internal/dashboard` **and private `/internal/workspaces` routes** with independent staff/tenant checks; workspace POST/PUT also require a session-bound anti-CSRF token and exact Origin/Host. Cookies do NOT authorize `/api/*`, Wave writes or invoice issuance. This opt-in requires a separate database, private TOTP key and explicit HTTPS origin. The workspace routes are **not gated by `NODE_ENV`**, and these checks do not prove TLS/proxy/IP protection on an actual host. See [workspace HTTP boundaries](docs/browser-workspace-routes.md).
-- A fixed, read-only Wave GraphQL business-list query, if privately configured. This is **not** an OAuth callback, live connection verification, invoice issuance or synchronization.
+Les routes navigateur privées utilisent une session vérifiée en base, des contrôles de rôle/propriété et d'entreprise. Les écritures de brouillons exigent une protection CSRF et l'origine/Host attendus. Le cookie navigateur **n'autorise aucune écriture `/api/*`** ni action Wave. Le processus Node est HTTP derrière un futur proxy HTTPS de confiance; la configuration d'une origine HTTPS ne constitue pas une preuve de TLS réel.
 
-**Not implemented / not verified:** mobile FR/EN draft editor, browser autosave timer and recovery UI, visual conflict resolution, owner approval interface, Wave invoice creation/reconciliation, invoice PDF/email/payment tracking, authenticated customer portal, AI/voice assistant, secure self-service onboarding/recovery, backups/restores, complete tax review and independent browser/staging tests. Internal draft approval service is not exposed by the browser or HTTP routes. No actual invoice number, revenue or payment status is produced.
+**Non livré / non vérifié :** facture officielle numérotée et émission, synchronisation Wave en écriture, PDF de facture immuable, courriel client, paiement/rapprochement, portail client, assistant IA/vocal connecté, transfert STAFF → OWNER, récupération MFA, restauration de sauvegarde, validation fiscale/comptable et homologation HTTPS publique. Les suites Chrome existantes ne couvrent **pas encore dans une seule navigation** MFA → autosave → conversion → approbation. Les PR sont en brouillon : pas de fusion ni de déploiement.
 
-## Local development and disposable tests
+## Installation de développement et tests jetables
 
-Requirements: Node.js 20.11+ (Node 22 also tested), npm and an isolated PostgreSQL 16 instance **only for integration tests or a separately authorized Facturations database**. From a fresh checkout:
+Node.js >= 20.11 et npm; PostgreSQL 16 **local jetable** pour les tests d'intégration, jamais une base TAKATAK existante. Depuis une extraction propre :
 
 ```bash
-npm install --ignore-scripts --no-audit --no-fund
+npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 npm test
 cp .env.example .env
 ```
 
-The repository currently lacks a committed `package-lock.json`; installation is NOT yet fully reproducible. Track this gap in audit #27. GitHub Actions runs the syntax gate and tests on Node 20/22 with disposable PostgreSQL 16; integration tests require `FACTURATIONS_TEST_DATABASE_URL` and the setup script rejects anything other than a local `facturations_test` database. Do not run migrations or tests on existing TAKATAK production data.
+Le fichier **`package-lock.json` est présent**; `npm ci` respecte ses versions. Les tests PostgreSQL requièrent `FACTURATIONS_TEST_DATABASE_URL` pointant **uniquement** vers `127.0.0.1` ou `localhost` et `/facturations_test`. Initialiser cette base jetable avec `node scripts/setup-test-db.js` uniquement après avoir vérifié la cible. Ne définir **jamais** `FACTURATIONS_DATABASE_URL` pour le processus de tests. La CI exécute `npm ci`, l'audit des dépendances de production, `npm run check` et `npm test` sous Node 20/22 avec PostgreSQL 16; des parcours Chrome séparés utilisent des identités fictives `example.test`.
 
-For *local development only*, keep `.env` private; use `npm run dev` and inspect `http://127.0.0.1:3000/health`. An empty `TAKATAK_ADMIN_KEY` means private admin routes are unavailable. If used for isolated server-to-server tests, generate a new random value privately (for example `openssl rand -hex 32`). **Never put `X-Admin-Key`, Wave tokens or database credentials in a browser or mobile app.** Do not reuse previously exposed credentials.
+Pour le mode local non connecté : garder `.env` privé, `npm run dev`, puis examiner `http://127.0.0.1:3000/health`. Sans `TAKATAK_ADMIN_KEY`, les routes administratives privées restent indisponibles. Ne jamais inclure de clé administrative, identifiant de base ou jeton Wave dans le navigateur.
 
-## Available routes and access
+## Routes internes principales dans la branche de revue
 
-| Method | Route | Current behavior |
+| Méthode | Route | Limite |
 | --- | --- | --- |
-| GET | `/health` | Minimal public process response; not production readiness |
-| GET | `/internal/login?lang=fr` or `en` | Bilingual sign-in form, only if explicitly configured |
-| POST | `/internal/login` and `/internal/logout` | MFA sign-in/session revocation; exact Origin/Host checks, only if configured |
-| GET | `/internal/dashboard?lang=fr` or `en` | Read-only draft dashboard; staff bearer or valid browser session cookie |
-| GET | `/internal/workspaces/csrf` | Cookie-only current staff session; returns a session-bound anti-CSRF token |
-| POST | `/internal/workspaces` | Cookie-only staff-owned workspace creation; exact Origin/Host and anti-CSRF header; no invoice issuance |
-| GET | `/internal/workspaces/:uuid` | Cookie-only load of a workspace belonging to that employee and business |
-| PUT | `/internal/workspaces/:uuid` | Cookie-only revision-checked save with exact Origin/Host and anti-CSRF header; stale revision returns 409 |
-| GET | `/api/dashboard/summary`, `/api/drafts` | Draft-only summary and paginated listing; staff bearer or private admin header |
-| GET | `/api/drafts/:uuid`, `/api/customers`, `/api/approvals` | Full draft, contacts and internal approvals; OWNER bearer or private admin header |
-| POST | `/api/drafts/preview`, `/api/drafts` | Private admin header only; preview or save a DRAFT with `Idempotency-Key` |
-| GET | `/api/wave/businesses` | Private admin header only; read-only Wave business list |
+| GET | `/health` | Processus vivant seulement, pas une preuve de mise en service |
+| GET / POST | `/internal/login?lang=fr\|en`, `/internal/login` | Formulaire FR/EN et MFA, si configuration privée complète |
+| POST | `/internal/logout` | Révocation de session |
+| GET | `/internal/dashboard?lang=fr\|en` | Tableau de bord privé |
+| GET | `/internal/editor?lang=fr\|en` | Éditeur; option `id` pour reprendre un espace |
+| GET | `/internal/recent-workspaces?lang=fr\|en` | Historique et recherche privés |
+| GET | `/internal/workspaces/csrf` | Jeton CSRF lié à la session |
+| POST / GET / PUT | `/internal/workspaces`, `/internal/workspaces/:uuid` | Création, chargement et sauvegarde conditionnée par révision/CSRF |
+| GET | `/internal/workspaces/:uuid/preview?lang=fr\|en` | Aperçu calculé, **non émis** |
+| GET / POST | `/internal/submit/:uuid?lang=fr\|en` | Confirmation OWNER et conversion en copie immuable, **non approuvée automatiquement** |
+| GET / POST | `/internal/review/:uuid?lang=fr\|en` | Révision OWNER et approbation **interne seulement** |
+| GET | `/internal/review?lang=fr\|en` | Liste privée de brouillons immuables |
+| GET | `/api/wave/businesses` | Administrateur serveur uniquement; liste Wave en lecture seule |
 
-Browser cookies never authorize `/api/*`. The workspace HTTP routes reject bearer and shared admin headers; they are a separate boundary from the immutable `invoice_drafts` API. For new invoice drafts, submit JSON `Content-Type: application/json` within the 32-KiB limit. The `Idempotency-Key` is 16–80 letters/numbers/underscores/dashes; retries with the same key and different content return 409. Workspace creation has a separate 16–80-character `creationKey` and saving requires `expectedRevision`. A draft or workspace is **never** an invoice sent to Wave.
+`/api/drafts`, `/api/customers`, `/api/approvals` et les autres routes `/api/*` restent séparées des cookies navigateur : consulter `src/server.js` et les règles de rôle avant tout usage. Un identifiant UUID dans l'URL n'est **jamais** une autorisation. Le retour sur une ancienne page d'un espace déjà soumis redirige uniquement un OWNER qui est toujours propriétaire et authentifié; un ancien onglet non rechargé reçoit 409 à la sauvegarde.
 
-Example entirely fictional preview payload:
+Exemple fictif de contenu CAD (aucune taxe automatique) :
 
 ```json
 {
@@ -61,13 +61,12 @@ Example entirely fictional preview payload:
 }
 ```
 
-The preview recalculates integer minor-unit totals and labels them `PREVIEW_ONLY`; saved invoice draft snapshots remain `DRAFT` with `waveSynced: false` and `emailed: false`. Tax rules, registration and rounding must be reviewed by the responsible qualified professionals before real issuance.
+## Préalables à toute préproduction — PAS une procédure de déploiement
 
-## Isolated database and browser sign-in: NOT a deployment procedure
+1. Confirmer auprès de l'exploitant une application et une base **Facturations seules**, DNS et vrai certificat HTTPS, proxy de confiance et port Node inaccessible directement, protection IP, rôle SQL minimal et journaux expurgés. Ne toucher à aucun service TAKATAK en exploitation.
+2. Faire revoir et appliquer dans l'ordre les migrations dédiées `db/001` à **`db/009`**, **uniquement sur la base dédiée**; 008 fournit les espaces révisables et 009 leur lien immuable vers les brouillons soumis. Vérifier les droits SQL, les sauvegardes chiffrées et **une restauration effective** avant données réelles.
+3. Configurer secrètement `FACTURATIONS_DATABASE_URL` et `WAVE_BUSINESS_ID` ensemble; activer `FACTURATIONS_PUBLIC_ORIGIN` et la clé hexadécimale aléatoire privée `FACTURATIONS_TOTP_ENCRYPTION_KEY` ensemble **seulement** si l'origine HTTPS exacte et un processus vérifié d'enrôlement/récupération MFA sont prêts. `NODE_ENV=production` ne désactive pas les routes privées. Perdre la clé peut rendre les secrets TOTP enrôlés irrécupérables.
+4. Tester sur la préproduction isolée TLS/proxy/Host, accès OWNER et STAFF, refus inter-entreprises, CSRF, révisions, parcours FR/EN/mobile, sauvegarde/restauration et limites réseau. Le contrôle **anonyme et en lecture seule** `scripts/staging-readonly-preflight.js` décrit dans `docs/staging-readonly-preflight.md` n'a **pas** été exécuté contre l'hébergement public.
+5. Exiger une revue indépendante de la [PR #63](https://github.com/takatakca/Facturations/pull/63) et la protection réelle de `main` ([issue #41](https://github.com/takatakca/Facturations/issues/41)) avant toute fusion. Vérifier séparément capacités/permissions Wave, correspondance des rabais et taxes, émission, PDF, courriel et paiements avec tests et autorisations appropriés.
 
-1. Have MochaHost confirm a separate Node application/root, external HTTPS and trusted TLS reverse proxy with the raw Node port inaccessible. Add trusted-edge per-IP throttling and verify canonical Host handling. Do not modify an existing GROUPE TAKATAK service.
-2. Provision a **NEW** Facturations-only database and least-privilege runtime role; review and apply migrations `db/001` through **`db/008`** in numeric order **only there** using a controlled migration process, not against an existing TAKATAK database. Migration 008 creates the revisioned workspace tables and history required by the new private HTTP routes. Arrange encrypted backups, restoration testing, retention and restricted access before real data.
-3. Set `FACTURATIONS_DATABASE_URL` and `WAVE_BUSINESS_ID` privately **together** for storage. Set `FACTURATIONS_PUBLIC_ORIGIN` and `FACTURATIONS_TOTP_ENCRYPTION_KEY` privately **together** only once HTTPS staging and a verified invitation/MFA provisioning and recovery procedure are ready. Those variables activate both browser login and workspace routes, including when `NODE_ENV=production`; they do NOT certify the deployment as safe. The origin must be the exact external HTTPS origin without a path or trailing slash; the TOTP key must be a separately generated random 32 bytes in hexadecimal. Losing the key can make enrolled MFA secrets unrecoverable. See `docs/browser-staff-login.md`, `docs/browser-workspace-routes.md` and `.env.example` for documented boundaries, NOT ready-to-paste credentials.
-4. Test owner/staff onboarding, every role/tenant denial, MFA/replay/expiry, browser sign-in/out, workspace CSRF/revision conflicts, CSP, failures, accessibility, mobile display and encrypted backup restoration on the isolated staging host. Verify Wave separately using an explicitly authorized isolated account. **Do not issue invoices, send emails, accept payments or expose a client portal without specific owner authorization and the audit completion gates.**
-
-This README records repository capabilities, not confirmation that `facturations.bolon.ca` exists or is operational. Review [AGENTS.md](AGENTS.md) and [audit #27](https://github.com/takatakca/Facturations/issues/27) before any further change.
+**Aucune facture émise, aucun courriel client, paiement, appel Wave en écriture, fusion ou déploiement n'est autorisé par ces instructions.** Lire [AGENTS.md](AGENTS.md) et [l'audit #27](https://github.com/takatakca/Facturations/issues/27) avant toute modification.

@@ -20,8 +20,8 @@ function validContent(content) {
   if (!content || typeof content !== 'object' || Array.isArray(content)) {
     throw new WorkspaceError('INVALID_WORKSPACE_CONTENT', 422);
   }
-  if (Object.keys(content).some(key => !FIELDS.has(key)) ||
-      (content.currency !== undefined && content.currency !== 'CAD')) {
+  if (Object.keys(content).some(key => !FIELDS.has(key) ||
+      (content.currency !== undefined && content.currency !== 'CAD'))) {
     throw new WorkspaceError('INVALID_WORKSPACE_CONTENT', 422);
   }
   const ancestors = new WeakSet();
@@ -113,6 +113,11 @@ function createDraftWorkspaceStore({ pool, businessId }) {
         try { await client.query('ROLLBACK'); } catch { /* Keep original error internal. */ }
       }
       if (error instanceof WorkspaceError) throw error;
+      // This exact error is raised only by the dedicated submission-freeze trigger.
+      // A stale browser tab must see a conflict, not retry silently as if storage failed.
+      if (error?.code === '23514' && error.message === 'submitted workspace is frozen') {
+        throw new WorkspaceError('WORKSPACE_SUBMITTED', 409);
+      }
       throw new WorkspaceError('STORAGE_UNAVAILABLE', 503);
     } finally {
       if (client) client.release();

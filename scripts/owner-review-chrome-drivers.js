@@ -60,6 +60,8 @@ function editorDriver(lang) {
       get('save') && !get('save').disabled, 'editor ready');
     edit('customer', 'Fictional customer ' + lang);
     edit('email', 'review-' + lang + '@example.test');
+    edit('invoiceDate', '2026-09-22');
+    edit('dueDate', '2026-10-22');
     edit('line-1-description', 'Synthetic service');
     edit('line-1-quantity', '2');
     edit('line-1-price', '12,50');
@@ -74,15 +76,16 @@ function editorDriver(lang) {
     const saved = await fetch('/internal/workspaces/' + workspaceId, { cache: 'no-store' });
     const workspace = await saved.json();
     if (saved.status !== 200 || workspace.revision !== 2 ||
-      workspace.content.customer.email !== 'review-' + lang + '@example.test')
+      workspace.content.customer.email !== 'review-' + lang + '@example.test' ||
+      workspace.content.invoiceDate !== '2026-09-22' || workspace.content.dueDate !== '2026-10-22')
       throw Error('Autosaved workspace not durable');
     const preview = await fetch(previewLink.pathname + previewLink.search);
     const previewHtml = await preview.text();
     if (preview.status !== 200 || !previewHtml.includes('/internal/submit/' + workspaceId))
-      throw Error('Owner submission link unavailable');
+      throw Error('Owner submission link unavailable; preview status=' + preview.status);
     const submissionUrl = '/internal/submit/' + workspaceId + '?lang=' + lang;
     const submission = await fetch(submissionUrl, { cache: 'no-store' });
-    if (submission.status !== 200) throw Error('Saved revision not submittable');
+    if (submission.status !== 200) throw Error('Saved revision not submittable: ' + submission.status);
     const submitForm = checkedForm(await parse(submission), 1);
     if (submitForm.get('confirmation') !== 'CREATE_IMMUTABLE_DRAFT_ONLY' ||
       submitForm.get('expectedRevision') !== '2' ||
@@ -91,7 +94,7 @@ function editorDriver(lang) {
       credentials: 'same-origin', redirect: 'follow' });
     const reviewUrl = new URL(converted.url);
     if (converted.status !== 200 || !/^\/internal\/review\/[a-f0-9-]{36}$/.test(reviewUrl.pathname))
-      throw Error('Immutable conversion failed');
+      throw Error('Immutable conversion failed: ' + converted.status);
     const printUrl = reviewUrl.pathname + '/print?lang=' + lang;
     if ((await fetch(printUrl)).status !== 409) throw Error('Printing allowed before approval');
     const review = await parse(converted);
@@ -101,7 +104,7 @@ function editorDriver(lang) {
     const approved = await fetch(reviewUrl.pathname + reviewUrl.search, { method: 'POST',
       credentials: 'same-origin', body: reviewForm });
     if (approved.status !== 200 || !(await approved.text()).includes('internal'))
-      throw Error('Internal approval was not saved');
+      throw Error('Internal approval was not saved: ' + approved.status);
     const reloaded = await fetch(reviewUrl.pathname + reviewUrl.search, { cache: 'no-store' });
     const reloadedDoc = await parse(reloaded);
     if (reloaded.status !== 200 || reloadedDoc.querySelector('form[method="post"]'))
@@ -111,7 +114,7 @@ function editorDriver(lang) {
     if (printable.status !== 200 ||
       !/BROUILLON NON ÉMIS|UNISSUED DRAFT/.test(printed) ||
       !printed.includes('review-' + lang + '@example.test'))
-      throw Error('Unissued draft print access failed');
+      throw Error('Unissued draft print access failed: ' + printable.status);
     if (document.cookie.includes('__Host-facturations-session')) throw Error('Session cookie readable');
     document.documentElement.dataset.completeOwnerJourney = 'passed';
   } catch (error) {

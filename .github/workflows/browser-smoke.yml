@@ -37,3 +37,5 @@ jobs:
         run: node scripts/browser-smoke-en-narrow.js
       - name: Bilingual private workspace search in Chromium with synthetic HTTPS fixtures
         run: node scripts/browser-smoke-workspace-search.js
+      - name: Automatic draft save in real Chromium without a manual save click
+        run: node scripts/browser-smoke-autosave.js

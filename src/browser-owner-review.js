@@ -8,7 +8,7 @@ const { DraftApprovalError } = require('./draft-approval-store');
 const { StoreError } = require('./draft-store');
 const { escapeHtml, money } = require('./dashboard-view');
 
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[89ab][a-f0-9]{12}$/i;
 const CSRF = /^[A-Za-z0-9_-]{43}$/;
 const PATH = /^\/internal\/review\/([^/]+)$/;
 const FIELDS = ['csrf', 'confirmation', 'expectedTotalCents', 'expectedCustomerEmail',
@@ -146,7 +146,8 @@ function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId
       !staffAuthStore || typeof staffAuthStore.getSession !== 'function' ||
       !dashboardStore || typeof dashboardStore.listDrafts !== 'function' ||
       !draftStore || typeof draftStore.getDraft !== 'function' ||
-      !approvalStore || typeof approvalStore.approveDraft !== 'function') {
+      !approvalStore || typeof approvalStore.approveDraft !== 'function' ||
+      typeof approvalStore.isApproved !== 'function') {
     throw new TypeError('Dedicated owner MFA approval dependencies required');
   }
   const key = crypto.createHmac('sha256', Buffer.from(encryptionKeyHex, 'hex'))
@@ -181,8 +182,12 @@ function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId
         return send(response, 200, 'text/html; charset=utf-8', renderList(drafts, lang));
       }
       const row = await draftStore.getDraft(item[1]);
-      if (request.method === 'GET') return send(response, 200, 'text/html; charset=utf-8',
-        renderDetail(row, lang, csrfFor(key, token, row.id)));
+      if (request.method === 'GET') {
+        const approved = await approvalStore.isApproved({ draftId: row.id,
+          ownerId: staff.id, sessionToken: token });
+        return send(response, 200, 'text/html; charset=utf-8',
+          renderDetail(row, lang, approved ? '' : csrfFor(key, token, row.id), approved));
+      }
       const body = await readBody(request);
       const supplied = body.get('csrf');
       const expected = csrfFor(key, token, row.id);

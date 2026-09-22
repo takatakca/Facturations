@@ -1,6 +1,6 @@
 'use strict';
 
-// This UI approves existing immutable invoice_drafts INTERNAL ONLY. It never issues or sends.
+// Only existing immutable invoice_drafts can receive an INTERNAL approval here.
 const crypto = require('node:crypto');
 const { TextDecoder } = require('node:util');
 const { readStaffSessionCookie } = require('./staff-session-cookie');
@@ -24,6 +24,8 @@ const COPY = Object.freeze({
   fr: Object.freeze({ title: 'Révision par le propriétaire', list: 'Brouillons à examiner',
     details: 'Vérifier le brouillon immuable', customer: 'Destinataire', dates: 'Dates',
     lines: 'Articles', taxes: 'Taxes indiquées', total: 'Total calculé',
+    discount: 'Rabais', lineTotal: 'Total de l’article', subtotal: 'Sous-total',
+    taxTotal: 'Total des taxes', notes: 'Notes du brouillon', noTaxes: 'Aucune taxe indiquée.',
     approve: 'Approuver ce brouillon en interne seulement',
     approved: 'Approbation interne enregistrée. Aucune facture émise ou envoyée.',
     empty: 'Aucun brouillon immuable à examiner.',
@@ -36,6 +38,8 @@ const COPY = Object.freeze({
   en: Object.freeze({ title: 'Owner review', list: 'Drafts to review',
     details: 'Review immutable draft', customer: 'Recipient', dates: 'Dates',
     lines: 'Line items', taxes: 'Specified taxes', total: 'Calculated total',
+    discount: 'Discount', lineTotal: 'Line total', subtotal: 'Subtotal',
+    taxTotal: 'Total tax', notes: 'Draft notes', noTaxes: 'No tax specified.',
     approve: 'Approve this draft internally only',
     approved: 'Internal approval recorded. No invoice issued or sent.',
     empty: 'No immutable drafts to review.',
@@ -86,14 +90,19 @@ function renderList(drafts, lang) {
 function renderDetail(row, lang, csrf, approved = false) {
   const p = snapshotOf(row);
   const t = COPY[lang];
-  const escapedId = row.id.toLowerCase();
-  const lines = p.lines.map(line => `<p class="line">${escapeHtml(line.description)} · ${escapeHtml(line.quantity)} × ${escapeHtml(money(line.unitPriceCents, lang))} · ${escapeHtml(money(line.lineTotalCents, lang))}</p>`).join('');
-  const taxes = p.taxes.map(tax => `<p class="line">${escapeHtml(tax.label)} (${escapeHtml(tax.code)}, ${escapeHtml(tax.rateMilliPercent)} milli-%) · ${escapeHtml(money(tax.amountCents, lang))}</p>`).join('');
+  const id = row.id.toLowerCase();
+  const amount = cents => escapeHtml(money(cents, lang));
+  const lines = p.lines.map(line => `<p class="line">${escapeHtml(line.description)} · ${escapeHtml(line.quantity)} × ${amount(line.unitPriceCents)} · ${t.discount}: ${amount(line.discountCents)} · ${t.lineTotal}: ${amount(line.lineTotalCents)}</p>`).join('');
+  const taxes = p.taxes.map(tax => {
+    const rate = `${Math.floor(tax.rateMilliPercent / 1000)}.${String(tax.rateMilliPercent % 1000).padStart(3, '0')}%`;
+    return `<p class="line">${escapeHtml(tax.label)} (${escapeHtml(tax.code)}, ${rate}) · ${amount(tax.amountCents)}</p>`;
+  }).join('');
   const names = ['recipientReviewed', 'amountReviewed', 'datesReviewed', 'taxesReviewed'];
   const checks = names.map((name, i) => `<label><input type="checkbox" name="${name}" value="yes" required>${t.checks[i]}</label>`).join('');
   const decision = approved ? `<section class="panel" role="status"><strong>${t.approved}</strong></section>` :
-    `<section class="panel"><form method="post" action="/internal/review/${escapedId}?lang=${lang}" autocomplete="off"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="confirmation" value="APPROVE_DRAFT_ONLY"><input type="hidden" name="expectedTotalCents" value="${p.totalCents}"><input type="hidden" name="expectedCustomerEmail" value="${escapeHtml(p.customer.email)}"><div class="checks">${checks}</div><button type="submit">${t.approve}</button></form></section>`;
-  return page(lang, t.details, `<p><a href="/internal/review?lang=${lang}">${t.list}</a></p><section class="panel"><h2>${t.customer}</h2><p>${escapeHtml(p.customer.name)} · ${escapeHtml(p.customer.email)}</p><p>${escapeHtml(p.customer.address || '')}</p><h2>${t.dates}</h2><p>${escapeHtml(p.invoiceDate)} · ${escapeHtml(p.dueDate)}</p><h2>${t.lines}</h2>${lines}<h2>${t.taxes}</h2>${taxes}<p class="money">${t.total}: ${escapeHtml(money(p.totalCents, lang))}</p></section>${decision}`);
+    `<section class="panel"><form method="post" action="/internal/review/${id}?lang=${lang}" autocomplete="off"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="confirmation" value="APPROVE_DRAFT_ONLY"><input type="hidden" name="expectedTotalCents" value="${p.totalCents}"><input type="hidden" name="expectedCustomerEmail" value="${escapeHtml(p.customer.email)}"><div class="checks">${checks}</div><button type="submit">${t.approve}</button></form></section>`;
+  const notes = p.notes ? `<h2>${t.notes}</h2><p class="line">${escapeHtml(p.notes)}</p>` : '';
+  return page(lang, t.details, `<p><a href="/internal/review?lang=${lang}">${t.list}</a></p><section class="panel"><h2>${t.customer}</h2><p>${escapeHtml(p.customer.name)} · ${escapeHtml(p.customer.email)}</p><p>${escapeHtml(p.customer.address || '')}</p><h2>${t.dates}</h2><p>${escapeHtml(p.invoiceDate)} · ${escapeHtml(p.dueDate)}</p><h2>${t.lines}</h2>${lines}<p>${t.subtotal}: ${amount(p.subtotalCents)}</p><h2>${t.taxes}</h2>${taxes || `<p>${t.noTaxes}</p>`}<p>${t.taxTotal}: ${amount(p.taxTotalCents)}</p><p class="money">${t.total}: ${amount(p.totalCents)}</p>${notes}</section>${decision}`);
 }
 function readBody(request) {
   return new Promise((resolve, reject) => {
@@ -117,18 +126,17 @@ function readBody(request) {
         const text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
         const form = new URLSearchParams(text);
         if ([...form.keys()].length !== FIELDS.length ||
-            FIELDS.some(key => form.getAll(key).length !== 1) ||
-            [...form.keys()].some(key => !FIELDS.includes(key))) return reject(422);
+            FIELDS.some(field => form.getAll(field).length !== 1) ||
+            [...form.keys()].some(field => !FIELDS.includes(field))) return reject(422);
         resolve(form);
       } catch { reject(400); }
     });
   });
 }
-function sameOrigin(req, origin) {
-  return req.headers.origin === origin && req.headers.host === new URL(origin).host &&
-    (req.headers['sec-fetch-site'] === undefined || req.headers['sec-fetch-site'] === 'same-origin');
+function sameOrigin(request, origin) {
+  return request.headers.origin === origin && request.headers.host === new URL(origin).host &&
+    (request.headers['sec-fetch-site'] === undefined || request.headers['sec-fetch-site'] === 'same-origin');
 }
-
 function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId, staffAuthStore, dashboardStore, draftStore, approvalStore }) {
   let validOrigin = false;
   try { validOrigin = typeof origin === 'string' && origin.startsWith('https://') && new URL(origin).origin === origin; }
@@ -153,7 +161,7 @@ function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId
     const item = PATH.exec(url.pathname);
     if (!listing && !item) return previous(request, response);
     if (request.method !== 'GET' && !(item && request.method === 'POST')) return plain(response, 405);
-    if ([...url.searchParams.keys()].some(key => key !== 'lang' || url.searchParams.getAll(key).length !== 1) ||
+    if ([...url.searchParams.keys()].some(field => field !== 'lang' || url.searchParams.getAll(field).length !== 1) ||
         (item && !UUID.test(item[1]))) return plain(response, 422);
     const lang = url.searchParams.get('lang') ?? 'fr';
     if (!Object.hasOwn(COPY, lang) || url.hash) return plain(response, 422);

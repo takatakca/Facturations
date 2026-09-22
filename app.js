@@ -10,6 +10,7 @@ const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspac
 const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
 const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
 const { attachBrowserOwnerPrint } = require('./src/browser-owner-print');
+const { attachBrowserCustomerDirectory } = require('./src/browser-customer-directory');
 const { attachBrowserWorkspaceSubmission } = require('./src/browser-workspace-submission');
 const { attachBrowserSubmittedWorkspaceGuard } = require('./src/browser-submitted-workspace-guard');
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
@@ -79,6 +80,8 @@ if (require.main === module) {
       pool, businessId: config.businessId });
     attachBrowserOwnerPrint(server, { origin: config.browserOrigin, businessId: config.businessId,
       staffAuthStore, draftStore, approvalStore: draftApprovalStore });
+    attachBrowserCustomerDirectory(server, { origin: config.browserOrigin, businessId: config.businessId,
+      staffAuthStore, customerDirectory });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

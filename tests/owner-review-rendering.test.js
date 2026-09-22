@@ -37,13 +37,14 @@ test('owner can inspect discounted line, decimal tax %, subtotal, tax amount and
     assert.match(html, /name="csrf" value="C{43}"/);
     assert.equal((html.match(/type="checkbox"/g) || []).length, 4);
     assert.doesNotMatch(html, /type="checkbox"[^>]*checked/);
-    assert.doesNotMatch(html, /invoice number|invoice issued|facture émise.*numéro/i);
     if (language === 'fr') {
+      assert.match(html, /ne crée pas une facture Wave/);
       assert.match(html, /Rabais: 1,00/);
       assert.match(html, /Sous-total: 24,00/);
       assert.match(html, /Total des taxes: 2,39/);
       assert.match(html, /Total calculé: 26,39/);
     } else {
+      assert.match(html, /does not create a Wave invoice/);
       assert.match(html, /Discount: CA\$1\.00/);
       assert.match(html, /Subtotal: CA\$24\.00/);
       assert.match(html, /Total tax: CA\$2\.39/);

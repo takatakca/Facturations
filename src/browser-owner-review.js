@@ -28,8 +28,9 @@ const COPY = Object.freeze({
     taxTotal: 'Total des taxes', notes: 'Notes du brouillon', noTaxes: 'Aucune taxe indiquée.',
     approve: 'Approuver ce brouillon en interne seulement',
     approved: 'Approbation interne enregistrée. Aucune facture émise ou envoyée.',
+    print: 'Ouvrir la version imprimable du brouillon non émis',
     empty: 'Aucun brouillon immuable à examiner.',
-    notice: 'Révision interne uniquement. Ceci ne crée pas une facture Wave, un numéro de facture, un PDF, un courriel ou un paiement. Les taux et l’applicabilité fiscale exigent une vérification distincte.',
+    notice: 'Révision interne uniquement. Ceci ne crée pas une facture Wave, un numéro de facture, un PDF officiel, un courriel ou un paiement. Les taux et l’applicabilité fiscale exigent une vérification distincte.',
     checks: ['J’ai vérifié le nom et le courriel du destinataire.',
       'J’ai vérifié les articles, rabais et le montant total.',
       'J’ai vérifié la date de facture et la date d’échéance.',
@@ -42,8 +43,9 @@ const COPY = Object.freeze({
     taxTotal: 'Total tax', notes: 'Draft notes', noTaxes: 'No tax specified.',
     approve: 'Approve this draft internally only',
     approved: 'Internal approval recorded. No invoice issued or sent.',
+    print: 'Open printable version of this unissued draft',
     empty: 'No immutable drafts to review.',
-    notice: 'Internal review only. This does not create a Wave invoice, invoice number, PDF, email or payment. Tax rates and applicability require separate verification.',
+    notice: 'Internal review only. This does not create a Wave invoice, invoice number, official PDF, email or payment. Tax rates and applicability require separate verification.',
     checks: ['I checked the recipient name and email.',
       'I checked the items, discounts and total amount.',
       'I checked the invoice and due dates.',
@@ -99,7 +101,7 @@ function renderDetail(row, lang, csrf, approved = false) {
   }).join('');
   const names = ['recipientReviewed', 'amountReviewed', 'datesReviewed', 'taxesReviewed'];
   const checks = names.map((name, i) => `<label><input type="checkbox" name="${name}" value="yes" required>${t.checks[i]}</label>`).join('');
-  const decision = approved ? `<section class="panel" role="status"><strong>${t.approved}</strong></section>` :
+  const decision = approved ? `<section class="panel" role="status"><strong>${t.approved}</strong><p><a href="/internal/review/${id}/print?lang=${lang}">${t.print}</a></p></section>` :
     `<section class="panel"><form method="post" action="/internal/review/${id}?lang=${lang}" autocomplete="off"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="confirmation" value="APPROVE_DRAFT_ONLY"><input type="hidden" name="expectedTotalCents" value="${p.totalCents}"><input type="hidden" name="expectedCustomerEmail" value="${escapeHtml(p.customer.email)}"><div class="checks">${checks}</div><button type="submit">${t.approve}</button></form></section>`;
   const notes = p.notes ? `<h2>${t.notes}</h2><p class="line">${escapeHtml(p.notes)}</p>` : '';
   return page(lang, t.details, `<p><a href="/internal/review?lang=${lang}">${t.list}</a></p><section class="panel"><h2>${t.customer}</h2><p>${escapeHtml(p.customer.name)} · ${escapeHtml(p.customer.email)}</p><p>${escapeHtml(p.customer.address || '')}</p><h2>${t.dates}</h2><p>${escapeHtml(p.invoiceDate)} · ${escapeHtml(p.dueDate)}</p><h2>${t.lines}</h2>${lines}<p>${t.subtotal}: ${amount(p.subtotalCents)}</p><h2>${t.taxes}</h2>${taxes || `<p>${t.noTaxes}</p>`}<p>${t.taxTotal}: ${amount(p.taxTotalCents)}</p><p class="money">${t.total}: ${amount(p.totalCents)}</p>${notes}</section>${decision}`);

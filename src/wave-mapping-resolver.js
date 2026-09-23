@@ -93,6 +93,7 @@ function createWaveMappingResolver({
     }
 
     const taxProfiles = [];
+    const taxModifiedAt = [];
     for (const tax of preview.taxes) {
       const salesTaxId = input.taxIdsByCode[tax.code];
       if (typeof salesTaxId !== 'string' || !salesTaxId) {
@@ -116,6 +117,7 @@ function createWaveMappingResolver({
         rateMilliPercent: profile.rateMilliPercent,
         isCompound: false,
       }));
+      taxModifiedAt.push(profile.modifiedAt);
     }
 
     const mapping = Object.freeze({
@@ -138,10 +140,7 @@ function createWaveMappingResolver({
       evidence: Object.freeze({
         customerModifiedAt: customer.modifiedAt,
         productModifiedAt: Object.freeze(products.map(product => product.modifiedAt)),
-        taxModifiedAt: Object.freeze(taxProfiles.map((_, index) => {
-          // readSalesTax evidence is intentionally not returned in mapping itself.
-          return preview.taxes[index].code;
-        })),
+        taxModifiedAt: Object.freeze(taxModifiedAt),
       }),
       networkMode: 'READ_ONLY',
       mutationPerformed: false,

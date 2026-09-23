@@ -38,6 +38,7 @@ const WAVE_INVOICE_APPROVE_MUTATION = `mutation FacturationsApproveInvoice($inpu
 const SAFE_ID = /^[^\u0000-\u001f\u007f]{1,512}$/u;
 const MONEY = /^(0|[1-9]\d*)\.\d{2}$/;
 const DECIMAL = /^(0|[1-9]\d*)(?:\.\d{1,8})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 class WaveMutationContractError extends Error {
   constructor(code, statusCode = 422) {

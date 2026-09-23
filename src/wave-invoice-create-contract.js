@@ -39,7 +39,11 @@ function decimal(value, code, { positive = false } = {}) {
   return value;
 }
 function date(value, code) {
-  if (typeof value !== 'string' || !DATE.test(value) || Number.isNaN(Date.parse(value + 'T00:00:00Z'))) {
+  if (typeof value !== 'string' || !DATE.test(value)) throw new WaveCreateContractError(code);
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day) {
     throw new WaveCreateContractError(code);
   }
   return value;

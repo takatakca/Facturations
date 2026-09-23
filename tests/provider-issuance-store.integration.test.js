@@ -92,6 +92,15 @@ test('provider execution state blocks blind retries and requires reconciliation 
     const ambiguousCase = await authorizeDraft({
       drafts, approvals, authorizations, owner, session, suffix: 'ambiguous',
     });
+    const loadedAuthorized = await provider.loadAuthorizedDraft({
+      authorizationId: ambiguousCase.authorization.id,
+    });
+    assert.equal(loadedAuthorized.authorizationId, ambiguousCase.authorization.id);
+    assert.equal(loadedAuthorized.draftId, ambiguousCase.draft.id);
+    assert.equal(loadedAuthorized.provider, 'WAVE');
+    assert.equal(loadedAuthorized.draft.status, 'DRAFT');
+    assert.equal(loadedAuthorized.draft.preview.totalCents, 3000);
+    assert.equal(loadedAuthorized.draft.preview.customer.email, ambiguousCase.email);
 
     const firstKey = attemptKey('first');
     const first = await provider.beginAttempt({

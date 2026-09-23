@@ -313,6 +313,42 @@ function createProviderIssuanceStore({ pool, businessId }) {
     }
   }
 
+  async function loadAuthorizedDraft({ authorizationId }) {
+    const authorization = id(authorizationId, 'INVALID_AUTHORIZATION_ID');
+    const found = await pool.query(
+      `SELECT a.id AS authorization_id,a.draft_id,a.provider,a.state,
+              a.expected_total_cents,a.expected_customer_email,
+              d.status AS draft_status,d.snapshot
+         FROM facturations_issuance_authorizations AS a
+         JOIN invoice_drafts AS d
+           ON d.business_id=a.business_id AND d.id=a.draft_id
+        WHERE a.business_id=$1 AND a.id=$2`,
+      [tenant, authorization]
+    );
+    if (!found.rows.length) throw new ProviderIssuanceError('AUTHORIZATION_NOT_FOUND', 404);
+    const row = found.rows[0];
+    if (row.provider !== PROVIDER || row.state !== 'AUTHORIZED_PENDING_PROVIDER' ||
+        row.draft_status !== 'DRAFT') {
+      throw new ProviderIssuanceError('AUTHORIZATION_NOT_EXECUTABLE', 409);
+    }
+    const total = Number(row.expected_total_cents);
+    if (!Number.isSafeInteger(total) || row.snapshot?.totalCents !== total ||
+        typeof row.snapshot?.customer?.email !== 'string' ||
+        row.snapshot.customer.email.toLowerCase() !== row.expected_customer_email) {
+      throw new ProviderIssuanceError('AUTHORIZED_SNAPSHOT_MISMATCH', 409);
+    }
+    return Object.freeze({
+      authorizationId: row.authorization_id,
+      draftId: row.draft_id,
+      provider: row.provider,
+      draft: Object.freeze({
+        id: row.draft_id,
+        status: 'DRAFT',
+        preview: row.snapshot,
+      }),
+    });
+  }
+
   async function getExecutionState({ authorizationId }) {
     const authorization = id(authorizationId, 'INVALID_AUTHORIZATION_ID');
     const found = await pool.query(
@@ -345,7 +381,7 @@ function createProviderIssuanceStore({ pool, businessId }) {
     });
   }
 
-  return Object.freeze({ beginAttempt, recordOutcome, recordReconciliation, getExecutionState });
+  return Object.freeze({ beginAttempt, recordOutcome, recordReconciliation, loadAuthorizedDraft, getExecutionState });
 }
 
 module.exports = {

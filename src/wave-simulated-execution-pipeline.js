@@ -4,6 +4,9 @@ const {
   buildWaveInvoiceCreateRequest,
   classifyWaveInvoiceCreateResult,
 } = require('./wave-invoice-create-contract');
+const {
+  buildWaveCreateInputFromImmutableDraft,
+} = require('./wave-immutable-draft-mapper');
 
 class SimulatedWaveExecutionError extends Error {
   constructor(code) {
@@ -13,34 +16,66 @@ class SimulatedWaveExecutionError extends Error {
   }
 }
 
-function exactInput(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).sort().join(',') !==
-        'attemptKey,authorizationId,simulatedTransportResult,waveCreateInput') {
-    throw new SimulatedWaveExecutionError('INVALID_SIMULATED_EXECUTION');
+function exactObject(value, keys, code) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) {
+    throw new SimulatedWaveExecutionError(code);
   }
-  return input;
+  return value;
+}
+
+function exactInput(input) {
+  return exactObject(input,
+    ['attemptKey', 'authorizationId', 'mapping', 'simulatedTransportResult'],
+    'INVALID_SIMULATED_EXECUTION');
+}
+
+function exactMapping(mapping) {
+  return exactObject(mapping,
+    ['businessId', 'customerId', 'productIds', 'taxProfiles'],
+    'INVALID_WAVE_MAPPING');
 }
 
 function createSimulatedWaveIssuancePipeline({ providerStore }) {
   if (!providerStore ||
+      typeof providerStore.loadAuthorizedDraft !== 'function' ||
       typeof providerStore.beginAttempt !== 'function' ||
       typeof providerStore.recordOutcome !== 'function') {
-    throw new TypeError('Provider issuance store required');
+    throw new TypeError('Provider issuance store with authorized snapshot loader required');
   }
 
   async function execute(input) {
     const fields = exactInput(input);
+    const mapping = exactMapping(fields.mapping);
 
-    // Validate and freeze the provider contract before any persistent attempt is opened.
-    // This module intentionally has no fetch/http client and accepts no access token.
-    const request = buildWaveInvoiceCreateRequest(fields.waveCreateInput);
+    // Load the exact immutable draft bound to the persisted authorization. The
+    // caller cannot substitute a different draft or raw Wave payload.
+    const authorized = await providerStore.loadAuthorizedDraft({
+      authorizationId: fields.authorizationId,
+    });
+
+    const waveCreateInput = buildWaveCreateInputFromImmutableDraft({
+      draft: authorized.draft,
+      businessId: mapping.businessId,
+      customerId: mapping.customerId,
+      productIds: mapping.productIds,
+      taxProfiles: mapping.taxProfiles,
+    });
+
+    // Final provider schema validation still happens before opening an attempt.
+    const request = buildWaveInvoiceCreateRequest(waveCreateInput);
 
     const attempt = await providerStore.beginAttempt({
       authorizationId: fields.authorizationId,
       attemptKey: fields.attemptKey,
       provider: 'WAVE',
     });
+
+    // Authorization rows and invoice drafts are immutable; disagreement here
+    // indicates corrupted/inconsistent storage, not a condition to retry.
+    if (attempt.draftId !== authorized.draftId) {
+      throw new SimulatedWaveExecutionError('AUTHORIZED_DRAFT_CHANGED');
+    }
 
     const classified = classifyWaveInvoiceCreateResult(fields.simulatedTransportResult);
     const outcome = await providerStore.recordOutcome({
@@ -54,6 +89,7 @@ function createSimulatedWaveIssuancePipeline({ providerStore }) {
 
     return Object.freeze({
       authorizationId: fields.authorizationId,
+      draftId: authorized.draftId,
       attemptId: attempt.id,
       attemptCreated: attempt.created,
       provider: 'WAVE',

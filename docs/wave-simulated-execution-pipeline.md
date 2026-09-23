@@ -1,18 +1,21 @@
-# Exécution Wave simulée — contrat + état fournisseur
+# Exécution Wave simulée — autorisation + snapshot + contrat + état fournisseur
 
-Ce lot relie le contrat pur `invoiceCreate` au store d'exécution fournisseur, **sans réseau et sans jeton**.
+Ce pipeline relie désormais l'autorisation persistée au **snapshot immuable PostgreSQL** avant de construire le contrat `invoiceCreate`. Il n'accepte plus de payload Wave brut ni de draft fourni par l'appelant.
 
-Le pipeline :
-1. valide entièrement le payload Wave avant d'ouvrir une tentative persistante;
-2. ouvre une tentative via le store idempotent;
-3. classe une réponse de transport **simulée**;
-4. enregistre `CONFIRMED`, `AMBIGUOUS`, `FAILED_RETRYABLE` ou `FAILED_FINAL`;
-5. ne modifie jamais le statut local `DRAFT` et n'envoie rien.
+Ordre de traitement :
 
-Une réponse ambiguë continue d'être soumise aux règles de réconciliation de la PR fournisseur précédente. Un payload Wave invalide échoue avant la création de la tentative.
+1. charger l'autorisation et le brouillon immuable liés dans la base dédiée;
+2. vérifier que le total et le destinataire correspondent toujours à l'autorisation;
+3. construire le mapping Wave strict du snapshot;
+4. valider entièrement `InvoiceCreateInput`;
+5. ouvrir seulement ensuite une tentative fournisseur idempotente;
+6. classer une réponse de transport **simulée**;
+7. enregistrer `CONFIRMED`, `AMBIGUOUS`, `FAILED_RETRYABLE` ou `FAILED_FINAL`.
 
-## Limite volontaire
+Un mapping invalide échoue avant `beginAttempt`. Le store recharge aussi l'autorisation dans `beginAttempt`; les liens autorisation → draft et les snapshots sont immuables.
 
-Le pipeline ne prouve pas encore que les identifiants Wave fournis correspondent au client, aux produits et aux taxes du snapshot immuable. Le prochain lot doit construire ce **mapping snapshot → Wave** et refuser toute approximation, notamment les rabais par ligne tant que leur équivalence Wave exacte n'est pas démontrée.
+## Frontière restante
 
-Aucun compte Wave, aucun token, aucun appel HTTP, aucune facture réelle, aucun courriel et aucun paiement.
+Les identifiants Wave `businessId`, `customerId`, `productIds` et profils de taxes sont encore fournis par une couche de mapping explicite. Le prochain lot doit les résoudre depuis des données Wave **en lecture vérifiée** et empêcher une mutation si le client, le produit, le taux ou le type de taxe ne concorde pas.
+
+Aucun token, réseau, appel Wave, facture réelle, PDF officiel, courriel ou paiement.

@@ -73,6 +73,18 @@ function quantity(value) {
   }
   return String(value);
 }
+function isoDate(value, code) {
+  if (typeof value !== 'string' || !DATE.test(value)) {
+    throw new WaveMutationContractError(code);
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day) {
+    throw new WaveMutationContractError(code);
+  }
+  return value;
+}
 function optionalText(value, max, code) {
   if (value === null || value === undefined) return undefined;
   if (typeof value !== 'string' || value.length > max ||
@@ -141,13 +153,16 @@ function itemInput(item) {
 function buildWaveInvoiceCreateMutation(planInput) {
   const plan = validatePlan(planInput);
   const memo = optionalText(plan.memo, 1000, 'INVALID_WAVE_MEMO');
+  const invoiceDate = isoDate(plan.invoiceDate, 'INVALID_WAVE_INVOICE_DATE');
+  const dueDate = isoDate(plan.dueDate, 'INVALID_WAVE_DUE_DATE');
+  if (dueDate < invoiceDate) throw new WaveMutationContractError('WAVE_DUE_DATE_BEFORE_INVOICE_DATE');
   const input = {
     businessId: safeId(plan.businessId, 'INVALID_WAVE_BUSINESS_ID'),
     customerId: safeId(plan.customerId, 'INVALID_WAVE_CUSTOMER_ID'),
     status: 'DRAFT',
     currency: 'CAD',
-    invoiceDate: plan.invoiceDate,
-    dueDate: plan.dueDate,
+    invoiceDate,
+    dueDate,
     items: Object.freeze(plan.items.map(itemInput)),
   };
   if (memo !== undefined && memo !== '') input.memo = memo;

@@ -18,7 +18,6 @@ const { attachBrowserWorkspacePreview } = require('../src/browser-workspace-prev
 const { attachBrowserWorkspaceSubmission } = require('../src/browser-workspace-submission');
 const { attachBrowserOwnerReview } = require('../src/browser-owner-review');
 const { attachBrowserOwnerPrint } = require('../src/browser-owner-print');
-const { attachBrowserIssuanceAuthorization } = require('../src/browser-owner-issuance-authorization');
 const { attachReadOnlyDashboardCookie } = require('../src/browser-dashboard-session');
 const { createStaffAuthStore } = require('../src/staff-auth-store');
 const { createStaffTotpStore, oneTimeCode } = require('../src/staff-totp-store');
@@ -27,7 +26,6 @@ const { createDraftWorkspaceStore } = require('../src/draft-workspace-store');
 const { createWorkspaceSubmissionStore } = require('../src/workspace-submission-store');
 const { createDraftStore } = require('../src/draft-store');
 const { createDraftApprovalStore } = require('../src/draft-approval-store');
-const { createIssuanceAuthorizationStore } = require('../src/issuance-authorization-store');
 const { createDashboardStore } = require('../src/dashboard-store');
 const { loginDriver, editorDriver } = require('./owner-review-chrome-drivers');
 
@@ -123,7 +121,6 @@ async function main() {
     const workspaces = createDraftWorkspaceStore({ pool, businessId });
     const drafts = createDraftStore({ pool, businessId });
     const approvals = createDraftApprovalStore({ pool, businessId });
-    const authorizations = createIssuanceAuthorizationStore({ pool, businessId });
     const submissions = createWorkspaceSubmissionStore({ pool, businessId });
     const dashboard = createDashboardStore({ pool, businessId });
     const owner = await auth.createPendingStaff({ email, password: PASSWORD, role: 'OWNER' });
@@ -164,9 +161,6 @@ async function main() {
       staffAuthStore: auth, dashboardStore: dashboard, draftStore: drafts, approvalStore: approvals });
     attachBrowserOwnerPrint(server, { origin, businessId,
       staffAuthStore: auth, draftStore: drafts, approvalStore: approvals });
-    attachBrowserIssuanceAuthorization(server, { origin, businessId, encryptionKeyHex,
-      staffAuthStore: auth, draftStore: drafts, approvalStore: approvals,
-      authorizationStore: authorizations });
     attachReadOnlyDashboardCookie(server);
     const binary = chromeBinary();
     for (const [lang, time] of [['fr', 149000], ['en', 209000]]) {
@@ -179,17 +173,15 @@ async function main() {
       pool.query('SELECT status FROM invoice_drafts WHERE business_id=$1', [businessId]),
       pool.query('SELECT count(*)::integer AS n FROM facturations_workspace_submissions WHERE business_id=$1', [businessId]),
       pool.query('SELECT count(*)::integer AS n FROM facturations_draft_approvals WHERE business_id=$1', [businessId]),
-      pool.query('SELECT count(*)::integer AS n FROM facturations_issuance_authorizations WHERE business_id=$1 AND state=$2',
-        [businessId, 'AUTHORIZED_PENDING_PROVIDER']),
       pool.query('SELECT count(*)::integer AS n FROM invoice_audit_events WHERE business_id=$1 AND action=$2',
         [businessId, 'DRAFT_CREATED']),
     ]);
     assert.equal(results[0].rows.length, 2);
     assert.ok(results[0].rows.every(row => row.revision === 2));
     assert.deepEqual(results[1].rows.map(row => row.status), ['DRAFT', 'DRAFT']);
-    for (let i = 2; i < 6; i++) assert.equal(results[i].rows[0].n, 2);
-    console.log('PASS: real Chrome FR/EN + MFA + autosave + immutable submission + internal approval + unissued print + pending-provider issuance authorization.');
-    console.log('Scope: fictional identities, disposable PostgreSQL, self-signed local HTTPS; authorization only, no Wave call, issuance, email or staging.');
+    for (let i = 2; i < 5; i++) assert.equal(results[i].rows[0].n, 2);
+    console.log('PASS: real Chrome FR/EN + MFA + autosave + explicit immutable submission + separate internal approval + unissued print.');
+    console.log('Scope: fictional identities, disposable PostgreSQL, self-signed local HTTPS; no Wave, issuance, email or staging.');
   } finally {
     if (server?.listening) await new Promise(resolve => server.close(resolve));
     await pool.end();

@@ -170,7 +170,7 @@ test('reconciliation NOT_FOUND unlock signal is delegated to state machine, with
 test('reconciliation FOUND requires the same verified customer/totals before confirmation',async()=>{
   const store=attemptStore();
   const wave=adapter(null);
-  wave.state.reconcileResult=confirmed();
+  wave.state.reconcileResult={...confirmed(),kind:'FOUND'};
   await reconcileAmbiguousWaveIssuance({attemptId:ATTEMPT,plan:plan()},
     {attemptStore:store,adapter:wave});
   assert.deepEqual(store.state.reconciles[0],{
@@ -180,7 +180,7 @@ test('reconciliation FOUND requires the same verified customer/totals before con
 
   const badStore=attemptStore();
   const badWave=adapter(null);
-  badWave.state.reconcileResult=confirmed({totalCents:9999});
+  badWave.state.reconcileResult={...confirmed({totalCents:9999}),kind:'FOUND'};
   await assert.rejects(
     reconcileAmbiguousWaveIssuance({attemptId:ATTEMPT,plan:plan()},
       {attemptStore:badStore,adapter:badWave}),

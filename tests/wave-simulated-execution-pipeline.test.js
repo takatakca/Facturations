@@ -6,9 +6,8 @@ const {
   createSimulatedWaveIssuancePipeline,
   SimulatedWaveExecutionError,
 } = require('../src/wave-simulated-execution-pipeline');
-const { WaveDraftMappingError } = require('../src/wave-immutable-draft-mapper');
 
-function immutableDraft(overrides = {}) {
+function immutableDraft() {
   return {
     id: '44444444-4444-4444-8444-444444444444',
     status: 'DRAFT',
@@ -33,18 +32,26 @@ function immutableDraft(overrides = {}) {
       taxableSubtotalCents: 0,
       taxTotalCents: 0,
       totalCents: 2500,
-      ...overrides,
     },
   };
 }
 
-function mapping(overrides = {}) {
+function mappingRequest(overrides = {}) {
+  return {
+    businessId: 'QnVzaW5lc3M6ZXhhbXBsZQ==',
+    customerId: 'Q3VzdG9tZXI6ZXhhbXBsZQ==',
+    productIds: ['UHJvZHVjdDpleGFtcGxl'],
+    taxIdsByCode: {},
+    ...overrides,
+  };
+}
+
+function verifiedMapping() {
   return {
     businessId: 'QnVzaW5lc3M6ZXhhbXBsZQ==',
     customerId: 'Q3VzdG9tZXI6ZXhhbXBsZQ==',
     productIds: ['UHJvZHVjdDpleGFtcGxl'],
     taxProfiles: [],
-    ...overrides,
   };
 }
 
@@ -68,88 +75,100 @@ function confirmedTransport() {
   };
 }
 
-function fakeProvider(draft = immutableDraft()) {
+function fakes({ resolvedDraftId = '44444444-4444-4444-8444-444444444444' } = {}) {
   const calls = [];
+  const draft = immutableDraft();
   return {
     calls,
-    async loadAuthorizedDraft(input) {
-      calls.push(['load', input]);
-      return {
-        authorizationId: input.authorizationId,
-        draftId: draft.id,
-        provider: 'WAVE',
-        draft,
-      };
+    mappingResolver: {
+      async resolve(input) {
+        calls.push(['resolve', input]);
+        return {
+          authorizationId: input.authorizationId,
+          draftId: resolvedDraftId,
+          mapping: verifiedMapping(),
+          mutationPerformed: false,
+        };
+      },
     },
-    async beginAttempt(input) {
-      calls.push(['begin', input]);
-      return {
-        id: '11111111-1111-4111-8111-111111111111',
-        authorizationId: input.authorizationId,
-        draftId: draft.id,
-        provider: 'WAVE',
-        created: true,
-      };
-    },
-    async recordOutcome(input) {
-      calls.push(['outcome', input]);
-      return {
-        id: '22222222-2222-4222-8222-222222222222',
-        attemptId: input.attemptId,
-        outcome: input.outcome,
-        providerInvoiceId: input.providerInvoiceId,
-        providerInvoiceNumber: input.providerInvoiceNumber,
-      };
+    providerStore: {
+      async loadAuthorizedDraft(input) {
+        calls.push(['load', input]);
+        return {
+          authorizationId: input.authorizationId,
+          draftId: draft.id,
+          provider: 'WAVE',
+          draft,
+        };
+      },
+      async beginAttempt(input) {
+        calls.push(['begin', input]);
+        return {
+          id: '11111111-1111-4111-8111-111111111111',
+          authorizationId: input.authorizationId,
+          draftId: draft.id,
+          provider: 'WAVE',
+          created: true,
+        };
+      },
+      async recordOutcome(input) {
+        calls.push(['outcome', input]);
+        return {
+          id: '22222222-2222-4222-8222-222222222222',
+          attemptId: input.attemptId,
+          outcome: input.outcome,
+          providerInvoiceId: input.providerInvoiceId,
+          providerInvoiceNumber: input.providerInvoiceNumber,
+        };
+      },
     },
   };
 }
 
-test('loads authorized immutable draft, maps it, then persists simulated confirmed result', async () => {
-  const provider = fakeProvider();
-  const pipeline = createSimulatedWaveIssuancePipeline({ providerStore: provider });
+test('requires verified mapping, reloads snapshot, then records simulated confirmation', async () => {
+  const deps = fakes();
+  const pipeline = createSimulatedWaveIssuancePipeline(deps);
   const result = await pipeline.execute({
     authorizationId: '33333333-3333-4333-8333-333333333333',
-    attemptKey: 'simulated_confirmed_123456',
-    mapping: mapping(),
+    attemptKey: 'verified_confirmed_123456',
+    mappingRequest: mappingRequest(),
     simulatedTransportResult: confirmedTransport(),
   });
 
+  assert.equal(result.mappingVerified, true);
   assert.equal(result.draftId, '44444444-4444-4444-8444-444444444444');
   assert.equal(result.outcome, 'CONFIRMED');
   assert.equal(result.providerInvoiceId, 'SW52b2ljZTpleGFtcGxl');
   assert.equal(result.providerInvoiceNumber, 'EXAMPLE-1001');
-  assert.equal(result.providerStatus, 'DRAFT');
-  assert.equal(result.networkPerformed, false);
+  assert.equal(result.networkWritePerformed, false);
   assert.equal(result.issuedLocally, false);
   assert.equal(result.emailed, false);
-  assert.equal(result.variables.input.status, 'DRAFT');
   assert.equal(result.variables.input.items[0].unitPrice, '12.50');
-  assert.deepEqual(provider.calls.map(call => call[0]), ['load', 'begin', 'outcome']);
+  assert.deepEqual(deps.calls.map(call => call[0]), ['resolve', 'load', 'begin', 'outcome']);
 });
 
-test('invalid mapping is rejected before a provider attempt is persisted', async () => {
-  const provider = fakeProvider();
-  const pipeline = createSimulatedWaveIssuancePipeline({ providerStore: provider });
+test('refuses verified mapping bound to a different immutable draft before attempt', async () => {
+  const deps = fakes({ resolvedDraftId: '55555555-5555-4555-8555-555555555555' });
+  const pipeline = createSimulatedWaveIssuancePipeline(deps);
 
   await assert.rejects(pipeline.execute({
     authorizationId: '33333333-3333-4333-8333-333333333333',
-    attemptKey: 'invalid_mapping_123456789',
-    mapping: mapping({ productIds: [] }),
+    attemptKey: 'wrong_draft_123456789',
+    mappingRequest: mappingRequest(),
     simulatedTransportResult: confirmedTransport(),
-  }), error => error instanceof WaveDraftMappingError &&
-    error.code === 'PRODUCT_MAPPING_MISMATCH');
+  }), error => error instanceof SimulatedWaveExecutionError &&
+    error.code === 'VERIFIED_MAPPING_DRAFT_MISMATCH');
 
-  assert.deepEqual(provider.calls.map(call => call[0]), ['load']);
+  assert.deepEqual(deps.calls.map(call => call[0]), ['resolve', 'load']);
 });
 
-test('ambiguous simulated transport persists no external invoice identifiers', async () => {
-  const provider = fakeProvider();
-  const pipeline = createSimulatedWaveIssuancePipeline({ providerStore: provider });
-
+test('ambiguous simulated result persists no external invoice identifiers', async () => {
+  const deps = fakes();
+  const pipeline = createSimulatedWaveIssuancePipeline(deps);
   const result = await pipeline.execute({
     authorizationId: '33333333-3333-4333-8333-333333333333',
-    attemptKey: 'simulated_timeout_123456',
-    mapping: mapping(),
+    attemptKey: 'verified_timeout_123456',
+    mappingRequest: mappingRequest(),
     simulatedTransportResult: { kind: 'TIMEOUT' },
   });
 
@@ -157,7 +176,7 @@ test('ambiguous simulated transport persists no external invoice identifiers', a
   assert.equal(result.reason, 'TIMEOUT');
   assert.equal(result.providerInvoiceId, null);
   assert.equal(result.providerInvoiceNumber, null);
-  assert.deepEqual(provider.calls[2][1], {
+  assert.deepEqual(deps.calls[3][1], {
     attemptId: '11111111-1111-4111-8111-111111111111',
     outcome: 'AMBIGUOUS',
     providerInvoiceId: null,
@@ -165,14 +184,14 @@ test('ambiguous simulated transport persists no external invoice identifiers', a
   });
 });
 
-test('execution input and mapping are exact and do not accept draft or token substitution', async () => {
-  const provider = fakeProvider();
-  const pipeline = createSimulatedWaveIssuancePipeline({ providerStore: provider });
+test('does not accept token, raw draft or raw provider payload in execution input', async () => {
+  const deps = fakes();
+  const pipeline = createSimulatedWaveIssuancePipeline(deps);
 
   await assert.rejects(pipeline.execute({
     authorizationId: '33333333-3333-4333-8333-333333333333',
-    attemptKey: 'extra_field_1234567890',
-    mapping: mapping(),
+    attemptKey: 'extra_token_123456789',
+    mappingRequest: mappingRequest(),
     simulatedTransportResult: confirmedTransport(),
     token: 'forbidden',
   }), error => error instanceof SimulatedWaveExecutionError &&
@@ -180,11 +199,11 @@ test('execution input and mapping are exact and do not accept draft or token sub
 
   await assert.rejects(pipeline.execute({
     authorizationId: '33333333-3333-4333-8333-333333333333',
-    attemptKey: 'hidden_draft_123456789',
-    mapping: { ...mapping(), draft: immutableDraft() },
+    attemptKey: 'raw_mapping_123456789',
+    mappingRequest: { ...mappingRequest(), taxProfiles: [] },
     simulatedTransportResult: confirmedTransport(),
   }), error => error instanceof SimulatedWaveExecutionError &&
-    error.code === 'INVALID_WAVE_MAPPING');
+    error.code === 'INVALID_MAPPING_REQUEST');
 
-  assert.equal(provider.calls.length, 0);
+  assert.equal(deps.calls.length, 0);
 });

@@ -24,60 +24,67 @@ function exactObject(value, keys, code) {
   return value;
 }
 
-function exactInput(input) {
-  return exactObject(input,
-    ['attemptKey', 'authorizationId', 'mapping', 'simulatedTransportResult'],
-    'INVALID_SIMULATED_EXECUTION');
-}
-
-function exactMapping(mapping) {
-  return exactObject(mapping,
-    ['businessId', 'customerId', 'productIds', 'taxProfiles'],
-    'INVALID_WAVE_MAPPING');
-}
-
-function createSimulatedWaveIssuancePipeline({ providerStore }) {
+function createSimulatedWaveIssuancePipeline({ providerStore, mappingResolver }) {
   if (!providerStore ||
       typeof providerStore.loadAuthorizedDraft !== 'function' ||
       typeof providerStore.beginAttempt !== 'function' ||
       typeof providerStore.recordOutcome !== 'function') {
     throw new TypeError('Provider issuance store with authorized snapshot loader required');
   }
+  if (!mappingResolver || typeof mappingResolver.resolve !== 'function') {
+    throw new TypeError('Verified Wave mapping resolver required');
+  }
 
   async function execute(input) {
-    const fields = exactInput(input);
-    const mapping = exactMapping(fields.mapping);
+    exactObject(input,
+      ['attemptKey', 'authorizationId', 'mappingRequest', 'simulatedTransportResult'],
+      'INVALID_SIMULATED_EXECUTION');
+    const mappingRequest = exactObject(input.mappingRequest,
+      ['businessId', 'customerId', 'productIds', 'taxIdsByCode'],
+      'INVALID_MAPPING_REQUEST');
 
-    // Load the exact immutable draft bound to the persisted authorization. The
-    // caller cannot substitute a different draft or raw Wave payload.
-    const authorized = await providerStore.loadAuthorizedDraft({
-      authorizationId: fields.authorizationId,
+    // Resolve all external IDs through the read-only verification layer first.
+    const resolved = await mappingResolver.resolve({
+      authorizationId: input.authorizationId,
+      businessId: mappingRequest.businessId,
+      customerId: mappingRequest.customerId,
+      productIds: mappingRequest.productIds,
+      taxIdsByCode: mappingRequest.taxIdsByCode,
     });
+    if (!resolved || resolved.authorizationId !== input.authorizationId ||
+        !resolved.mapping || typeof resolved.draftId !== 'string') {
+      throw new SimulatedWaveExecutionError('INVALID_VERIFIED_MAPPING');
+    }
+
+    // Reload the exact immutable snapshot tied to the authorization. This makes
+    // the provider payload a pure function of persisted authorization + verified
+    // external mappings, never of caller-supplied invoice data.
+    const authorized = await providerStore.loadAuthorizedDraft({
+      authorizationId: input.authorizationId,
+    });
+    if (authorized.draftId !== resolved.draftId) {
+      throw new SimulatedWaveExecutionError('VERIFIED_MAPPING_DRAFT_MISMATCH');
+    }
 
     const waveCreateInput = buildWaveCreateInputFromImmutableDraft({
       draft: authorized.draft,
-      businessId: mapping.businessId,
-      customerId: mapping.customerId,
-      productIds: mapping.productIds,
-      taxProfiles: mapping.taxProfiles,
+      businessId: resolved.mapping.businessId,
+      customerId: resolved.mapping.customerId,
+      productIds: resolved.mapping.productIds,
+      taxProfiles: resolved.mapping.taxProfiles,
     });
-
-    // Final provider schema validation still happens before opening an attempt.
     const request = buildWaveInvoiceCreateRequest(waveCreateInput);
 
     const attempt = await providerStore.beginAttempt({
-      authorizationId: fields.authorizationId,
-      attemptKey: fields.attemptKey,
+      authorizationId: input.authorizationId,
+      attemptKey: input.attemptKey,
       provider: 'WAVE',
     });
-
-    // Authorization rows and invoice drafts are immutable; disagreement here
-    // indicates corrupted/inconsistent storage, not a condition to retry.
     if (attempt.draftId !== authorized.draftId) {
       throw new SimulatedWaveExecutionError('AUTHORIZED_DRAFT_CHANGED');
     }
 
-    const classified = classifyWaveInvoiceCreateResult(fields.simulatedTransportResult);
+    const classified = classifyWaveInvoiceCreateResult(input.simulatedTransportResult);
     const outcome = await providerStore.recordOutcome({
       attemptId: attempt.id,
       outcome: classified.outcome,
@@ -88,7 +95,7 @@ function createSimulatedWaveIssuancePipeline({ providerStore }) {
     });
 
     return Object.freeze({
-      authorizationId: fields.authorizationId,
+      authorizationId: input.authorizationId,
       draftId: authorized.draftId,
       attemptId: attempt.id,
       attemptCreated: attempt.created,
@@ -100,7 +107,8 @@ function createSimulatedWaveIssuancePipeline({ providerStore }) {
       providerInvoiceNumber: outcome.providerInvoiceNumber,
       providerStatus: classified.providerStatus || null,
       reason: classified.reason,
-      networkPerformed: false,
+      mappingVerified: true,
+      networkWritePerformed: false,
       issuedLocally: false,
       emailed: false,
     });

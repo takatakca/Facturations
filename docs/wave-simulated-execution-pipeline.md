@@ -1,21 +1,23 @@
-# Exécution Wave simulée — autorisation + snapshot + contrat + état fournisseur
+# Exécution Wave simulée — chaîne vérifiée complète
 
-Ce pipeline relie désormais l'autorisation persistée au **snapshot immuable PostgreSQL** avant de construire le contrat `invoiceCreate`. Il n'accepte plus de payload Wave brut ni de draft fourni par l'appelant.
+Le pipeline n'accepte plus ni brouillon, ni payload Wave, ni token fournis à l'exécution.
 
-Ordre de traitement :
+Ordre actuel :
 
-1. charger l'autorisation et le brouillon immuable liés dans la base dédiée;
-2. vérifier que le total et le destinataire correspondent toujours à l'autorisation;
-3. construire le mapping Wave strict du snapshot;
-4. valider entièrement `InvoiceCreateInput`;
-5. ouvrir seulement ensuite une tentative fournisseur idempotente;
-6. classer une réponse de transport **simulée**;
-7. enregistrer `CONFIRMED`, `AMBIGUOUS`, `FAILED_RETRYABLE` ou `FAILED_FINAL`.
+1. recevoir seulement l'identifiant d'autorisation, la clé de tentative et les IDs externes à vérifier;
+2. appeler le resolver Wave lecture seule;
+3. vérifier client, produits et taxes contre le snapshot immuable autorisé;
+4. recharger le même snapshot depuis PostgreSQL;
+5. construire le mapping strict snapshot → `InvoiceCreateInput`;
+6. valider le contrat Wave;
+7. ouvrir la tentative fournisseur idempotente;
+8. classer une réponse de transport simulée;
+9. persister le résultat ou imposer une réconciliation en cas d'ambiguïté.
 
-Un mapping invalide échoue avant `beginAttempt`. Le store recharge aussi l'autorisation dans `beginAttempt`; les liens autorisation → draft et les snapshots sont immuables.
+Une divergence entre le draft résolu et le draft rechargé arrête la chaîne avant toute tentative.
 
-## Frontière restante
+## Limite volontaire
 
-Les identifiants Wave `businessId`, `customerId`, `productIds` et profils de taxes sont encore fournis par une couche de mapping explicite. Le prochain lot doit les résoudre depuis des données Wave **en lecture vérifiée** et empêcher une mutation si le client, le produit, le taux ou le type de taxe ne concorde pas.
+La dernière étape est encore **simulée** : aucun POST GraphQL d'écriture n'est effectué. Avant d'activer une vraie mutation, il faut un compte Wave de test autorisé, exécuter les lectures réelles, comparer le payload final, puis tester création/réconciliation sans client réel.
 
-Aucun token, réseau, appel Wave, facture réelle, PDF officiel, courriel ou paiement.
+Aucun courriel, PDF officiel, paiement ou émission locale.

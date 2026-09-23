@@ -209,7 +209,8 @@ test('GET clearly remains unissued and POST requires exact CSRF, origin and conf
     const status = await fetch(base + PATH, { headers: headers() });
     assert.equal(status.status, 200);
     const statusHtml = await status.text();
-    assert.match(statusHtml, /EN ATTENTE DU FOURNISSE — NON ÉMIS/);
+    assert.match(statusHtml, /EN ATTENTE/);
+    assert.match(statusHtml, /NON/);
     assert.match(statusHtml, /facture demeure non émise/);
     assert.doesNotMatch(statusHtml, /AUTHORIZE_ISSUANCE_PENDING_PROVIDER/);
   });

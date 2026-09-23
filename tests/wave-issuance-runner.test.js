@@ -138,15 +138,18 @@ test('structured provider failures preserve retryable/final/ambiguous categories
   }
 });
 
-test('invalid provider payload fails closed instead of fabricating an outcome',async()=>{
+test('invalid post-start provider payload becomes ambiguous and requires reconciliation',async()=>{
   const store=attemptStore();
   const wave=adapter({kind:'CONFIRMED',invoiceId:'id'});
-  await assert.rejects(
-    executePreparedWaveIssuance({attemptId:ATTEMPT,plan:plan()},{attemptStore:store,adapter:wave}),
-    error=>error instanceof WaveIssuanceRunnerError &&
-      error.code==='INVALID_PROVIDER_RESULT' && error.statusCode===502
+  const result=await executePreparedWaveIssuance(
+    {attemptId:ATTEMPT,plan:plan()},{attemptStore:store,adapter:wave}
   );
-  assert.equal(store.state.outcomes.length,0);
+  assert.deepEqual(store.state.outcomes[0],{
+    attemptId:ATTEMPT,outcome:'AMBIGUOUS',
+    providerInvoiceId:null,providerInvoiceNumber:null,
+    errorCode:'WAVE_INVALID_PROVIDER_RESULT',
+  });
+  assert.equal(result.state,'AMBIGUOUS');
 });
 
 test('reconciliation NOT_FOUND unlock signal is delegated to state machine, without retrying here',async()=>{

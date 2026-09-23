@@ -100,7 +100,16 @@ async function executePreparedWaveIssuance({attemptId,plan},{attemptStore,adapte
   }
 
   if(result?.kind==='CONFIRMED'){
-    const confirmed=normalizedConfirmed(result,plan);
+    let confirmed;
+    try { confirmed=normalizedConfirmed(result,plan); }
+    catch (error) {
+      if (!(error instanceof WaveIssuanceRunnerError)) throw error;
+      return attemptStore.recordOutcome({
+        attemptId:started.id,outcome:'AMBIGUOUS',
+        providerInvoiceId:null,providerInvoiceNumber:null,
+        errorCode:'WAVE_INVALID_PROVIDER_RESULT',
+      });
+    }
     if(!confirmed.match){
       return attemptStore.recordOutcome({
         attemptId:started.id,outcome:'AMBIGUOUS',
@@ -116,7 +125,16 @@ async function executePreparedWaveIssuance({attemptId,plan},{attemptStore,adapte
     });
   }
 
-  const failure=validateFailure(result);
+  let failure;
+  try { failure=validateFailure(result); }
+  catch (error) {
+    if (!(error instanceof WaveIssuanceRunnerError)) throw error;
+    return attemptStore.recordOutcome({
+      attemptId:started.id,outcome:'AMBIGUOUS',
+      providerInvoiceId:null,providerInvoiceNumber:null,
+      errorCode:'WAVE_INVALID_PROVIDER_RESULT',
+    });
+  }
   return attemptStore.recordOutcome({
     attemptId:started.id,outcome:failure.kind,
     providerInvoiceId:null,providerInvoiceNumber:null,

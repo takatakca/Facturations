@@ -124,6 +124,17 @@ test('contract rejects provider actions already performed, hidden fields and uns
   assert.throws(() => buildWaveInvoiceCreateMutation(duplicateTaxes), error =>
     error instanceof WaveMutationContractError &&
     error.code === 'INVALID_WAVE_TAX_IDS');
+
+  assert.throws(() => buildWaveInvoiceCreateMutation(plan({
+    invoiceDate: '2026-02-31',
+  })), error => error instanceof WaveMutationContractError &&
+    error.code === 'INVALID_WAVE_INVOICE_DATE');
+
+  assert.throws(() => buildWaveInvoiceCreateMutation(plan({
+    invoiceDate: '2026-10-24',
+    dueDate: '2026-10-23',
+  })), error => error instanceof WaveMutationContractError &&
+    error.code === 'WAVE_DUE_DATE_BEFORE_INVOICE_DATE');
 });
 
 test('create classifier only confirms a matching DRAFT and never treats it as approved', () => {

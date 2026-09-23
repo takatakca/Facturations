@@ -10,7 +10,6 @@ const { attachBrowserRecentWorkspaces } = require('./src/browser-recent-workspac
 const { attachBrowserWorkspacePreview } = require('./src/browser-workspace-preview');
 const { attachBrowserOwnerReview } = require('./src/browser-owner-review');
 const { attachBrowserOwnerPrint } = require('./src/browser-owner-print');
-const { attachBrowserIssuanceAuthorization } = require('./src/browser-issuance-authorization');
 const { attachBrowserIssuanceAuthorization } = require('./src/browser-owner-issuance-authorization');
 const { attachBrowserCustomerDirectory } = require('./src/browser-customer-directory');
 const { attachBrowserCustomerContact } = require('./src/browser-customer-contact');
@@ -19,7 +18,6 @@ const { attachBrowserSubmittedWorkspaceGuard } = require('./src/browser-submitte
 const { createRecentWorkspaceStore } = require('./src/recent-workspace-store');
 const { createDraftStore } = require('./src/draft-store');
 const { createDraftApprovalStore } = require('./src/draft-approval-store');
-const { createIssuanceAuthorizationStore } = require('./src/issuance-authorization-store');
 const { createIssuanceAuthorizationStore } = require('./src/issuance-authorization-store');
 const { createWorkspaceSubmissionStore } = require('./src/workspace-submission-store');
 const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
@@ -42,7 +40,6 @@ if (require.main === module) {
   let approvalLedger = null;
   let draftApprovalStore = null;
   let issuanceAuthorizationStore = null;
-  let issuanceAuthorizationStore = null;
   let workspaceSubmissionStore = null;
   let workspaceStore = null;
   let recentStore = null;
@@ -63,7 +60,6 @@ if (require.main === module) {
       workspaceStore = createDraftWorkspaceStore({ pool, businessId: config.businessId });
       recentStore = createRecentWorkspaceStore({ pool, businessId: config.businessId });
       draftApprovalStore = createDraftApprovalStore({ pool, businessId: config.businessId });
-      issuanceAuthorizationStore = createIssuanceAuthorizationStore({ pool, businessId: config.businessId });
       issuanceAuthorizationStore = createIssuanceAuthorizationStore({ pool, businessId: config.businessId });
       workspaceSubmissionStore = createWorkspaceSubmissionStore({ pool, businessId: config.businessId });
       customerContactStore = createCustomerContactStore({ pool, businessId: config.businessId });
@@ -92,10 +88,6 @@ if (require.main === module) {
       pool, businessId: config.businessId });
     attachBrowserOwnerPrint(server, { origin: config.browserOrigin, businessId: config.businessId,
       staffAuthStore, draftStore, approvalStore: draftApprovalStore });
-    attachBrowserIssuanceAuthorization(server, { origin: config.browserOrigin,
-      businessId: config.businessId, encryptionKeyHex: config.totpEncryptionKeyHex,
-      staffAuthStore, draftStore, approvalStore: draftApprovalStore,
-      authorizationStore: issuanceAuthorizationStore });
     attachBrowserIssuanceAuthorization(server, { origin: config.browserOrigin, businessId: config.businessId,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, draftStore,
       approvalStore: draftApprovalStore, authorizationStore: issuanceAuthorizationStore });

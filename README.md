@@ -46,6 +46,7 @@ Pour le mode local non connecté, garder `.env` privé, lancer `npm run dev` pui
 | GET | `/internal/workspaces/:uuid/preview?lang=fr\|en` | Aperçu non émis |
 | GET / POST | `/internal/submit/:uuid?lang=fr\|en` | Soumission OWNER explicite, non approuvée automatiquement |
 | GET / POST | `/internal/review/:uuid?lang=fr\|en` | Approbation interne OWNER uniquement |
+| GET / POST | `/internal/review/:uuid/authorize-issuance?lang=fr\|en` | Autorisation OWNER distincte, état interne `AUTHORIZED_PENDING_PROVIDER`, aucun appel Wave |
 | GET | `/internal/review/:uuid/print?lang=fr\|en` | Document imprimable privé, non émis |
 | GET / POST | `/internal/review/:uuid/authorize-issuance?lang=fr\|en` | Autorisation OWNER immuable, en attente du fournisseur; aucune émission ni Wave |
 | GET | `/internal/review?lang=fr\|en` | Liste de brouillons immuables |

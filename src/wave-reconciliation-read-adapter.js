@@ -8,6 +8,7 @@ const SEARCH_PAGE_SIZE = 20;
 const SAFE_ID = /^[^\u0000-\u001f\u007f]{1,512}$/u;
 const SAFE_TOKEN = /^[^\s\u0000-\u001f\u007f]{16,4096}$/u;
 const MONEY = /^(0|[1-9]\d*)\.\d{2}$/;
+const DECIMAL = /^(0|[1-9]\d*)(?:\.\d{1,8})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ALLOWED_ACTIVATIONS = new Set(['DISABLED', 'AUTHORIZED_TEST_ONLY']);
 

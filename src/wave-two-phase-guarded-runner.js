@@ -44,7 +44,9 @@ function validateInput(input) {
   });
 }
 
-function validateDependencies(mappingStore, executionStore, createConfirmationStore, networkAdapter) {
+function validateDependencies(
+  mappingStore, executionStore, createConfirmationStore, attemptStore, networkAdapter
+) {
   if (!mappingStore || typeof mappingStore.getByAuthorization !== 'function') {
     throw new TypeError('Persisted Wave mapping store required');
   }
@@ -57,6 +59,10 @@ function validateDependencies(mappingStore, executionStore, createConfirmationSt
       typeof createConfirmationStore.save !== 'function' ||
       typeof createConfirmationStore.getByExecution !== 'function') {
     throw new TypeError('Wave create confirmation store required');
+  }
+  if (!attemptStore || typeof attemptStore.start !== 'function' ||
+      typeof attemptStore.listCurrent !== 'function') {
+    throw new TypeError('Wave pre-network attempt store required');
   }
   if (!networkAdapter || networkAdapter.mode !== 'AUTHORIZED_TEST_ONLY' ||
       typeof networkAdapter.execute !== 'function') {
@@ -77,6 +83,10 @@ async function optionalCreateConfirmation(store, executionId) {
 
 function safeCode(value, fallback) {
   return typeof value === 'string' && SAFE_CODE.test(value) ? value : fallback;
+}
+
+function hasOperation(attempts, operation) {
+  return attempts.some(attempt => attempt.operation === operation);
 }
 
 async function recordNetworkFailure(executionStore, execution, error) {
@@ -122,9 +132,12 @@ function createWaveTwoPhaseGuardedRunner({
   mappingStore,
   executionStore,
   createConfirmationStore,
+  attemptStore,
   networkAdapter,
 }) {
-  validateDependencies(mappingStore, executionStore, createConfirmationStore, networkAdapter);
+  validateDependencies(
+    mappingStore, executionStore, createConfirmationStore, attemptStore, networkAdapter
+  );
 
   async function execute(input) {
     const fields = validateInput(input);
@@ -166,11 +179,15 @@ function createWaveTwoPhaseGuardedRunner({
       createConfirmationStore, execution.id);
 
     if (execution.state === 'IN_PROGRESS') {
-      if (!createConfirmation) {
+      const attempts = await attemptStore.listCurrent(execution.id, execution.version);
+      if (!createConfirmation && hasOperation(attempts, 'CREATE_DRAFT')) {
         throw new WaveTwoPhaseRunnerError('RECONCILIATION_REQUIRED', 409);
       }
-      // A prior process confirmed and persisted the Wave DRAFT before it stopped.
-      // Resume only the separate approval mutation; never create another invoice.
+      if (createConfirmation && hasOperation(attempts, 'APPROVE_INVOICE')) {
+        throw new WaveTwoPhaseRunnerError('RECONCILIATION_REQUIRED', 409);
+      }
+      // If IN_PROGRESS has no marker for the pending operation, the previous
+      // process stopped before network I/O and that exact operation is safe to start.
     } else {
       execution = await executionStore.begin({
         executionId: execution.id,
@@ -181,6 +198,12 @@ function createWaveTwoPhaseGuardedRunner({
     }
 
     if (!createConfirmation) {
+      await attemptStore.start({
+        executionId: execution.id,
+        executionVersion: execution.version,
+        operation: 'CREATE_DRAFT',
+      });
+
       let createResponse;
       try {
         createResponse = await networkAdapter.execute({
@@ -220,8 +243,6 @@ function createWaveTwoPhaseGuardedRunner({
           providerInvoiceNumber: createResult.providerInvoiceNumber,
         });
       } catch (error) {
-        // The provider may already contain a created DRAFT. Never call create again
-        // after a local persistence failure without operator reconciliation.
         try {
           await executionStore.recordOutcome({
             executionId: execution.id,
@@ -235,6 +256,17 @@ function createWaveTwoPhaseGuardedRunner({
         throw error;
       }
     }
+
+    const existingAttempts = await attemptStore.listCurrent(
+      execution.id, execution.version);
+    if (hasOperation(existingAttempts, 'APPROVE_INVOICE')) {
+      throw new WaveTwoPhaseRunnerError('RECONCILIATION_REQUIRED', 409);
+    }
+    await attemptStore.start({
+      executionId: execution.id,
+      executionVersion: execution.version,
+      operation: 'APPROVE_INVOICE',
+    });
 
     const approveRequest = buildWaveInvoiceApproveMutation(
       createConfirmation.providerInvoiceId);

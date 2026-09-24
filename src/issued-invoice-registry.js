@@ -101,7 +101,7 @@ function createIssuedInvoiceRegistry({ pool, businessId }) {
              ON a.business_id=e.business_id AND a.id=e.authorization_id
            JOIN invoice_drafts AS d
              ON d.business_id=e.business_id AND d.id=e.draft_id
-           JOIN facturations_wave_create_confirmations AS c
+           LEFT JOIN facturations_wave_create_confirmations AS c
              ON c.business_id=e.business_id AND c.execution_id=e.id
           WHERE e.business_id=$1 AND e.id=$2
           FOR SHARE OF e,a,d,c`,

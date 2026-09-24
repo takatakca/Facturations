@@ -26,6 +26,13 @@ const WAVE_RECONCILE_INVOICE_BY_ID_QUERY = `query FacturationsReconcileInvoiceBy
       currency { code }
       taxTotal { value }
       total { value }
+      items {
+        product { id }
+        description
+        quantity
+        unitPrice
+        taxes { salesTax { id } }
+      }
     }
   }
 }`;
@@ -145,6 +152,28 @@ function httpFailure(status) {
   return new WaveReconciliationReadError('WAVE_READ_REQUEST_REJECTED', 502);
 }
 
+function invoiceItemOf(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item) ||
+      typeof item.product?.id !== 'string' || !SAFE_ID.test(item.product.id) ||
+      (item.description !== null && item.description !== undefined &&
+       (typeof item.description !== 'string' || item.description.length > 250 ||
+        /[\\u0000-\\u001f\\u007f]/u.test(item.description))) ||
+      typeof item.quantity !== 'string' || !DECIMAL.test(item.quantity) ||
+      typeof item.unitPrice !== 'string' || !DECIMAL.test(item.unitPrice) ||
+      !Array.isArray(item.taxes) || item.taxes.length > 3 ||
+      item.taxes.some(tax => typeof tax?.salesTax?.id !== 'string' ||
+        !SAFE_ID.test(tax.salesTax.id))) {
+    throw new WaveReconciliationReadError('WAVE_READ_INVOICE_ITEM_SHAPE_INVALID');
+  }
+  return Object.freeze({
+    productId: item.product.id,
+    description: item.description ?? '',
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    salesTaxIds: Object.freeze(item.taxes.map(tax => tax.salesTax.id)),
+  });
+}
+
 function invoiceOf(node) {
   if (!node || typeof node !== 'object' || Array.isArray(node) ||
       typeof node.id !== 'string' || !SAFE_ID.test(node.id) ||
@@ -156,6 +185,7 @@ function invoiceOf(node) {
       node.currency.code.length > 8 ||
       typeof node.total?.value !== 'string' || !MONEY.test(node.total.value) ||
       typeof node.taxTotal?.value !== 'string' || !MONEY.test(node.taxTotal.value) ||
+      !Array.isArray(node.items) || node.items.length < 1 || node.items.length > 50 ||
       (node.invoiceNumber !== null && node.invoiceNumber !== undefined &&
        (typeof node.invoiceNumber !== 'string' || node.invoiceNumber.length > 160 ||
         /[\u0000-\u001f\u007f]/u.test(node.invoiceNumber)))) {
@@ -173,6 +203,7 @@ function invoiceOf(node) {
     taxTotal: node.taxTotal.value,
     createdAt: typeof node.createdAt === 'string' ? node.createdAt : null,
     modifiedAt: typeof node.modifiedAt === 'string' ? node.modifiedAt : null,
+    items: Object.freeze(node.items.map(invoiceItemOf)),
   });
 }
 

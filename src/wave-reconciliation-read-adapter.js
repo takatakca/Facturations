@@ -157,7 +157,7 @@ function invoiceItemOf(item) {
       typeof item.product?.id !== 'string' || !SAFE_ID.test(item.product.id) ||
       (item.description !== null && item.description !== undefined &&
        (typeof item.description !== 'string' || item.description.length > 250 ||
-        /[\\u0000-\\u001f\\u007f]/u.test(item.description))) ||
+        /[\u0000-\u001f\u007f]/u.test(item.description))) ||
       typeof item.quantity !== 'string' || !DECIMAL.test(item.quantity) ||
       typeof item.unitPrice !== 'string' || !DECIMAL.test(item.unitPrice) ||
       !Array.isArray(item.taxes) || item.taxes.length > 3 ||

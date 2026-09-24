@@ -2,6 +2,19 @@
 -- Persists a confirmed Wave DRAFT creation before the separate approval mutation.
 -- This migration performs no network request and never marks a local invoice issued.
 BEGIN;
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'facturations_provider_executions_business_id_id_key'
+       AND conrelid = 'facturations_provider_executions'::regclass
+  ) THEN
+    ALTER TABLE facturations_provider_executions
+      ADD CONSTRAINT facturations_provider_executions_business_id_id_key
+      UNIQUE (business_id,id);
+  END IF;
+END;
+$;
 CREATE TABLE IF NOT EXISTS facturations_wave_create_confirmations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id text NOT NULL CHECK (length(business_id) BETWEEN 1 AND 200),

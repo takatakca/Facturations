@@ -148,11 +148,12 @@ function createIssuedInvoiceRegistry({ pool, businessId }) {
       if (!stored) {
         const prior = await client.query(
           `SELECT id,authorization_id,draft_id,execution_id,provider,provider_invoice_id,
-                  official_invoice_number,issued_snapshot,status,delivery_state,
-                  provider_confirmed_at,materialized_at
+                  official_invoice_number,request_hash,issued_snapshot,status,delivery_state,
+                  provider_confirmed_at,materialized_at,
+                  (issued_snapshot = $3::jsonb) AS snapshot_matches
              FROM facturations_issued_invoices
             WHERE business_id=$1 AND draft_id=$2`,
-          [tenant, fields.draftId]
+          [tenant, fields.draftId, JSON.stringify(row.snapshot)]
         );
         stored = prior.rows[0];
         if (!stored ||
@@ -161,7 +162,8 @@ function createIssuedInvoiceRegistry({ pool, businessId }) {
             stored.provider !== 'WAVE' ||
             stored.provider_invoice_id !== row.provider_invoice_id ||
             stored.official_invoice_number !== row.official_invoice_number ||
-            JSON.stringify(stored.issued_snapshot) !== JSON.stringify(row.snapshot)) {
+            stored.request_hash !== row.request_hash ||
+            stored.snapshot_matches !== true) {
           throw new IssuedInvoiceRegistryError('ISSUED_INVOICE_CONFLICT', 409);
         }
       }

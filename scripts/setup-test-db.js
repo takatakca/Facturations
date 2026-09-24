@@ -31,11 +31,12 @@ async function main() {
       '013_wave_mapping_snapshot.sql',
       '014_wave_create_confirmation.sql',
       '015_wave_network_attempts.sql',
+      '016_issued_invoice_registry.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable Wave mapping snapshot, provider create confirmation and pre-network attempt journal');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable Wave mapping snapshot, provider create confirmation, pre-network attempt journal and immutable issued invoice registry');
   } finally {
     await pool.end();
   }

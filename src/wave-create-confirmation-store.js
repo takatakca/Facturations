@@ -32,11 +32,16 @@ function optionalText(value, max, code) {
   return text(value, max, code);
 }
 
-function validateSave(input) {
+function validateSave(input, reconciled = false) {
+  const keys = reconciled
+    ? 'authorizationId,confirmation,draftId,executionId,providerInvoiceId,providerInvoiceNumber'
+    : 'authorizationId,draftId,executionId,providerInvoiceId,providerInvoiceNumber';
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).sort().join(',') !==
-        'authorizationId,draftId,executionId,providerInvoiceId,providerInvoiceNumber') {
+      Object.keys(input).sort().join(',') !== keys) {
     throw new WaveCreateConfirmationError('INVALID_CREATE_CONFIRMATION');
+  }
+  if (reconciled && input.confirmation !== 'READ_ONLY_RECONCILIATION_MATCH') {
+    throw new WaveCreateConfirmationError('RECONCILIATION_CONFIRMATION_REQUIRED');
   }
   return Object.freeze({
     executionId: uuid(input.executionId, 'INVALID_EXECUTION_ID'),
@@ -87,8 +92,8 @@ function createWaveCreateConfirmationStore({ pool, businessId }) {
     return resultOf(found.rows[0]);
   }
 
-  async function save(input) {
-    const fields = validateSave(input);
+  async function saveForState(input, state, reconciled) {
+    const fields = validateSave(input, reconciled);
     const client = await pool.connect();
     let transaction = false;
     try {
@@ -108,7 +113,7 @@ function createWaveCreateConfirmationStore({ pool, businessId }) {
       if (row.authorization_id !== fields.authorizationId ||
           row.draft_id !== fields.draftId ||
           row.provider !== 'WAVE' ||
-          row.state !== 'IN_PROGRESS') {
+          row.state !== state) {
         throw new WaveCreateConfirmationError('EXECUTION_CHAIN_MISMATCH', 409);
       }
 
@@ -154,7 +159,18 @@ function createWaveCreateConfirmationStore({ pool, businessId }) {
     }
   }
 
-  return Object.freeze({ save, getByExecution });
+  async function save(input) {
+    return saveForState(input, 'IN_PROGRESS', false);
+  }
+
+  // Read-only reconciliation may prove that a CREATE succeeded after the
+  // mutation response was lost. Persist that provider invoice only while the
+  // execution is already AMBIGUOUS; this never performs a provider mutation.
+  async function saveReconciled(input) {
+    return saveForState(input, 'AMBIGUOUS', true);
+  }
+
+  return Object.freeze({ save, saveReconciled, getByExecution });
 }
 
 module.exports = {

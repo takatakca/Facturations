@@ -59,21 +59,15 @@ function createWaveNetworkAttemptStore({ pool, businessId }) {
     const executionVersion = version(input.executionVersion);
     const op = operation(input.operation);
 
-    const execution = await pool.query(
-      `SELECT state,version FROM facturations_provider_executions
-        WHERE business_id=$1 AND id=$2`,
-      [tenant, executionId]
-    );
-    if (!execution.rows.length) throw new WaveNetworkAttemptError('EXECUTION_NOT_FOUND', 404);
-    if (execution.rows[0].state !== 'IN_PROGRESS' ||
-        execution.rows[0].version !== executionVersion) {
-      throw new WaveNetworkAttemptError('EXECUTION_NOT_IN_PROGRESS', 409);
-    }
-
     const inserted = await pool.query(
       `INSERT INTO facturations_wave_network_attempts
         (business_id,execution_id,execution_version,operation)
-       VALUES ($1,$2,$3,$4)
+       SELECT $1,$2,$3,$4
+        WHERE EXISTS (
+          SELECT 1 FROM facturations_provider_executions
+           WHERE business_id=$1 AND id=$2
+             AND state='IN_PROGRESS' AND version=$3
+        )
        ON CONFLICT (business_id,execution_id,execution_version,operation) DO NOTHING
        RETURNING id,execution_id,execution_version,operation,started_at`,
       [tenant, executionId, executionVersion, op]
@@ -87,8 +81,15 @@ function createWaveNetworkAttemptStore({ pool, businessId }) {
           AND execution_version=$3 AND operation=$4`,
       [tenant, executionId, executionVersion, op]
     );
-    if (!prior.rows.length) throw new WaveNetworkAttemptError('ATTEMPT_STORAGE_UNAVAILABLE', 503);
-    return rowResult(prior.rows[0]);
+    if (prior.rows.length) return rowResult(prior.rows[0]);
+
+    const execution = await pool.query(
+      `SELECT state,version FROM facturations_provider_executions
+        WHERE business_id=$1 AND id=$2`,
+      [tenant, executionId]
+    );
+    if (!execution.rows.length) throw new WaveNetworkAttemptError('EXECUTION_NOT_FOUND', 404);
+    throw new WaveNetworkAttemptError('EXECUTION_NOT_IN_PROGRESS', 409);
   }
 
   async function listCurrent(executionId, executionVersion) {

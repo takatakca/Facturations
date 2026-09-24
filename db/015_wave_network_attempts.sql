@@ -18,11 +18,10 @@ CREATE INDEX IF NOT EXISTS facturations_wave_network_attempts_execution_idx
      (business_id,execution_id,execution_version,started_at);
 
 CREATE OR REPLACE FUNCTION facturations_reject_wave_network_attempt_mutation()
-RETURNS trigger LANGUAGE plpgsql AS $
-BEGIN
-  RAISE EXCEPTION 'wave network attempts are immutable' USING ERRCODE = '23514';
-END;
-$;
+RETURNS trigger LANGUAGE plpgsql AS
+'BEGIN
+  RAISE EXCEPTION ''wave network attempts are immutable'' USING ERRCODE = ''23514'';
+END;';
 DROP TRIGGER IF EXISTS facturations_wave_network_attempts_append_only
   ON facturations_wave_network_attempts;
 CREATE TRIGGER facturations_wave_network_attempts_append_only

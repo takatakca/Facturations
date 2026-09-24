@@ -104,7 +104,7 @@ function createIssuedInvoiceRegistry({ pool, businessId }) {
            LEFT JOIN facturations_wave_create_confirmations AS c
              ON c.business_id=e.business_id AND c.execution_id=e.id
           WHERE e.business_id=$1 AND e.id=$2
-          FOR SHARE OF e,a,d,c`,
+          FOR SHARE OF e,a,d`,
         [tenant, fields.executionId]
       );
       if (!chain.rows.length) {

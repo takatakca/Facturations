@@ -28,11 +28,12 @@ async function main() {
       '010_customer_contact_changes.sql',
       '011_issuance_authorizations.sql',
       '012_provider_issuance_attempts.sql',
+      '013_issued_invoice_registry.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry');
   } finally {
     await pool.end();
   }

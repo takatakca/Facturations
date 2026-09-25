@@ -89,7 +89,7 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
       transaction = true;
       const authorized = await client.query(
         `SELECT a.id,a.draft_id,a.request_hash,a.expected_total_cents,
-                a.expected_customer_email,a.provider,a.state,d.snapshot
+                a.expected_customer_email,a.provider,a.state,d.request_hash AS draft_request_hash,d.snapshot
            FROM facturations_issuance_authorizations AS a
            JOIN invoice_drafts AS d
              ON d.business_id=a.business_id AND d.id=a.draft_id
@@ -103,8 +103,7 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
         throw new ProviderIssuanceAttemptError('AUTHORIZATION_NOT_FOUND', 404);
       }
       const authorization = authorized.rows[0];
-      if (authorization.request_hash !== authorization.snapshot?.requestHash &&
-          authorization.snapshot?.requestHash !== undefined) {
+      if (authorization.request_hash !== authorization.draft_request_hash) {
         throw new ProviderIssuanceAttemptError('AUTHORIZATION_SNAPSHOT_MISMATCH', 409);
       }
       if (Number(authorization.expected_total_cents) !== authorization.snapshot?.totalCents ||

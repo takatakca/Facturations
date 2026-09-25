@@ -143,7 +143,28 @@ function validateIssuedInvoice(invoice) {
   return calculated;
 }
 
-function buildLines(invoice, snapshot) {
+function validateIssuer(issuer) {
+  if (!issuer || typeof issuer !== 'object' || Array.isArray(issuer) ||
+      issuer.verified !== true ||
+      typeof issuer.id !== 'string' ||
+      !Number.isSafeInteger(issuer.versionNumber) || issuer.versionNumber < 1 ||
+      typeof issuer.legalName !== 'string' ||
+      typeof issuer.addressLine1 !== 'string' ||
+      typeof issuer.city !== 'string' ||
+      typeof issuer.region !== 'string' ||
+      typeof issuer.postalCode !== 'string' ||
+      typeof issuer.countryCode !== 'string' ||
+      typeof issuer.email !== 'string' ||
+      typeof issuer.profileHash !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(issuer.profileHash) ||
+      !issuer.taxIdentifiers || typeof issuer.taxIdentifiers !== 'object' ||
+      Array.isArray(issuer.taxIdentifiers)) {
+    throw new OfficialInvoicePdfError('VERIFIED_ISSUER_PROFILE_REQUIRED', 409);
+  }
+  return issuer;
+}
+
+function buildLines(invoice, snapshot, issuer) {
   const lines = [];
   const add = (text, font = 'F1', size = 10, gap = 4) => {
     for (const item of wrap(text, font === 'F3' || font === 'F4' ? 82 : 88)) {
@@ -151,7 +172,20 @@ function buildLines(invoice, snapshot) {
       lines.push({ text: item, font, size, gap });
     }
   };
-  add('GROUPE TAKATAK', 'F2', 15, 8);
+  add(issuer.tradeName || issuer.legalName, 'F2', 15, 3);
+  if (issuer.tradeName && issuer.tradeName !== issuer.legalName) {
+    add(issuer.legalName, 'F1', 9, 3);
+  }
+  add(issuer.addressLine1, 'F1', 9, 2);
+  if (issuer.addressLine2) add(issuer.addressLine2, 'F1', 9, 2);
+  add(issuer.city + ', ' + issuer.region + ' ' + issuer.postalCode + ' ' + issuer.countryCode, 'F1', 9, 2);
+  add(issuer.email + (issuer.phone ? ' · ' + issuer.phone : ''), 'F1', 9, 2);
+  if (issuer.businessRegistrationNumber) {
+    add('Enregistrement / Registration: ' + issuer.businessRegistrationNumber, 'F1', 8, 2);
+  }
+  for (const [code, value] of Object.entries(issuer.taxIdentifiers).sort(([a], [b]) => a.localeCompare(b))) {
+    add(code + ': ' + value, 'F1', 8, 2);
+  }
   add('FACTURE / INVOICE', 'F2', 18, 10);
   add('Numero officiel / Official number: ' + invoice.officialInvoiceNumber, 'F2', 11, 6);
   add('Fournisseur / Provider: WAVE', 'F1', 9, 3);
@@ -194,6 +228,7 @@ function buildLines(invoice, snapshot) {
     }
   }
 
+  add('Profil emetteur / Issuer profile: v' + issuer.versionNumber + ' · ' + issuer.profileHash, 'F3', 7, 2);
   add('Document genere depuis le registre immuable ISSUED_CONFIRMED.', 'F1', 7, 2);
   add('Generated from the immutable ISSUED_CONFIRMED registry.', 'F1', 7, 2);
   return lines;
@@ -233,9 +268,10 @@ function contentStream(lines, pageNumber, pageCount) {
   return Buffer.from(commands.join('\n') + '\n', 'ascii');
 }
 
-function renderIssuedInvoicePdf(invoice) {
+function renderIssuedInvoicePdf(invoice, issuerProfile) {
   const snapshot = validateIssuedInvoice(invoice);
-  const pages = paginate(buildLines(invoice, snapshot));
+  const issuer = validateIssuer(issuerProfile);
+  const pages = paginate(buildLines(invoice, snapshot, issuer));
   const objects = new Map();
   objects.set(1, Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'ascii'));
   const kids = pages.map((_, index) => (7 + index * 2) + ' 0 R').join(' ');

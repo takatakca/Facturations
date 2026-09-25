@@ -31,11 +31,12 @@ async function main() {
       '013_issued_invoice_registry.sql',
       '014_issued_invoice_documents.sql',
       '015_issuer_profile_versions.sql',
+      '016_document_issuer_profile_binding.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and owner-verified issuer profile versions');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and owner-verified issuer profile versions and immutable PDF issuer bindings');
   } finally {
     await pool.end();
   }

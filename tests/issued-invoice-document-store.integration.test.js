@@ -12,6 +12,7 @@ const { createIssuanceAuthorizationStore } = require('../src/issuance-authorizat
 const { createProviderIssuanceAttemptStore } = require('../src/provider-issuance-attempt-store');
 const { createProviderIssuanceExecutor } = require('../src/provider-issuance-executor');
 const { createIssuedInvoiceRegistry } = require('../src/issued-invoice-registry');
+const { createIssuerProfileStore } = require('../src/issuer-profile-store');
 const {
   createIssuedInvoiceDocumentStore,
   IssuedInvoiceDocumentError,
@@ -52,6 +53,7 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
   const authorizations = createIssuanceAuthorizationStore({ pool, businessId });
   const attempts = createProviderIssuanceAttemptStore({ pool, businessId });
   const registry = createIssuedInvoiceRegistry({ pool, businessId });
+  const profiles = createIssuerProfileStore({ pool, businessId });
   const documents = createIssuedInvoiceDocumentStore({ pool, businessId });
 
   try {
@@ -120,8 +122,52 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
     const confirmed = await executor.execute({ attemptId: prepared.id, payload });
     const issued = await registry.materialize({ attemptId: confirmed.id });
 
-    const document = await documents.materialize({ issuedInvoiceId: issued.id });
+    const issuerProfile = await profiles.createVersion({
+      confirmation: 'CREATE_ISSUER_PROFILE_VERSION',
+      ownerId: owner.id,
+      sessionToken: session.token,
+      legalName: 'Example Legal Québec Inc.',
+      tradeName: 'GROUPE TAKATAK',
+      addressLine1: '100 rue Exemple',
+      addressLine2: null,
+      city: 'Montréal',
+      region: 'Québec',
+      postalCode: 'H0H 0H0',
+      countryCode: 'CA',
+      email: 'billing@example.test',
+      phone: '+1 514 555 0100',
+      businessRegistrationNumber: 'SYNTHETIC-REG-PDF',
+      taxIdentifiers: {
+        GST: 'SYNTHETIC-GST-PDF',
+        QST: 'SYNTHETIC-QST-PDF',
+      },
+    });
+
+    await assert.rejects(
+      documents.materialize({
+        issuedInvoiceId: issued.id,
+        issuerProfileVersionId: issuerProfile.id,
+      }),
+      error => error instanceof IssuedInvoiceDocumentError &&
+        error.code === 'VERIFIED_ISSUER_PROFILE_REQUIRED' &&
+        error.statusCode === 409
+    );
+
+    const verifiedIssuer = await profiles.verify({
+      confirmation: 'VERIFY_ISSUER_PROFILE_FOR_INVOICING',
+      ownerId: owner.id,
+      sessionToken: session.token,
+      profileVersionId: issuerProfile.id,
+    });
+
+    const document = await documents.materialize({
+      issuedInvoiceId: issued.id,
+      issuerProfileVersionId: verifiedIssuer.id,
+    });
     assert.equal(document.issuedInvoiceId, issued.id);
+    assert.equal(document.issuerProfileVersionId, verifiedIssuer.id);
+    assert.equal(document.issuerProfileHash, verifiedIssuer.profileHash);
+    assert.equal(document.issuerProfileSnapshot.legalName, verifiedIssuer.legalName);
     assert.equal(document.documentKind, 'INVOICE_PDF');
     assert.equal(document.contentType, 'application/pdf');
     assert.equal(document.deliveryState, 'NOT_AUTHORIZED');
@@ -136,7 +182,10 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
       crypto.createHash('sha256').update(document.pdfBytes).digest('hex')
     );
 
-    const repeated = await documents.materialize({ issuedInvoiceId: issued.id });
+    const repeated = await documents.materialize({
+      issuedInvoiceId: issued.id,
+      issuerProfileVersionId: verifiedIssuer.id,
+    });
     assert.equal(repeated.id, document.id);
     assert.equal(repeated.contentSha256, document.contentSha256);
     assert.deepEqual(repeated.pdfBytes, document.pdfBytes);
@@ -155,7 +204,10 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
       ]),
     });
     await assert.rejects(
-      conflictingRenderer.materialize({ issuedInvoiceId: issued.id }),
+      conflictingRenderer.materialize({
+        issuedInvoiceId: issued.id,
+        issuerProfileVersionId: verifiedIssuer.id,
+      }),
       error => error instanceof IssuedInvoiceDocumentError &&
         error.code === 'DOCUMENT_CONFLICT' &&
         error.statusCode === 409
@@ -166,7 +218,10 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
       businessId: 'other-business-' + crypto.randomUUID(),
     });
     await assert.rejects(
-      foreign.materialize({ issuedInvoiceId: issued.id }),
+      foreign.materialize({
+        issuedInvoiceId: issued.id,
+        issuerProfileVersionId: verifiedIssuer.id,
+      }),
       error => error instanceof IssuedInvoiceDocumentError &&
         error.code === 'ISSUED_INVOICE_NOT_FOUND' &&
         error.statusCode === 404
@@ -184,6 +239,22 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
       pool.query(
         'DELETE FROM facturations_issued_invoice_documents WHERE business_id=$1 AND id=$2',
         [businessId, document.id]
+      ),
+      error => error && error.code === '23514'
+    );
+
+    const binding = await pool.query(
+      `SELECT id,issuer_profile_version_id,issuer_profile_hash
+         FROM facturations_issued_invoice_document_issuer_bindings
+        WHERE business_id=$1 AND document_id=$2`,
+      [businessId, document.id]
+    );
+    assert.equal(binding.rows[0].issuer_profile_version_id, verifiedIssuer.id);
+    assert.equal(binding.rows[0].issuer_profile_hash, verifiedIssuer.profileHash);
+    await assert.rejects(
+      pool.query(
+        'DELETE FROM facturations_issued_invoice_document_issuer_bindings WHERE business_id=$1 AND id=$2',
+        [businessId, binding.rows[0].id]
       ),
       error => error && error.code === '23514'
     );

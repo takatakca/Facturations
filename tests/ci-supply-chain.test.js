@@ -52,3 +52,12 @@ test('checkout never persists GitHub credentials in the working tree',()=>{
     assert.equal(disabledCount,checkoutCount,path.basename(file)+' must disable persisted checkout credentials');
   }
 });
+
+
+test('workflow runner generation is explicit rather than ubuntu-latest',()=>{
+  for(const file of workflowFiles()){
+    const content=fs.readFileSync(file,'utf8');
+    assert.equal(content.includes('ubuntu-latest'),false,path.basename(file)+' must not use ubuntu-latest');
+    assert.match(content,/runs-on:\s*ubuntu-24\.04\b/u);
+  }
+});

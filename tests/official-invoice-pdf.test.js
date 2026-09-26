@@ -82,3 +82,34 @@ test('renderer refuses unsupported characters instead of corrupting customer tex
       error.statusCode === 409
   );
 });
+
+
+test('qualified PDF embeds exact verified issuer identity and profile provenance', () => {
+  const invoice = issued(snapshot());
+  const profile = {
+    id: crypto.randomUUID(),
+    version: 3,
+    legalName: 'Synthetic Legal Corporation',
+    displayName: 'Synthetic Trade Name',
+    addressLines: ['100 Example Avenue', 'Suite 200'],
+    city: 'Montreal',
+    region: 'QC',
+    postalCode: 'H0H 0H0',
+    countryCode: 'CA',
+    contactEmail: 'billing@example.test',
+    contactPhone: '+1 514 555 0100',
+    taxRegistrations: [
+      { scheme: 'GST', registrationNumber: 'SYNTHETIC-GST-001' },
+      { scheme: 'QST', registrationNumber: 'SYNTHETIC-QST-001' },
+    ],
+    profileHash: 'a'.repeat(64),
+    state: 'VERIFIED',
+  };
+  const pdf = renderIssuedInvoicePdf(invoice, profile);
+  const text = pdf.toString('latin1');
+  assert.ok(text.includes('Synthetic Legal Corporation'));
+  assert.ok(text.includes('Synthetic Trade Name'));
+  assert.ok(text.includes('SYNTHETIC-GST-001'));
+  assert.ok(text.includes('SYNTHETIC-QST-001'));
+  assert.ok(text.includes('v3 SHA-256 ' + 'a'.repeat(64)));
+});

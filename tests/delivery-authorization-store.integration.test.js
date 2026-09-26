@@ -22,6 +22,7 @@ const {
 } = require('../src/delivery-authorization-store');
 const { createDeliveryAttemptStore } = require('../src/delivery-attempt-store');
 const { createDeliveryExecutor } = require('../src/delivery-executor');
+const { createDeliveryReceiptStore } = require('../src/delivery-receipt-store');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -53,6 +54,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
   const qualifiedDocuments = createQualifiedInvoiceDocumentStore({ pool, businessId });
   const delivery = createDeliveryAuthorizationStore({ pool, businessId });
   const deliveryAttempts = createDeliveryAttemptStore({ pool, businessId });
+  const deliveryReceipts = createDeliveryReceiptStore({ pool, businessId });
 
   try {
     const owner = await auth.createPendingStaff({
@@ -218,6 +220,41 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(delivered.state, 'CONFIRMED');
     assert.ok(delivered.providerMessageId.startsWith('simulated-message-'));
     assert.equal(delivered.emailed, true);
+
+    const receipt = await deliveryReceipts.materialize({ attemptId: delivered.id });
+    assert.equal(receipt.attemptId, delivered.id);
+    assert.equal(receipt.authorizationId, authorized.id);
+    assert.equal(receipt.issuedInvoiceId, issued.id);
+    assert.equal(receipt.qualifiedDocumentId, qualified.id);
+    assert.equal(receipt.qualifiedDocumentSha256, qualified.contentSha256);
+    assert.equal(receipt.expectedRecipientEmail, recipient.toLowerCase());
+    assert.equal(receipt.provider, 'SIMULATED_EMAIL');
+    assert.equal(receipt.providerMessageId, delivered.providerMessageId);
+    assert.match(receipt.receiptSha256, /^[a-f0-9]{64}$/);
+    assert.equal(receipt.externalDeliveryIndependentlyVerified, false);
+
+    const receiptRetry = await deliveryReceipts.materialize({ attemptId: delivered.id });
+    assert.equal(receiptRetry.id, receipt.id);
+    assert.equal(receiptRetry.receiptSha256, receipt.receiptSha256);
+
+    const receiptLookup = await deliveryReceipts.getByAttempt({ attemptId: delivered.id });
+    assert.equal(receiptLookup.id, receipt.id);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_receipts SET receipt_sha256=receipt_sha256
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, receipt.id]
+      ),
+      error => error && error.code === '23514'
+    );
+    await assert.rejects(
+      pool.query(
+        'DELETE FROM facturations_delivery_receipts WHERE business_id=$1 AND id=$2',
+        [businessId, receipt.id]
+      ),
+      error => error && error.code === '23514'
+    );
 
     const eventRows = await pool.query(
       `SELECT from_state,to_state,reason_code

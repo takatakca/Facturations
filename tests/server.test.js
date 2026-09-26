@@ -107,3 +107,43 @@ test('write requests to protected Wave route are rejected without contacting Wav
     assert.equal(calls, 0);
   });
 });
+
+
+test('readiness is public, fail-closed without a probe, and never exposes database errors', async () => {
+  const server = createServer({
+    config: { adminKey: key, waveToken: '' },
+    readinessCheck: null,
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    let result = await request(base, '/ready');
+    assert.equal(result.response.status, 503);
+    assert.deepEqual(result.payload, { ok: false, service: 'takatak-wave' });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+
+  for (const [check, expectedStatus, expectedOk] of [
+    [async () => true, 200, true],
+    [async () => false, 503, false],
+    [async () => { throw new Error('private database detail'); }, 503, false],
+  ]) {
+    const readyServer = createServer({
+      config: { adminKey: key, waveToken: '' },
+      readinessCheck: check,
+    });
+    readyServer.listen(0, '127.0.0.1');
+    await once(readyServer, 'listening');
+    const readyBase = `http://127.0.0.1:${readyServer.address().port}`;
+    try {
+      const result = await request(readyBase, '/ready');
+      assert.equal(result.response.status, expectedStatus);
+      assert.deepEqual(result.payload, { ok: expectedOk, service: 'takatak-wave' });
+      assert.equal(JSON.stringify(result.payload).includes('database'), false);
+    } finally {
+      await new Promise(resolve => readyServer.close(resolve));
+    }
+  }
+});

@@ -3,6 +3,11 @@
 const DEFAULT_PORT = 3000;
 
 function loadConfig(env = process.env) {
+  const nodeEnv = (env.NODE_ENV || 'development').trim();
+  if (!['development', 'test', 'production'].includes(nodeEnv)) {
+    throw new Error('NODE_ENV must be development, test or production');
+  }
+
   const rawPort = env.PORT || String(DEFAULT_PORT);
   if (!/^\d{1,5}$/.test(rawPort)) {
     throw new Error('PORT must be an integer from 0 to 65535');
@@ -41,6 +46,20 @@ function loadConfig(env = process.env) {
     }
     if (!/^[a-f0-9]{64}$/i.test(totpEncryptionKeyHex)) {
       throw new Error('FACTURATIONS_TOTP_ENCRYPTION_KEY must be 32 bytes encoded as hex');
+    }
+  }
+
+  if (nodeEnv === 'production') {
+    if (port === 0) throw new Error('Production PORT must not be zero');
+    if (!databaseUrl || !businessId) {
+      throw new Error('Production requires the dedicated Facturations database and business ID');
+    }
+    if (!browserOrigin || !totpEncryptionKeyHex) {
+      throw new Error('Production requires HTTPS browser origin and TOTP encryption key');
+    }
+    const hostname = new URL(browserOrigin).hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      throw new Error('Production browser origin must not use a loopback hostname');
     }
   }
 

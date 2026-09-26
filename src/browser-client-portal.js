@@ -110,18 +110,20 @@ function reply(response,status,extra={},body=''){
   response.writeHead(status,{...HEADERS,...extra});
   response.end(body);
 }
-function page(language,title,body){
+function page(language,title,body,languageHref=null){
   const t=COPY[language];
   const other=language==='fr'?'en':'fr';
   const otherLabel=language==='fr'?'English':'Français';
+  const switchHref=languageHref??('/portal?lang='+other);
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} — GROUPE TAKATAK</title><style>
 :root{color-scheme:light;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f6fa;color:#152338}*{box-sizing:border-box}body{margin:0;line-height:1.5}main{max-width:980px;margin:auto;padding:clamp(18px,4vw,52px)}header{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:30px}.brand{font-size:.78rem;font-weight:850;letter-spacing:.12em;color:#14536b}.lang{font-weight:750;color:#164b9b;text-decoration:none}.lang:focus-visible,a:focus-visible,button:focus-visible{outline:3px solid #3567b7;outline-offset:3px}h1{font-size:clamp(2rem,6vw,3.1rem);line-height:1.08;margin:.35rem 0}.muted{color:#52647c}.panel,.card{background:#fff;border:1px solid #dce5ef;border-radius:18px;box-shadow:0 4px 18px rgba(12,28,48,.04)}.panel{padding:clamp(20px,4vw,38px)}.cards{display:grid;gap:14px}.card{padding:20px}.row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px}.number{font-weight:850;font-size:1.1rem}.money{font-weight:850;font-variant-numeric:tabular-nums}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:22px 0}.metric{padding:16px;border-radius:12px;background:#f6f8fb}.metric span{display:block;color:#52647c;font-size:.84rem}.metric strong{display:block;margin-top:4px;overflow-wrap:anywhere}.button,button{display:inline-block;border:0;border-radius:10px;padding:12px 16px;background:#164b9b;color:#fff;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.secondary{background:#fff;color:#173e76;border:1px solid #b7c8df}.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:18px}.actions form{margin:0}.notice{border-left:4px solid #3567b7;background:#eaf1ff;color:#234576;padding:13px 15px;border-radius:8px;margin:16px 0}.danger{border-left-color:#9a3030;background:#fff1f1;color:#862626}.empty{text-align:center;color:#52647c;padding:38px 12px}.hash{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.78rem;overflow-wrap:anywhere}.status{display:inline-block;border-radius:999px;background:#e5f5ed;color:#0e5d38;padding:4px 10px;font-weight:750;font-size:.82rem}footer{margin-top:30px;color:#64748b;font-size:.8rem}@media(max-width:650px){header{align-items:flex-start}.grid{grid-template-columns:1fr}.row{display:block}.row .money{margin-top:8px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important}}
-</style></head><body><main><header><div><div class="brand">GROUPE TAKATAK</div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(t.subtitle)}</p></div><a class="lang" href="/portal?lang=${other}" lang="${other}">${otherLabel}</a></header>${body}<footer>${escapeHtml(t.portal)} · GROUPE TAKATAK</footer></main></body></html>`;
+</style></head><body><main><header><div><div class="brand">GROUPE TAKATAK</div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(t.subtitle)}</p></div><a class="lang" href="${escapeHtml(switchHref)}" lang="${other}">${otherLabel}</a></header>${body}<footer>${escapeHtml(t.portal)} · GROUPE TAKATAK</footer></main></body></html>`;
 }
 function renderAccess(language,token,error=false){
   const t=COPY[language];
   const notice=error?`<p class="notice danger" role="alert">${escapeHtml(t.accessError)}</p>`:'';
-  return page(language,t.accessTitle,`<section class="panel">${notice}<p>${escapeHtml(t.accessText)}</p><form method="post" action="/portal/access?lang=${language}"><input type="hidden" name="token" value="${escapeHtml(token)}"><button type="submit">${escapeHtml(t.continue)}</button></form></section>`);
+  const other=language==='fr'?'en':'fr';
+  return page(language,t.accessTitle,`<section class="panel">${notice}<p>${escapeHtml(t.accessText)}</p><form method="post" action="/portal/access?lang=${language}"><input type="hidden" name="token" value="${escapeHtml(token)}"><button type="submit">${escapeHtml(t.continue)}</button></form></section>`,`/portal/access?lang=${other}&token=${encodeURIComponent(token)}`);
 }
 function renderSignedOut(language){
   const t=COPY[language];

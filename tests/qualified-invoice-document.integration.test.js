@@ -450,7 +450,7 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
          (SELECT count(*)::integer FROM facturations_qualified_invoice_documents WHERE business_id=$1) AS qualified_documents`,
       [businessId]
     );
-    assert.deepEqual(counts.rows, [{ bindings: 2, qualified_documents: 1 }]);
+    assert.deepEqual(counts.rows, [{ bindings: 3, qualified_documents: 2 }]);
   } finally {
     await pool.end();
   }

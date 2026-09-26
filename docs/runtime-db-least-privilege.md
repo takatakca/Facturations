@@ -9,7 +9,7 @@ Le rôle runtime ne doit jamais être propriétaire du schéma, des tables, séq
 
 ## Politique
 
-Le fichier `ops/runtime-db-grants.sql` est appliqué **après** les migrations 001–026 par le rôle de migration.
+Le fichier `ops/runtime-db-grants.sql` est appliqué **après** les migrations 001–027 par le rôle de migration.
 
 Il retire les privilèges implicites dangereux sur la base dédiée puis accorde explicitement :
 
@@ -41,10 +41,17 @@ Le script de vérification refuse toute cible autre que la base jetable locale `
 
 ## Ordre de déploiement
 
-1. le migrateur applique 001–026;
+1. le migrateur applique 001–027;
 2. le migrateur applique `ops/runtime-db-grants.sql`;
 3. l’application démarre avec l’URL du **rôle runtime**, jamais avec l’URL du propriétaire/migrateur;
 4. `/ready` vérifie la connectivité runtime;
 5. aucune migration n’est exécutée par le processus applicatif.
 
 Cette séparation doit être revalidée après chaque nouvelle migration.
+
+
+## MFA recovery
+
+Les tables `facturations_mfa_recovery_authorizations` et `facturations_mfa_recovery_events`, ainsi que leur séquence d’identité, sont explicitement refusées au rôle runtime.
+
+Sur `facturations_staff_totp`, le runtime n’a pas de droit INSERT et n’a qu’un UPDATE par colonnes sur `active`, `activated_at` et `last_used_step`. Les colonnes `secret_iv`, `secret_ciphertext` et `secret_tag` restent hors de sa portée. La rotation de secret appartient à la cérémonie d’opération séparée.

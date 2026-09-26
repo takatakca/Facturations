@@ -143,7 +143,48 @@ function validateIssuedInvoice(invoice) {
   return calculated;
 }
 
-function buildLines(invoice, snapshot) {
+function validateIssuerProfile(profile) {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile) ||
+      profile.state !== 'VERIFIED' ||
+      !Number.isSafeInteger(profile.version) || profile.version < 1 ||
+      typeof profile.profileHash !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(profile.profileHash) ||
+      typeof profile.legalName !== 'string' ||
+      typeof profile.displayName !== 'string' ||
+      !Array.isArray(profile.addressLines) || profile.addressLines.length < 1 ||
+      typeof profile.city !== 'string' ||
+      typeof profile.region !== 'string' ||
+      typeof profile.postalCode !== 'string' ||
+      typeof profile.countryCode !== 'string' ||
+      !Array.isArray(profile.taxRegistrations)) {
+    throw new OfficialInvoicePdfError('VERIFIED_ISSUER_PROFILE_REQUIRED', 409);
+  }
+  const values = [
+    profile.legalName,
+    profile.displayName,
+    ...profile.addressLines,
+    profile.city,
+    profile.region,
+    profile.postalCode,
+    profile.countryCode,
+    profile.contactEmail || '',
+    profile.contactPhone || '',
+    profile.profileHash,
+  ];
+  for (const value of values) if (value) winAnsi(value);
+  for (const registration of profile.taxRegistrations) {
+    if (!registration || typeof registration !== 'object' ||
+        typeof registration.scheme !== 'string' ||
+        typeof registration.registrationNumber !== 'string') {
+      throw new OfficialInvoicePdfError('INVALID_ISSUER_TAX_REGISTRATION', 409);
+    }
+    winAnsi(registration.scheme);
+    winAnsi(registration.registrationNumber);
+  }
+  return profile;
+}
+
+function buildLines(invoice, snapshot, issuerProfile = null) {
   const lines = [];
   const add = (text, font = 'F1', size = 10, gap = 4) => {
     for (const item of wrap(text, font === 'F3' || font === 'F4' ? 82 : 88)) {
@@ -157,6 +198,37 @@ function buildLines(invoice, snapshot) {
   add('Fournisseur / Provider: WAVE', 'F1', 9, 3);
   add('Identifiant fournisseur / Provider ID: ' + invoice.providerInvoiceId, 'F3', 8, 7);
   add('Confirmee / Confirmed: ' + invoice.providerConfirmedAt, 'F1', 9, 10);
+
+  if (issuerProfile) {
+    add('EMETTEUR VERIFIE / VERIFIED ISSUER', 'F2', 11, 5);
+    add(issuerProfile.legalName, 'F2', 10, 3);
+    if (issuerProfile.displayName !== issuerProfile.legalName) {
+      add('Nom affiche / Display name: ' + issuerProfile.displayName, 'F1', 9, 3);
+    }
+    issuerProfile.addressLines.forEach(line => add(line, 'F1', 9, 2));
+    add(
+      issuerProfile.city + ', ' + issuerProfile.region + ' ' +
+      issuerProfile.postalCode + ' ' + issuerProfile.countryCode,
+      'F1', 9, 3
+    );
+    if (issuerProfile.contactEmail) {
+      add('Courriel / Email: ' + issuerProfile.contactEmail, 'F1', 9, 2);
+    }
+    if (issuerProfile.contactPhone) {
+      add('Telephone / Phone: ' + issuerProfile.contactPhone, 'F1', 9, 2);
+    }
+    issuerProfile.taxRegistrations.forEach(registration => {
+      add(
+        registration.scheme + ': ' + registration.registrationNumber,
+        'F3', 8, 2
+      );
+    });
+    add(
+      'Profil emetteur / Issuer profile v' + issuerProfile.version +
+      ' SHA-256 ' + issuerProfile.profileHash,
+      'F3', 7, 8
+    );
+  }
 
   add('CLIENT / CUSTOMER', 'F2', 11, 5);
   add(snapshot.customer.name, 'F1', 10, 3);
@@ -233,9 +305,10 @@ function contentStream(lines, pageNumber, pageCount) {
   return Buffer.from(commands.join('\n') + '\n', 'ascii');
 }
 
-function renderIssuedInvoicePdf(invoice) {
+function renderIssuedInvoicePdf(invoice, issuerProfile = null) {
   const snapshot = validateIssuedInvoice(invoice);
-  const pages = paginate(buildLines(invoice, snapshot));
+  const verifiedIssuer = issuerProfile == null ? null : validateIssuerProfile(issuerProfile);
+  const pages = paginate(buildLines(invoice, snapshot, verifiedIssuer));
   const objects = new Map();
   objects.set(1, Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'ascii'));
   const kids = pages.map((_, index) => (7 + index * 2) + ' 0 R').join(' ');

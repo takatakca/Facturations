@@ -40,7 +40,6 @@ GRANT SELECT ON
   facturations_staff_invitations,
   facturations_draft_approvals,
   facturations_login_attempt_limits,
-  facturations_staff_totp,
   facturations_draft_workspaces,
   facturations_draft_workspace_revisions,
   facturations_workspace_submissions,
@@ -77,7 +76,6 @@ GRANT INSERT ON
   facturations_staff_invitations,
   facturations_draft_approvals,
   facturations_login_attempt_limits,
-  facturations_staff_totp,
   facturations_draft_workspaces,
   facturations_draft_workspace_revisions,
   facturations_workspace_submissions,
@@ -118,6 +116,19 @@ GRANT UPDATE ON
   facturations_client_sessions
 TO :"runtime_role";
 
+GRANT UPDATE(active,activated_at,last_used_step)
+  ON facturations_staff_totp TO :"runtime_role";
+
 GRANT DELETE ON facturations_login_attempt_limits TO :"runtime_role";
 
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :"runtime_role";
+
+-- MFA recovery is a separate trusted operator ceremony, never an app-runtime capability.
+REVOKE ALL PRIVILEGES ON
+  facturations_mfa_recovery_authorizations,
+  facturations_mfa_recovery_events
+FROM :"runtime_role";
+
+REVOKE ALL PRIVILEGES ON SEQUENCE
+  facturations_mfa_recovery_events_id_seq
+FROM :"runtime_role";

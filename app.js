@@ -1,6 +1,7 @@
 'use strict';
 
 const { loadConfig } = require('./src/config');
+const { assertProductionRuntime } = require('./src/production-readiness');
 const { createServer } = require('./src/server');
 const { attachReadOnlyDashboardCookie } = require('./src/browser-dashboard-session');
 const { attachBrowserStaffLogin } = require('./src/browser-staff-login');
@@ -34,6 +35,7 @@ const { attachBrowserClientPortal } = require('./src/browser-client-portal');
 
 if (require.main === module) {
   const config = loadConfig();
+  assertProductionRuntime({ config, env: process.env });
   let draftStore = null;
   let dashboardStore = null;
   let staffAuthStore = null;

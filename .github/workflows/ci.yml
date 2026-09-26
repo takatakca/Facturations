@@ -36,3 +36,5 @@ jobs:
       - run: node scripts/setup-test-db.js
       - run: npm run check
       - run: npm test
+      - name: Prove isolated PostgreSQL backup and restore
+        run: npm run test:backup-restore

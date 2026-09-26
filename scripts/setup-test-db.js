@@ -40,11 +40,12 @@ async function main() {
       '022_signed_webhook_evidence_provenance.sql',
       '023_payment_evidence.sql',
       '024_payment_evidence_summary.sql',
+      '025_client_portal_auth.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and verified versioned issuer profiles and issuer-bound qualified invoice PDFs and immutable delivery authorizations and persistent simulated delivery attempts and immutable simulated delivery receipts and append-only synthetic provider evidence and read-only evidence summary projection and verified signed webhook evidence provenance');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and verified versioned issuer profiles and issuer-bound qualified invoice PDFs and immutable delivery authorizations and persistent simulated delivery attempts and immutable simulated delivery receipts and append-only synthetic provider evidence and read-only evidence summary projection and verified signed webhook evidence provenance, payment projections and passwordless client portal auth');
   } finally {
     await pool.end();
   }

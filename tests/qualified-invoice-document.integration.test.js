@@ -23,6 +23,8 @@ const {
   QualifiedInvoiceDocumentError,
 } = require('../src/qualified-invoice-document-store');
 const { createClientPortalPublicationStore } = require('../src/client-portal-publication-store');
+const { createClientPortalAuthStore } = require('../src/client-portal-auth-store');
+const { createClientPortalReadStore, ClientPortalReadError } = require('../src/client-portal-read-store');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -161,6 +163,8 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
   const bindings = createInvoiceIssuerBindingStore({ pool, businessId });
   const qualifiedDocuments = createQualifiedInvoiceDocumentStore({ pool, businessId });
   const publications = createClientPortalPublicationStore({ pool, businessId });
+  const clientAuth = createClientPortalAuthStore({ pool, businessId });
+  const portalRead = createClientPortalReadStore({ pool, businessId, authStore: clientAuth });
 
   try {
     const { owner, session } = await provisionOwner({ auth, invitations, password });
@@ -246,6 +250,84 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
     assert.equal(publicationLookup.id, publication.id);
     assert.equal(publicationLookup.revoked, false);
 
+    const customerLookup = await pool.query(
+      'SELECT customer_id FROM invoice_drafts WHERE business_id=$1 AND id=$2',
+      [businessId, fixture.draft.id]
+    );
+    const customerId = customerLookup.rows[0].customer_id;
+    const accessLink = await clientAuth.issueAccessLink({
+      customerId,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+    const clientSession = await clientAuth.redeemAccessLink({ token: accessLink.token });
+
+    const visible = await portalRead.listInvoices({ sessionToken: clientSession.token });
+    assert.equal(visible.length, 1);
+    assert.equal(visible[0].issuedInvoiceId, fixture.issued.id);
+    assert.equal(visible[0].qualifiedDocumentId, qualified.id);
+    assert.equal(visible[0].qualifiedDocumentSha256, qualified.contentSha256);
+    assert.equal(visible[0].payment.financialState, 'NO_EVIDENCE');
+    assert.equal(visible[0].payment.proofScope, 'NONE');
+    assert.equal(visible[0].payment.balanceCents, fixture.draft.preview.totalCents);
+
+    const detail = await portalRead.getInvoice({
+      sessionToken: clientSession.token,
+      issuedInvoiceId: fixture.issued.id,
+    });
+    assert.equal(detail.officialInvoiceNumber, fixture.issued.officialInvoiceNumber);
+
+    const clientPdf = await portalRead.getQualifiedPdf({
+      sessionToken: clientSession.token,
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(clientPdf.contentSha256, qualified.contentSha256);
+    assert.deepEqual(clientPdf.pdfBytes, qualified.pdfBytes);
+
+    const otherFixture = await createIssuedFixture({
+      drafts, approvals, authorizations, attempts, registry, documents,
+      owner, session, suffix: 'other-client', taxable: false,
+    });
+    const otherBinding = await bindings.bind({
+      confirmation: 'BIND_VERIFIED_ISSUER_TO_INVOICE',
+      issuedInvoiceId: otherFixture.issued.id,
+      issuerProfileId: profile.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+    const otherQualified = await qualifiedDocuments.materialize({ bindingId: otherBinding.id });
+    await publications.authorize({
+      confirmation: 'AUTHORIZE_CLIENT_PORTAL_PUBLICATION',
+      qualifiedDocumentId: otherQualified.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+
+    const visibleAfterOtherPublication = await portalRead.listInvoices({
+      sessionToken: clientSession.token,
+    });
+    assert.equal(visibleAfterOtherPublication.length, 1);
+    assert.equal(visibleAfterOtherPublication[0].issuedInvoiceId, fixture.issued.id);
+
+    await assert.rejects(
+      portalRead.getInvoice({
+        sessionToken: clientSession.token,
+        issuedInvoiceId: otherFixture.issued.id,
+      }),
+      error => error instanceof ClientPortalReadError &&
+        error.code === 'PORTAL_INVOICE_NOT_FOUND' &&
+        error.statusCode === 404
+    );
+    await assert.rejects(
+      portalRead.getQualifiedPdf({
+        sessionToken: clientSession.token,
+        qualifiedDocumentId: otherQualified.id,
+      }),
+      error => error instanceof ClientPortalReadError &&
+        error.code === 'PORTAL_PDF_NOT_FOUND' &&
+        error.statusCode === 404
+    );
+
     const revoked = await publications.revoke({
       confirmation: 'REVOKE_CLIENT_PORTAL_PUBLICATION',
       publicationId: publication.id,
@@ -261,6 +343,19 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
       qualifiedDocumentId: qualified.id,
     });
     assert.equal(revokedLookup.revoked, true);
+    assert.deepEqual(
+      await portalRead.listInvoices({ sessionToken: clientSession.token }),
+      []
+    );
+    await assert.rejects(
+      portalRead.getInvoice({
+        sessionToken: clientSession.token,
+        issuedInvoiceId: fixture.issued.id,
+      }),
+      error => error instanceof ClientPortalReadError &&
+        error.code === 'PORTAL_INVOICE_NOT_FOUND' &&
+        error.statusCode === 404
+    );
 
     await assert.rejects(
       pool.query(
@@ -355,7 +450,7 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
          (SELECT count(*)::integer FROM facturations_qualified_invoice_documents WHERE business_id=$1) AS qualified_documents`,
       [businessId]
     );
-    assert.deepEqual(counts.rows, [{ bindings: 2, qualified_documents: 1 }]);
+    assert.deepEqual(counts.rows, [{ bindings: 3, qualified_documents: 2 }]);
   } finally {
     await pool.end();
   }

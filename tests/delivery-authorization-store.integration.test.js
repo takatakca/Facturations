@@ -22,6 +22,10 @@ const {
 } = require('../src/delivery-authorization-store');
 const { createDeliveryAttemptStore } = require('../src/delivery-attempt-store');
 const { createDeliveryExecutor } = require('../src/delivery-executor');
+const {
+  createDeliveryReceiptStore,
+  DeliveryReceiptError,
+} = require('../src/delivery-receipt-store');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -53,6 +57,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
   const qualifiedDocuments = createQualifiedInvoiceDocumentStore({ pool, businessId });
   const delivery = createDeliveryAuthorizationStore({ pool, businessId });
   const deliveryAttempts = createDeliveryAttemptStore({ pool, businessId });
+  const deliveryReceipts = createDeliveryReceiptStore({ pool, businessId });
 
   try {
     const owner = await auth.createPendingStaff({
@@ -199,6 +204,13 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(deliveryAttempt.provider, 'SIMULATED_EMAIL');
     assert.equal(deliveryAttempt.emailed, false);
 
+    await assert.rejects(
+      deliveryReceipts.materialize({ attemptId: deliveryAttempt.id }),
+      error => error instanceof DeliveryReceiptError &&
+        error.code === 'CONFIRMED_DELIVERY_ATTEMPT_REQUIRED' &&
+        error.statusCode === 409
+    );
+
     const deliveryExecutor = createDeliveryExecutor({
       attemptStore: deliveryAttempts,
       adapter: {
@@ -219,6 +231,30 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.ok(delivered.providerMessageId.startsWith('simulated-message-'));
     assert.equal(delivered.emailed, true);
 
+    const receipt = await deliveryReceipts.materialize({ attemptId: delivered.id });
+    assert.equal(receipt.attemptId, delivered.id);
+    assert.equal(receipt.authorizationId, authorized.id);
+    assert.equal(receipt.issuedInvoiceId, issued.id);
+    assert.equal(receipt.qualifiedDocumentId, qualified.id);
+    assert.equal(receipt.qualifiedDocumentSha256, qualified.contentSha256);
+    assert.equal(receipt.expectedRecipientEmail, recipient.toLowerCase());
+    assert.equal(receipt.recipientSnapshotHash, authorized.recipientSnapshotHash);
+    assert.equal(receipt.provider, 'SIMULATED_EMAIL');
+    assert.equal(receipt.providerMessageId, delivered.providerMessageId);
+    assert.equal(receipt.operationKey, delivered.operationKey);
+    assert.match(receipt.receiptHash, /^[a-f0-9]{64}$/);
+    assert.equal(receipt.status, 'DELIVERY_CONFIRMED_SIMULATED');
+    assert.equal(receipt.proofScope, 'SIMULATED_ADAPTER_ONLY');
+    assert.equal(receipt.simulated, true);
+    assert.equal(receipt.realEmailProven, false);
+
+    const receiptRetry = await deliveryReceipts.materialize({ attemptId: delivered.id });
+    assert.equal(receiptRetry.id, receipt.id);
+    assert.equal(receiptRetry.receiptHash, receipt.receiptHash);
+
+    const loadedReceipt = await deliveryReceipts.getByAttempt({ attemptId: delivered.id });
+    assert.equal(loadedReceipt.id, receipt.id);
+
     const eventRows = await pool.query(
       `SELECT from_state,to_state,reason_code
          FROM facturations_delivery_events
@@ -232,14 +268,25 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       { from_state: 'IN_PROGRESS', to_state: 'CONFIRMED', reason_code: 'PROVIDER_CONFIRMED' },
     ]);
 
+    const otherBusinessId = 'delivery-other-' + crypto.randomUUID();
     const foreign = createDeliveryAuthorizationStore({
       pool,
-      businessId: 'delivery-other-' + crypto.randomUUID(),
+      businessId: otherBusinessId,
     });
     await assert.rejects(
       foreign.getByQualifiedDocument({ qualifiedDocumentId: qualified.id }),
       error => error instanceof DeliveryAuthorizationError &&
         error.code === 'DELIVERY_AUTHORIZATION_NOT_FOUND' &&
+        error.statusCode === 404
+    );
+    const foreignReceipts = createDeliveryReceiptStore({
+      pool,
+      businessId: otherBusinessId,
+    });
+    await assert.rejects(
+      foreignReceipts.getByAttempt({ attemptId: delivered.id }),
+      error => error instanceof DeliveryReceiptError &&
+        error.code === 'DELIVERY_RECEIPT_NOT_FOUND' &&
         error.statusCode === 404
     );
 
@@ -277,6 +324,21 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
         `UPDATE facturations_delivery_events SET reason_code=reason_code
           WHERE business_id=$1 AND attempt_id=$2`,
         [businessId, deliveryAttempt.id]
+      ),
+      error => error && error.code === '23514'
+    );
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_receipts SET status=status
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, receipt.id]
+      ),
+      error => error && error.code === '23514'
+    );
+    await assert.rejects(
+      pool.query(
+        'DELETE FROM facturations_delivery_receipts WHERE business_id=$1 AND id=$2',
+        [businessId, receipt.id]
       ),
       error => error && error.code === '23514'
     );

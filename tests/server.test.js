@@ -8,8 +8,8 @@ const key = 'k'.repeat(64);
 const demoResponse = { data: { businesses: { pageInfo: { totalCount: 1 },
   edges: [{ node: { id: 'id-1', name: 'Demo' } }] } } };
 
-async function withServer(config, fetchImpl, run) {
-  const server = createServer({ config, fetchImpl });
+async function withServer(config, fetchImpl, run, readinessCheck = null) {
+  const server = createServer({ config, fetchImpl, readinessCheck });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -106,4 +106,25 @@ test('write requests to protected Wave route are rejected without contacting Wav
     assert.deepEqual(payload, { error: 'METHOD_NOT_ALLOWED' });
     assert.equal(calls, 0);
   });
+});
+
+
+test('readiness is separate from liveness and fails closed without a working dependency check', async () => {
+  await withServer({ adminKey: key, waveToken: '' }, async () => { throw Error('unused'); }, async (base) => {
+    const missing = await request(base, '/ready');
+    assert.equal(missing.response.status, 503);
+    assert.deepEqual(missing.payload, { ok: false, service: 'takatak-wave', readiness: 'not_configured' });
+  });
+
+  await withServer({ adminKey: key, waveToken: '' }, async () => { throw Error('unused'); }, async (base) => {
+    const ready = await request(base, '/ready');
+    assert.equal(ready.response.status, 200);
+    assert.deepEqual(ready.payload, { ok: true, service: 'takatak-wave', readiness: 'ready' });
+  }, async () => true);
+
+  await withServer({ adminKey: key, waveToken: '' }, async () => { throw Error('unused'); }, async (base) => {
+    const unavailable = await request(base, '/ready');
+    assert.equal(unavailable.response.status, 503);
+    assert.deepEqual(unavailable.payload, { ok: false, service: 'takatak-wave', readiness: 'unavailable' });
+  }, async () => { throw new Error('synthetic database outage'); });
 });

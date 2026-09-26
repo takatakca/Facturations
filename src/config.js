@@ -3,12 +3,24 @@
 const DEFAULT_PORT = 3000;
 
 function loadConfig(env = process.env) {
+  const nodeEnv = (env.NODE_ENV || 'development').trim();
+  if (!['development', 'test', 'production'].includes(nodeEnv)) {
+    throw new Error('NODE_ENV must be development, test or production');
+  }
+  const productionMode = nodeEnv === 'production';
+  const rawTrustProxy = (env.FACTURATIONS_TRUST_PROXY || '').trim();
+  if (rawTrustProxy && rawTrustProxy !== '1') {
+    throw new Error('FACTURATIONS_TRUST_PROXY must be 1 when enabled');
+  }
+  const trustProxy = rawTrustProxy === '1';
+
   const rawPort = env.PORT || String(DEFAULT_PORT);
   if (!/^\d{1,5}$/.test(rawPort)) {
     throw new Error('PORT must be an integer from 0 to 65535');
   }
   const port = Number(rawPort);
   if (port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
+  if (productionMode && port === 0) throw new Error('PORT 0 is not allowed in production');
 
   const adminKey = env.TAKATAK_ADMIN_KEY || '';
   if (adminKey && adminKey.length < 32) {
@@ -31,6 +43,13 @@ function loadConfig(env = process.env) {
   if (Boolean(browserOrigin) !== Boolean(totpEncryptionKeyHex)) {
     throw new Error('FACTURATIONS_PUBLIC_ORIGIN and FACTURATIONS_TOTP_ENCRYPTION_KEY must be configured together');
   }
+  if (productionMode && (!databaseUrl || !businessId || !browserOrigin || !totpEncryptionKeyHex)) {
+    throw new Error('Production requires dedicated database, business ID, HTTPS origin and MFA encryption key');
+  }
+  if (productionMode && !trustProxy) {
+    throw new Error('Production requires FACTURATIONS_TRUST_PROXY=1 behind the dedicated HTTPS reverse proxy');
+  }
+
   if (browserOrigin) {
     let parsed;
     try { parsed = new URL(browserOrigin); }
@@ -45,6 +64,9 @@ function loadConfig(env = process.env) {
   }
 
   return Object.freeze({
+    nodeEnv,
+    productionMode,
+    trustProxy,
     port,
     adminKey,
     waveToken: (env.WAVE_ACCESS_TOKEN || '').trim(),

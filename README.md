@@ -59,6 +59,14 @@ Pour le mode local non connecté, garder `.env` privé, lancer `npm run dev` pui
 
 Les routes `/api/*` restent séparées des cookies navigateur; un UUID n'est jamais une autorisation. Une modification du répertoire clients ne modifie pas les anciennes factures en préparation.
 
+## PostgreSQL : séparation migrateur / runtime
+
+La base dédiée doit utiliser un rôle de migration distinct du rôle Node runtime.
+
+Après les migrations 001–026, le rôle propriétaire applique `ops/runtime-db-grants.sql`. Le processus Node utilise ensuite uniquement le rôle runtime à privilèges minimaux : lecture + écritures explicitement nécessaires, aucun droit DDL et aucune propriété d’objet.
+
+La CI dédiée `Runtime DB least privilege` recrée cette séparation sur PostgreSQL 16 et vérifie la matrice complète. Toute nouvelle table/vue non déclarée fait échouer le gate. Voir `docs/runtime-db-least-privilege.md`.
+
 ## Conditions AVANT toute fusion ou préproduction
 
 1. L'exploitant doit confirmer une application et une base **Facturations seules**, DNS/certificat HTTPS publics, proxy de confiance, port Node inaccessible directement, limitation IP et comptes SQL à droits minimaux. Ne pas toucher aux services TAKATAK existants.

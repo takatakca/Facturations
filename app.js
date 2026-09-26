@@ -31,6 +31,8 @@ const { createApprovalLedger } = require('./src/approval-ledger');
 const { createClientPortalAuthStore } = require('./src/client-portal-auth-store');
 const { createClientPortalReadStore } = require('./src/client-portal-read-store');
 const { attachBrowserClientPortal } = require('./src/browser-client-portal');
+const { createReadinessProbe } = require('./src/readiness-probe');
+const { installGracefulShutdown } = require('./src/graceful-shutdown');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -49,11 +51,13 @@ if (require.main === module) {
   let workspaceStore = null;
   let recentStore = null;
   let pool = null;
+  let readinessProbe = null;
   if (config.databaseUrl && config.businessId) {
     // Database module is required only for the dedicated app; no existing TAKATAK DB is accessed.
     const { Pool } = require('pg');
     pool = new Pool({ connectionString: config.databaseUrl, max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 });
     pool.on('error', () => { /* Do not log database connection strings, customer data or credentials. */ });
+    readinessProbe = createReadinessProbe({ pool });
     draftStore = createDraftStore({ pool, businessId: config.businessId });
     dashboardStore = createDashboardStore({ pool, businessId: config.businessId });
     const totpStore = config.totpEncryptionKeyHex
@@ -74,7 +78,8 @@ if (require.main === module) {
     clientPortalAuthStore = createClientPortalAuthStore({ pool, businessId: config.businessId });
     clientPortalReadStore = createClientPortalReadStore({ pool, businessId: config.businessId, authStore: clientPortalAuthStore });
   }
-  const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger });
+  const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger,
+    readinessCheck: readinessProbe ? readinessProbe.check : null });
   if (config.browserOrigin) {
     // Wrap once per service; never pass the shared administrative key to the browser.
     attachBrowserStaffLogin(server, { origin: config.browserOrigin, staffAuthStore, attemptLimit });
@@ -106,8 +111,9 @@ if (require.main === module) {
       authStore: clientPortalAuthStore, readStore: clientPortalReadStore });
   }
   attachReadOnlyDashboardCookie(server);
+  installGracefulShutdown({ server, pool, readinessProbe });
   server.listen(config.port, () => {
-    console.info(`TAKATAK Wave development service listening on port ${server.address().port}`);
+    console.info(`GROUPE TAKATAK Facturations service listening on port ${server.address().port}`);
   });
 }
 

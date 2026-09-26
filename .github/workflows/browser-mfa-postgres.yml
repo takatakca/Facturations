@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 12
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
         env:
           POSTGRES_DB: facturations_test
           POSTGRES_USER: postgres
@@ -28,8 +28,10 @@ jobs:
     env:
       FACTURATIONS_TEST_DATABASE_URL: postgresql://postgres:test-only-not-production@127.0.0.1:5432/facturations_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # pinned v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Install from lockfile without lifecycle scripts

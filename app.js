@@ -32,9 +32,12 @@ const { createClientPortalAuthStore } = require('./src/client-portal-auth-store'
 const { createClientPortalReadStore } = require('./src/client-portal-read-store');
 const { attachBrowserClientPortal } = require('./src/browser-client-portal');
 const { attachProductionEdgeGuard } = require('./src/production-edge-guard');
+const { createOperationalLogger } = require('./src/operational-logger');
+const { attachRequestObservability } = require('./src/request-observability');
 
 if (require.main === module) {
   const config = loadConfig();
+  const logger = createOperationalLogger();
   let draftStore = null;
   let dashboardStore = null;
   let staffAuthStore = null;
@@ -55,7 +58,9 @@ if (require.main === module) {
     // Database module is required only for the dedicated app; no existing TAKATAK DB is accessed.
     const { Pool } = require('pg');
     pool = new Pool({ connectionString: config.databaseUrl, max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 });
-    pool.on('error', () => { /* Do not log database connection strings, customer data or credentials. */ });
+    pool.on('error', () => {
+      logger.error('database_pool_error', { component: 'postgres', code: 'POOL_ERROR' });
+    });
     readinessCheck = async () => {
       const result = await pool.query('SELECT true AS ok');
       return result.rows.length === 1 && result.rows[0].ok === true;
@@ -118,8 +123,13 @@ if (require.main === module) {
       enforceProxy: config.productionMode && config.trustProxy,
     });
   }
+  attachRequestObservability(server, { logger });
   server.listen(config.port, () => {
-    console.info(`TAKATAK Wave development service listening on port ${server.address().port}`);
+    logger.info('service_listening', {
+      component: 'http',
+      port: server.address().port,
+      mode: config.productionMode ? 'production' : 'development',
+    });
   });
 }
 

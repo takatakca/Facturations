@@ -4,7 +4,7 @@
 // Never supply cookies, tokens, customer details or administrative credentials.
 const https = require('node:https');
 const TARGET = 'https://facturations.bolon.ca';
-const PATHS = Object.freeze(['/health', '/internal/login?lang=fr',
+const PATHS = Object.freeze(['/health', '/ready', '/internal/login?lang=fr',
   '/internal/recent-workspaces?lang=fr', '/internal/workspaces/csrf']);
 const MAX_BYTES = 24576;
 
@@ -16,7 +16,7 @@ function assertTarget(value) {
 function checkResults(responses, now = Date.now()) {
   if (!Array.isArray(responses) || responses.length !== PATHS.length ||
       !Number.isFinite(now)) throw new Error('Incomplete staging evidence');
-  const [health, login, recent, csrf] = responses;
+  const [health, ready, login, recent, csrf] = responses;
   for (let i = 0; i < responses.length; i++) {
     const response = responses[i];
     if (!response || response.path !== PATHS[i] || !Number.isInteger(response.status) ||
@@ -46,6 +46,16 @@ function checkResults(responses, now = Date.now()) {
   try { healthPayload = JSON.parse(health.body); } catch { throw new Error('Invalid health response'); }
   if (healthPayload?.ok !== true || healthPayload.service !== 'takatak-wave') {
     throw new Error('Unexpected application identity at staging hostname');
+  }
+  if (ready.status !== 200 || !/^application\/json\b/i.test(ready.headers['content-type'] || '') ||
+      ready.headers['cache-control'] !== 'no-store') {
+    throw new Error('Readiness endpoint unavailable');
+  }
+  let readinessPayload;
+  try { readinessPayload = JSON.parse(ready.body); } catch { throw new Error('Invalid readiness response'); }
+  if (readinessPayload?.ok !== true || readinessPayload.service !== 'takatak-wave' ||
+      readinessPayload.readiness !== 'ready') {
+    throw new Error('Application dependencies are not ready');
   }
   if (login.status !== 200 || !/^text\/html\b/i.test(login.headers['content-type'] || '') ||
       login.headers['cache-control'] !== 'private, no-store' ||

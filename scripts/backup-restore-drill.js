@@ -240,7 +240,9 @@ async function main() {
     restored = new Pool({
       connectionString: restoredDatabaseUrl(target.raw),
       connectionTimeoutMillis: 5000,
+      max: 1,
     });
+    restored.on('error', () => { /* Isolated drill cleanup must not leak connection details. */ });
     const marker = await restored.query(
       'SELECT marker_hash FROM facturations_backup_drill_marker WHERE id=$1',
       [markerId]
@@ -266,7 +268,7 @@ async function main() {
     console.info('Synthetic CI evidence only; this is not proof of production backup coverage.');
   } finally {
     if (restored) await restored.end();
-    try { await admin.query(`DROP DATABASE IF EXISTS ${RESTORE_DB} WITH (FORCE)`); } catch {}
+    try { await admin.query(`DROP DATABASE IF EXISTS ${RESTORE_DB}`); } catch {}
     await admin.end();
     await source.end();
     fs.rmSync(backupDir, { recursive: true, force: true });

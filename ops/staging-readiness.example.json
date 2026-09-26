@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "environment": "staging",
+  "releaseSha": "0000000000000000000000000000000000000000",
+  "evaluatedAt": "2026-09-26T00:00:00.000Z",
+  "gates": {
+    "core_ci": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-core-ci"
+    },
+    "browser_fr_en": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-browser-fr-en"
+    },
+    "mfa_postgres": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-mfa-postgres"
+    },
+    "backup_restore_ci": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-backup-restore-ci"
+    },
+    "runtime_db_least_privilege": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-runtime-db-least-privilege"
+    },
+    "observability_redaction_ci": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-observability-redaction-ci"
+    },
+    "main_branch_protection": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-main-branch-protection"
+    },
+    "independent_human_review": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-independent-human-review"
+    },
+    "staging_https_proxy": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-staging-https-proxy"
+    },
+    "staging_node_port_private": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-staging-node-port-private"
+    },
+    "staging_dedicated_database": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-staging-dedicated-database"
+    },
+    "staging_runtime_db_role": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-staging-runtime-db-role"
+    },
+    "staging_backup_restore": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-staging-backup-restore"
+    },
+    "staging_logs_no_pii": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-staging-logs-no-pii"
+    },
+    "mfa_recovery_drill": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-mfa-recovery-drill"
+    },
+    "accessibility_mobile_review": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-accessibility-mobile-review"
+    },
+    "legal_issuer_validation": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-legal-issuer-validation"
+    },
+    "tax_accounting_review": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-tax-accounting-review"
+    },
+    "privacy_retention_review": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-privacy-retention-review"
+    },
+    "wave_authorized_staging": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-wave-authorized-staging"
+    },
+    "email_provider_staging": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-email-provider-staging"
+    },
+    "email_signed_webhook": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-email-signed-webhook"
+    },
+    "payment_provider_staging": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-payment-provider-staging"
+    },
+    "ai_voice_safety_validation": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-ai-voice-safety-validation"
+    },
+    "vulnerability_review": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-vulnerability-review"
+    },
+    "hosting_signoff": {
+      "status": "BLOCKED",
+      "evidenceScope": "NONE",
+      "reference": "pending-hosting-signoff"
+    }
+  }
+}

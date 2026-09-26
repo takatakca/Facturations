@@ -1,0 +1,72 @@
+name: Encrypted backup restore drill
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  backup-restore:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: facturations_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-not-production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d facturations_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FACTURATIONS_TEST_DATABASE_URL: postgres://postgres:test-only-not-production@127.0.0.1:5432/facturations_test
+      FACTURATIONS_RESTORE_TEST_DATABASE_URL: postgres://postgres:test-only-not-production@127.0.0.1:5432/facturations_restore_test
+      BACKUP_DRILL_PASSPHRASE: ci-only-synthetic-backup-passphrase-not-a-production-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Apply migrations 001-026 to disposable source DB
+        run: node scripts/setup-test-db.js
+      - name: Seed synthetic restore evidence
+        run: node scripts/seed-backup-drill.js
+      - name: Dump, encrypt, decrypt and restore into a second disposable DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          CID="$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -n 1)"
+          test -n "$CID"
+
+          RAW="/tmp/facturations-backup.dump"
+          ENCRYPTED="/tmp/facturations-backup.dump.enc"
+          RESTORED="/tmp/facturations-restore.dump"
+
+          docker exec -e PGPASSWORD=test-only-not-production "$CID"             pg_dump -h 127.0.0.1 -U postgres -d facturations_test             --format=custom --no-owner --no-acl > "$RAW"
+          test -s "$RAW"
+          SOURCE_SHA="$(sha256sum "$RAW" | awk '{print $1}')"
+
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000             -in "$RAW" -out "$ENCRYPTED" -pass env:BACKUP_DRILL_PASSPHRASE
+          test -s "$ENCRYPTED"
+          rm -f "$RAW"
+          test ! -e "$RAW"
+
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000             -in "$ENCRYPTED" -out "$RESTORED" -pass env:BACKUP_DRILL_PASSPHRASE
+          test -s "$RESTORED"
+          RESTORED_SHA="$(sha256sum "$RESTORED" | awk '{print $1}')"
+          test "$SOURCE_SHA" = "$RESTORED_SHA"
+
+          docker exec -e PGPASSWORD=test-only-not-production "$CID"             dropdb -h 127.0.0.1 -U postgres --if-exists facturations_restore_test
+          docker exec -e PGPASSWORD=test-only-not-production "$CID"             createdb -h 127.0.0.1 -U postgres facturations_restore_test
+          docker cp "$RESTORED" "$CID:/tmp/facturations-restore.dump"
+          docker exec -e PGPASSWORD=test-only-not-production "$CID"             pg_restore -h 127.0.0.1 -U postgres -d facturations_restore_test             --no-owner --no-acl --exit-on-error /tmp/facturations-restore.dump
+
+          rm -f "$ENCRYPTED" "$RESTORED"
+          docker exec "$CID" rm -f /tmp/facturations-restore.dump
+      - name: Verify restored data, schema, views, triggers and constraints
+        run: node scripts/verify-restored-backup.js

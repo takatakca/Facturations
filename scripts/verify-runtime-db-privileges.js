@@ -23,13 +23,14 @@ const EXPECTED_TABLES = Object.freeze([
   'facturations_issued_invoices',
   'facturations_issuer_profiles',
   'facturations_login_attempt_limits',
+  'facturations_mfa_recovery_authorizations',
+  'facturations_mfa_recovery_events',
   'facturations_payment_evidence',
   'facturations_provider_issuance_attempts',
   'facturations_provider_issuance_events',
   'facturations_qualified_invoice_documents',
   'facturations_staff_invitations',
   'facturations_staff_sessions',
-  'facturations_staff_totp',
   'facturations_staff_users',
   'facturations_workspace_submissions',
   'invoice_audit_events',
@@ -58,6 +59,17 @@ const UPDATE_TABLES = new Set([
 ]);
 
 const DELETE_TABLES = new Set(['facturations_login_attempt_limits']);
+const NO_RUNTIME_TABLES = new Set([
+  'facturations_mfa_recovery_authorizations',
+  'facturations_mfa_recovery_events',
+]);
+const NO_RUNTIME_INSERT_TABLES = new Set([
+  'facturations_staff_totp',
+  ...NO_RUNTIME_TABLES,
+]);
+const NO_RUNTIME_SEQUENCES = new Set([
+  'facturations_mfa_recovery_events_id_seq',
+]);
 
 function sameList(actual, expected) {
   return actual.length === expected.length &&
@@ -76,6 +88,14 @@ async function privilege(pool, objectName, type, privilegeName) {
   const fn = type === 'sequence' ? 'has_sequence_privilege' : 'has_table_privilege';
   const sql = 'SELECT ' + fn + '(current_user,$1,$2) AS allowed';
   const result = await pool.query(sql, ['public.' + objectName, privilegeName]);
+  return result.rows[0].allowed === true;
+}
+
+async function columnPrivilege(pool, tableName, columnName, privilegeName) {
+  const result = await pool.query(
+    'SELECT has_column_privilege(current_user,$1,$2,$3) AS allowed',
+    ['public.' + tableName, columnName, privilegeName]
+  );
   return result.rows[0].allowed === true;
 }
 
@@ -134,10 +154,20 @@ async function verifyRuntimePrivileges({ pool }) {
   invariant(sameList(views, EXPECTED_VIEWS), 'RUNTIME_VIEW_INVENTORY_CHANGED');
 
   for (const table of tables) {
+    if (NO_RUNTIME_TABLES.has(table)) {
+      for (const denied of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) {
+        invariant(!(await privilege(pool, table, 'table', denied)),
+          'RUNTIME_RECOVERY_' + denied + '_FORBIDDEN_' + table);
+      }
+      continue;
+    }
+
     invariant(await privilege(pool, table, 'table', 'SELECT'),
       'RUNTIME_SELECT_REQUIRED_' + table);
-    invariant(await privilege(pool, table, 'table', 'INSERT'),
-      'RUNTIME_INSERT_REQUIRED_' + table);
+
+    const canInsert = await privilege(pool, table, 'table', 'INSERT');
+    invariant(canInsert === !NO_RUNTIME_INSERT_TABLES.has(table),
+      'RUNTIME_INSERT_MATRIX_MISMATCH_' + table);
 
     const canUpdate = await privilege(pool, table, 'table', 'UPDATE');
     invariant(canUpdate === UPDATE_TABLES.has(table),
@@ -153,6 +183,16 @@ async function verifyRuntimePrivileges({ pool }) {
     }
   }
 
+  for (const column of ['active','activated_at','last_used_step']) {
+    invariant(await columnPrivilege(pool, 'facturations_staff_totp', column, 'UPDATE'),
+      'RUNTIME_TOTP_COLUMN_UPDATE_REQUIRED_' + column);
+  }
+  for (const column of [
+    'business_id','user_id','secret_iv','secret_ciphertext','secret_tag','created_at'
+  ]) {
+    invariant(!(await columnPrivilege(pool, 'facturations_staff_totp', column, 'UPDATE')),
+      'RUNTIME_TOTP_SECRET_COLUMN_UPDATE_FORBIDDEN_' + column);
+  }
   for (const view of views) {
     invariant(await privilege(pool, view, 'table', 'SELECT'),
       'RUNTIME_VIEW_SELECT_REQUIRED_' + view);
@@ -182,6 +222,13 @@ async function verifyRuntimePrivileges({ pool }) {
     "SELECT sequencename FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename"
   );
   for (const row of sequences.rows) {
+    if (NO_RUNTIME_SEQUENCES.has(row.sequencename)) {
+      for (const denied of ['USAGE','SELECT','UPDATE']) {
+        invariant(!(await privilege(pool, row.sequencename, 'sequence', denied)),
+          'RUNTIME_RECOVERY_SEQUENCE_' + denied + '_FORBIDDEN_' + row.sequencename);
+      }
+      continue;
+    }
     invariant(await privilege(pool, row.sequencename, 'sequence', 'USAGE'),
       'RUNTIME_SEQUENCE_USAGE_REQUIRED_' + row.sequencename);
     invariant(await privilege(pool, row.sequencename, 'sequence', 'SELECT'),
@@ -236,4 +283,7 @@ module.exports = {
   EXPECTED_VIEWS,
   UPDATE_TABLES,
   DELETE_TABLES,
+  NO_RUNTIME_TABLES,
+  NO_RUNTIME_INSERT_TABLES,
+  NO_RUNTIME_SEQUENCES,
 };

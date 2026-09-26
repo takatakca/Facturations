@@ -32,7 +32,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Apply migrations 001-026 to disposable source DB
+      - name: Apply migrations 001-027 to disposable source DB
         run: node scripts/setup-test-db.js
       - name: Seed synthetic restore evidence
         run: node scripts/seed-backup-drill.js

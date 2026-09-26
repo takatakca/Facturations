@@ -59,6 +59,27 @@ Pour le mode local non connecté, garder `.env` privé, lancer `npm run dev` pui
 
 Les routes `/api/*` restent séparées des cookies navigateur; un UUID n'est jamais une autorisation. Une modification du répertoire clients ne modifie pas les anciennes factures en préparation.
 
+## Gate de démarrage production
+
+Le démarrage avec `NODE_ENV=production` est fail-closed. `app.js` appelle `assertProductionRuntime()` avant d'ouvrir le port réseau.
+
+Le gate exige au minimum :
+
+- base PostgreSQL + business ID configurés ensemble;
+- base différente de `facturations_test`;
+- origine publique HTTPS exacte et non localhost;
+- clé TOTP 32 octets hex;
+- port d'écoute non nul;
+- si un token Wave est présent, clé d'administration serveur configurée.
+
+Vérification manuelle sûre :
+
+```bash
+npm run preflight:production
+```
+
+Ce préflight ne contacte aucun service externe et n'imprime aucun secret. Il valide uniquement la cohérence de configuration; il ne constitue ni une approbation de déploiement ni une preuve de disponibilité PostgreSQL/TLS.
+
 ## Conditions AVANT toute fusion ou préproduction
 
 1. L'exploitant doit confirmer une application et une base **Facturations seules**, DNS/certificat HTTPS publics, proxy de confiance, port Node inaccessible directement, limitation IP et comptes SQL à droits minimaux. Ne pas toucher aux services TAKATAK existants.

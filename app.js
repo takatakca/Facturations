@@ -33,6 +33,7 @@ const { createClientPortalReadStore } = require('./src/client-portal-read-store'
 const { attachBrowserClientPortal } = require('./src/browser-client-portal');
 const { createReadinessProbe } = require('./src/readiness-probe');
 const { installGracefulShutdown } = require('./src/graceful-shutdown');
+const { attachOperationalTelemetry } = require('./src/operational-telemetry');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -111,6 +112,7 @@ if (require.main === module) {
       authStore: clientPortalAuthStore, readStore: clientPortalReadStore });
   }
   attachReadOnlyDashboardCookie(server);
+  attachOperationalTelemetry(server);
   installGracefulShutdown({ server, pool, readinessProbe });
   server.listen(config.port, () => {
     console.info(`GROUPE TAKATAK Facturations service listening on port ${server.address().port}`);

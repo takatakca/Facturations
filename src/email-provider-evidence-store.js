@@ -5,10 +5,14 @@ const {
   normalizeEmailProviderEvidenceEvent,
   EmailProviderContractError,
 } = require('./email-provider-contract');
+const {
+  isVerifiedEmailWebhookEnvelope,
+} = require('./email-webhook-verification');
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const OPERATION_KEY=/^[A-Za-z0-9_-]{24,120}$/;
 const PROVIDER_KEY=/^[A-Z][A-Z0-9_]{1,63}$/;
+const VERIFICATION_SCHEME=/^[A-Z0-9][A-Z0-9_.:-]{0,119}$/;
 
 class EmailProviderEvidenceError extends Error{
   constructor(code,statusCode=422){
@@ -38,8 +42,23 @@ function providerKey(value){
   return value;
 }
 
-function canonicalEvidence({qualifiedDocumentId,qualifiedDocumentSha256,operationKey,event}){
-  return {
+function verificationScheme(value){
+  if(typeof value!=='string' || !VERIFICATION_SCHEME.test(value)){
+    throw new EmailProviderEvidenceError('INVALID_VERIFICATION_SCHEME');
+  }
+  return value;
+}
+
+function canonicalEvidence({
+  qualifiedDocumentId,
+  qualifiedDocumentSha256,
+  operationKey,
+  event,
+  sourceMode,
+  webhookBodySha256,
+  verificationScheme,
+}){
+  const canonical={
     qualifiedDocumentId,
     qualifiedDocumentSha256,
     operationKey,
@@ -49,8 +68,13 @@ function canonicalEvidence({qualifiedDocumentId,qualifiedDocumentSha256,operatio
     eventType:event.eventType,
     occurredAt:event.occurredAt,
     recipientEmail:event.recipientEmail,
-    sourceMode:'SYNTHETIC_TEST',
+    sourceMode,
   };
+  if(sourceMode==='SIGNED_WEBHOOK'){
+    canonical.webhookBodySha256=webhookBodySha256;
+    canonical.verificationScheme=verificationScheme;
+  }
+  return canonical;
 }
 
 function evidenceHash(fields){
@@ -61,6 +85,7 @@ function evidenceHash(fields){
 }
 
 function resultOf(row){
+  const signed=row.source_mode==='SIGNED_WEBHOOK';
   return Object.freeze({
     id:row.id,
     qualifiedDocumentId:row.qualified_document_id,
@@ -73,9 +98,12 @@ function resultOf(row){
     occurredAt:row.occurred_at instanceof Date ? row.occurred_at.toISOString() : row.occurred_at,
     recipientEmail:row.recipient_email,
     sourceMode:row.source_mode,
+    webhookBodySha256:row.webhook_body_sha256 || null,
+    verificationScheme:row.verification_scheme || null,
     evidenceHash:row.evidence_hash,
     recordedAt:row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
-    realWebhookVerified:false,
+    signatureVerified:signed,
+    realWebhookVerified:signed,
   });
 }
 
@@ -104,23 +132,14 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
     return Object.freeze(found.rows.map(resultOf));
   }
 
-  async function ingestSynthetic(input){
-    if(!input || typeof input!=='object' || Array.isArray(input) ||
-       Object.keys(input).sort().join(',')!=='event,operationKey,qualifiedDocumentId'){
-      throw new EmailProviderEvidenceError('INVALID_SYNTHETIC_EVIDENCE_REQUEST');
-    }
-    const qualifiedDocumentId=uuid(input.qualifiedDocumentId,'INVALID_QUALIFIED_DOCUMENT_ID');
-    const opKey=operationKey(input.operationKey);
-
-    let event;
-    try{
-      event=normalizeEmailProviderEvidenceEvent(input.event);
-    }catch(error){
-      if(error instanceof EmailProviderContractError){
-        throw new EmailProviderEvidenceError(error.code,error.statusCode);
-      }
-      throw error;
-    }
+  async function persist({
+    qualifiedDocumentId,
+    opKey,
+    event,
+    sourceMode,
+    webhookBodySha256=null,
+    verificationScheme:scheme=null,
+  }){
     if(event.providerKey!==provider){
       throw new EmailProviderEvidenceError('PROVIDER_KEY_MISMATCH',409);
     }
@@ -156,14 +175,17 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
         qualifiedDocumentSha256:row.content_sha256,
         operationKey:opKey,
         event,
+        sourceMode,
+        webhookBodySha256,
+        verificationScheme:scheme,
       };
       const hash=evidenceHash(fields);
       const inserted=await client.query(
         `INSERT INTO facturations_email_provider_evidence
            (business_id,qualified_document_id,qualified_document_sha256,operation_key,
             provider_key,provider_message_id,provider_event_id,event_type,occurred_at,
-            recipient_email,source_mode,evidence_hash)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'SYNTHETIC_TEST',$11)
+            recipient_email,source_mode,evidence_hash,webhook_body_sha256,verification_scheme)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (business_id,provider_key,provider_event_id) DO NOTHING
          RETURNING *`,
         [
@@ -177,7 +199,10 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
           event.eventType,
           event.occurredAt,
           event.recipientEmail,
+          sourceMode,
           hash,
+          webhookBodySha256,
+          scheme,
         ]
       );
 
@@ -197,7 +222,9 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
            saved.event_type!==event.eventType ||
            new Date(saved.occurred_at).toISOString()!==event.occurredAt ||
            saved.recipient_email!==event.recipientEmail ||
-           saved.source_mode!=='SYNTHETIC_TEST' ||
+           saved.source_mode!==sourceMode ||
+           (saved.webhook_body_sha256 || null)!==webhookBodySha256 ||
+           (saved.verification_scheme || null)!==scheme ||
            saved.evidence_hash!==hash){
           throw new EmailProviderEvidenceError('EVIDENCE_EVENT_CONFLICT',409);
         }
@@ -216,9 +243,68 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
     }
   }
 
+  async function ingestSynthetic(input){
+    if(!input || typeof input!=='object' || Array.isArray(input) ||
+       Object.keys(input).sort().join(',')!=='event,operationKey,qualifiedDocumentId'){
+      throw new EmailProviderEvidenceError('INVALID_SYNTHETIC_EVIDENCE_REQUEST');
+    }
+    const qualifiedDocumentId=uuid(input.qualifiedDocumentId,'INVALID_QUALIFIED_DOCUMENT_ID');
+    const opKey=operationKey(input.operationKey);
+
+    let event;
+    try{
+      event=normalizeEmailProviderEvidenceEvent(input.event);
+    }catch(error){
+      if(error instanceof EmailProviderContractError){
+        throw new EmailProviderEvidenceError(error.code,error.statusCode);
+      }
+      throw error;
+    }
+
+    return persist({
+      qualifiedDocumentId,
+      opKey,
+      event,
+      sourceMode:'SYNTHETIC_TEST',
+    });
+  }
+
+  async function ingestVerifiedWebhook(input){
+    if(!input || typeof input!=='object' || Array.isArray(input) ||
+       Object.keys(input).sort().join(',')!==
+         'operationKey,qualifiedDocumentId,verificationScheme,verifiedEnvelope'){
+      throw new EmailProviderEvidenceError('INVALID_VERIFIED_WEBHOOK_REQUEST');
+    }
+    if(!isVerifiedEmailWebhookEnvelope(input.verifiedEnvelope)){
+      throw new EmailProviderEvidenceError('VERIFIED_WEBHOOK_ENVELOPE_REQUIRED',403);
+    }
+    const qualifiedDocumentId=uuid(input.qualifiedDocumentId,'INVALID_QUALIFIED_DOCUMENT_ID');
+    const opKey=operationKey(input.operationKey);
+    const scheme=verificationScheme(input.verificationScheme);
+    const envelope=input.verifiedEnvelope;
+
+    if(envelope.providerKey!==provider){
+      throw new EmailProviderEvidenceError('PROVIDER_KEY_MISMATCH',409);
+    }
+    if(typeof envelope.rawBodySha256!=='string' ||
+       !/^[a-f0-9]{64}$/u.test(envelope.rawBodySha256)){
+      throw new EmailProviderEvidenceError('INVALID_VERIFIED_WEBHOOK_BODY_HASH',409);
+    }
+
+    return persist({
+      qualifiedDocumentId,
+      opKey,
+      event:envelope.evidence,
+      sourceMode:'SIGNED_WEBHOOK',
+      webhookBodySha256:envelope.rawBodySha256,
+      verificationScheme:scheme,
+    });
+  }
+
   return Object.freeze({
     providerKey:provider,
     ingestSynthetic,
+    ingestVerifiedWebhook,
     listByQualifiedDocument,
   });
 }

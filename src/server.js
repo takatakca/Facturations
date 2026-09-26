@@ -91,7 +91,7 @@ function parseListOptions(searchParams) {
 }
 
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
-  staffAuthStore = null, customerDirectory = null, approvalLedger = null } = {}) {
+  staffAuthStore = null, customerDirectory = null, approvalLedger = null, readinessCheck = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -102,6 +102,21 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     if (path === '/health') {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       return sendJson(response, 200, { ok: true, service: 'takatak-wave', phase: 3 });
+    }
+    if (path === '/ready') {
+      if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      if (typeof readinessCheck !== 'function') {
+        return sendJson(response, 503, { ok: false, service: 'takatak-wave', readiness: 'not_configured' });
+      }
+      try {
+        const ready = await readinessCheck();
+        if (ready !== true) {
+          return sendJson(response, 503, { ok: false, service: 'takatak-wave', readiness: 'unavailable' });
+        }
+        return sendJson(response, 200, { ok: true, service: 'takatak-wave', readiness: 'ready' });
+      } catch {
+        return sendJson(response, 503, { ok: false, service: 'takatak-wave', readiness: 'unavailable' });
+      }
     }
 
     const isPreview = path === '/api/drafts/preview';

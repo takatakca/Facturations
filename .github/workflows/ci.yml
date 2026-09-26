@@ -37,6 +37,8 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm audit --omit=dev --audit-level=high
+      - name: Verify immutable migration integrity lock
+        run: npm run check:migrations
       - run: node scripts/setup-test-db.js
       - run: npm run check
       - run: npm test

@@ -26,6 +26,10 @@ const {
   createDeliveryReceiptStore,
   DeliveryReceiptError,
 } = require('../src/delivery-receipt-store');
+const {
+  createEmailProviderEvidenceStore,
+  EmailProviderEvidenceError,
+} = require('../src/email-provider-evidence-store');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -58,6 +62,11 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
   const delivery = createDeliveryAuthorizationStore({ pool, businessId });
   const deliveryAttempts = createDeliveryAttemptStore({ pool, businessId });
   const deliveryReceipts = createDeliveryReceiptStore({ pool, businessId });
+  const providerEvidence = createEmailProviderEvidenceStore({
+    pool,
+    businessId,
+    providerKey: 'STAGING_EMAIL',
+  });
 
   try {
     const owner = await auth.createPendingStaff({
@@ -160,6 +169,78 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       sessionToken: session.token,
     });
     const qualified = await qualifiedDocuments.materialize({ bindingId: binding.id });
+
+    const stagingOperationKey = 'mail_' + crypto.randomBytes(32).toString('base64url');
+    const providerMessageId = 'staging-message-' + crypto.randomUUID();
+    const deliveredEvent = {
+      providerKey: 'STAGING_EMAIL',
+      eventId: 'event-delivered-' + crypto.randomUUID(),
+      providerMessageId,
+      eventType: 'DELIVERED',
+      occurredAt: '2026-09-26T16:30:00.000Z',
+      recipientEmail: recipient,
+    };
+
+    await assert.rejects(
+      providerEvidence.ingestSynthetic({
+        qualifiedDocumentId: qualified.id,
+        operationKey: stagingOperationKey,
+        event: { ...deliveredEvent, recipientEmail: 'wrong@example.test' },
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'EVIDENCE_RECIPIENT_MISMATCH' &&
+        error.statusCode === 409
+    );
+
+    const deliveredEvidence = await providerEvidence.ingestSynthetic({
+      qualifiedDocumentId: qualified.id,
+      operationKey: stagingOperationKey,
+      event: deliveredEvent,
+    });
+    assert.equal(deliveredEvidence.qualifiedDocumentId, qualified.id);
+    assert.equal(deliveredEvidence.qualifiedDocumentSha256, qualified.contentSha256);
+    assert.equal(deliveredEvidence.providerKey, 'STAGING_EMAIL');
+    assert.equal(deliveredEvidence.providerMessageId, providerMessageId);
+    assert.equal(deliveredEvidence.eventType, 'DELIVERED');
+    assert.equal(deliveredEvidence.sourceMode, 'SYNTHETIC_TEST');
+    assert.equal(deliveredEvidence.realWebhookVerified, false);
+    assert.match(deliveredEvidence.evidenceHash, /^[a-f0-9]{64}$/);
+
+    const evidenceRetry = await providerEvidence.ingestSynthetic({
+      qualifiedDocumentId: qualified.id,
+      operationKey: stagingOperationKey,
+      event: deliveredEvent,
+    });
+    assert.equal(evidenceRetry.id, deliveredEvidence.id);
+
+    await assert.rejects(
+      providerEvidence.ingestSynthetic({
+        qualifiedDocumentId: qualified.id,
+        operationKey: stagingOperationKey,
+        event: { ...deliveredEvent, eventType: 'BOUNCED' },
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'EVIDENCE_EVENT_CONFLICT' &&
+        error.statusCode === 409
+    );
+
+    const bouncedEvidence = await providerEvidence.ingestSynthetic({
+      qualifiedDocumentId: qualified.id,
+      operationKey: stagingOperationKey,
+      event: {
+        ...deliveredEvent,
+        eventId: 'event-bounced-' + crypto.randomUUID(),
+        eventType: 'BOUNCED',
+        occurredAt: '2026-09-26T16:35:00.000Z',
+      },
+    });
+    assert.equal(bouncedEvidence.eventType, 'BOUNCED');
+
+    const evidenceRows = await providerEvidence.listByQualifiedDocument({
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(evidenceRows.length, 2);
+    assert.deepEqual(evidenceRows.map(row => row.eventType), ['DELIVERED', 'BOUNCED']);
 
     await assert.rejects(
       delivery.authorize({
@@ -339,6 +420,21 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       pool.query(
         'DELETE FROM facturations_delivery_receipts WHERE business_id=$1 AND id=$2',
         [businessId, receipt.id]
+      ),
+      error => error && error.code === '23514'
+    );
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_email_provider_evidence SET event_type=event_type
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, deliveredEvidence.id]
+      ),
+      error => error && error.code === '23514'
+    );
+    await assert.rejects(
+      pool.query(
+        'DELETE FROM facturations_email_provider_evidence WHERE business_id=$1 AND id=$2',
+        [businessId, deliveredEvidence.id]
       ),
       error => error && error.code === '23514'
     );

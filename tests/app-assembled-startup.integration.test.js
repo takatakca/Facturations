@@ -45,7 +45,7 @@ test('assembled app boots with dedicated disposable PostgreSQL settings and deni
         child.on('exit', code => finish(new Error('Assembled application exited before listening: ' + code)));
         child.stdout.on('data', chunk => {
           output += chunk.toString('utf8');
-          const lines = output.split('\\n');
+          const lines = output.split('\n');
           output = lines.pop().slice(-2048);
           for (const line of lines) {
             let event;

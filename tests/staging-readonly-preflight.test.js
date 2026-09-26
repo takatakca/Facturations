@@ -42,7 +42,7 @@ test('manual target is the exact isolated HTTPS origin and request paths are fix
 });
 
 test('accepts only verified HTTPS, the expected app and anonymous read-only denials', () => {
-  assert.deepEqual(checkResults(fixtures(), NOW), { passed: true, checks: 4, origin: TARGET });
+  assert.deepEqual(checkResults(fixtures(), NOW), { passed: true, checks: 5, origin: TARGET });
 });
 
 test('fails closed on TLS problems, redirects, unprotected routes and missing security headers', () => {

@@ -20,6 +20,8 @@ const {
   createDeliveryAuthorizationStore,
   DeliveryAuthorizationError,
 } = require('../src/delivery-authorization-store');
+const { createDeliveryAttemptStore } = require('../src/delivery-attempt-store');
+const { createDeliveryExecutor } = require('../src/delivery-executor');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -50,6 +52,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
   const bindings = createInvoiceIssuerBindingStore({ pool, businessId });
   const qualifiedDocuments = createQualifiedInvoiceDocumentStore({ pool, businessId });
   const delivery = createDeliveryAuthorizationStore({ pool, businessId });
+  const deliveryAttempts = createDeliveryAttemptStore({ pool, businessId });
 
   try {
     const owner = await auth.createPendingStaff({
@@ -191,6 +194,44 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     const found = await delivery.getByQualifiedDocument({ qualifiedDocumentId: qualified.id });
     assert.equal(found.id, authorized.id);
 
+    const deliveryAttempt = await deliveryAttempts.prepare({ authorizationId: authorized.id });
+    assert.equal(deliveryAttempt.state, 'PREPARED');
+    assert.equal(deliveryAttempt.provider, 'SIMULATED_EMAIL');
+    assert.equal(deliveryAttempt.emailed, false);
+
+    const deliveryExecutor = createDeliveryExecutor({
+      attemptStore: deliveryAttempts,
+      adapter: {
+        async sendDocument(request) {
+          assert.equal(request.operationKey, deliveryAttempt.operationKey);
+          assert.equal(request.provider, 'SIMULATED_EMAIL');
+          assert.equal(request.authorizationId, authorized.id);
+          assert.equal(request.qualifiedDocumentId, qualified.id);
+          return {
+            status: 'CONFIRMED',
+            providerMessageId: 'simulated-message-' + crypto.randomUUID(),
+          };
+        },
+      },
+    });
+    const delivered = await deliveryExecutor.execute({ attemptId: deliveryAttempt.id });
+    assert.equal(delivered.state, 'CONFIRMED');
+    assert.ok(delivered.providerMessageId.startsWith('simulated-message-'));
+    assert.equal(delivered.emailed, true);
+
+    const eventRows = await pool.query(
+      `SELECT from_state,to_state,reason_code
+         FROM facturations_delivery_events
+        WHERE business_id=$1 AND attempt_id=$2
+        ORDER BY id`,
+      [businessId, deliveryAttempt.id]
+    );
+    assert.deepEqual(eventRows.rows, [
+      { from_state: null, to_state: 'PREPARED', reason_code: 'OWNER_DELIVERY_AUTHORIZATION_READY' },
+      { from_state: 'PREPARED', to_state: 'IN_PROGRESS', reason_code: 'ADAPTER_STARTED' },
+      { from_state: 'IN_PROGRESS', to_state: 'CONFIRMED', reason_code: 'PROVIDER_CONFIRMED' },
+    ]);
+
     const foreign = createDeliveryAuthorizationStore({
       pool,
       businessId: 'delivery-other-' + crypto.randomUUID(),
@@ -230,6 +271,15 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       invoice_delivery_state: 'NOT_AUTHORIZED',
       document_delivery_state: 'NOT_AUTHORIZED',
     }]);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_events SET reason_code=reason_code
+          WHERE business_id=$1 AND attempt_id=$2`,
+        [businessId, deliveryAttempt.id]
+      ),
+      error => error && error.code === '23514'
+    );
   } finally {
     await pool.end();
   }

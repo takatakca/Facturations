@@ -30,6 +30,9 @@ const {
   createEmailProviderEvidenceStore,
   EmailProviderEvidenceError,
 } = require('../src/email-provider-evidence-store');
+const {
+  createEmailEvidenceSummaryStore,
+} = require('../src/email-evidence-summary-store');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -67,6 +70,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     businessId,
     providerKey: 'STAGING_EMAIL',
   });
+  const evidenceSummary = createEmailEvidenceSummaryStore({ pool, businessId });
 
   try {
     const owner = await auth.createPendingStaff({
@@ -241,6 +245,24 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     });
     assert.equal(evidenceRows.length, 2);
     assert.deepEqual(evidenceRows.map(row => row.eventType), ['DELIVERED', 'BOUNCED']);
+
+    const summaries = await evidenceSummary.getByQualifiedDocument({
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(summaries.length, 1);
+    assert.equal(summaries[0].providerKey, 'STAGING_EMAIL');
+    assert.equal(summaries[0].providerMessageId, providerMessageId);
+    assert.equal(summaries[0].eventCount, 2);
+    assert.equal(summaries[0].latestEventType, 'BOUNCED');
+    assert.equal(summaries[0].hasDelivered, true);
+    assert.equal(summaries[0].hasBounced, true);
+    assert.equal(summaries[0].hasComplaint, false);
+    assert.equal(summaries[0].proofScope, 'SYNTHETIC_ONLY');
+    assert.equal(summaries[0].syntheticOnly, true);
+    assert.equal(summaries[0].hasSignedWebhook, false);
+    assert.equal(summaries[0].lastDeliveredAt, '2026-09-26T16:30:00.000Z');
+    assert.equal(summaries[0].lastBouncedAt, '2026-09-26T16:35:00.000Z');
+    assert.equal(summaries[0].lastComplaintAt, null);
 
     await assert.rejects(
       delivery.authorize({

@@ -15,7 +15,7 @@ const REQUIRED_RELATIONS=Object.freeze([
   'facturations_delivery_receipts',
   'facturations_email_provider_evidence',
   'facturations_payment_evidence',
-  'facturations_client_portal_identities',
+  'facturations_client_portal_users',
   'facturations_client_portal_publications',
 ]);
 const REQUIRED_VIEWS=Object.freeze([

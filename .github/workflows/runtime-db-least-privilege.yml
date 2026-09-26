@@ -1,0 +1,54 @@
+name: Runtime DB least privilege
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-db-privileges:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: facturations_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-not-production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d facturations_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FACTURATIONS_TEST_DATABASE_URL: postgres://postgres:test-only-not-production@127.0.0.1:5432/facturations_test
+      FACTURATIONS_RUNTIME_DATABASE_URL: postgres://facturations_runtime_test:runtime-only-not-production@127.0.0.1:5432/facturations_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Apply migrations as owner
+        run: node scripts/setup-test-db.js
+      - name: Create unprivileged runtime role
+        env:
+          PGPASSWORD: test-only-not-production
+        run: >-
+          psql -h 127.0.0.1 -U postgres -d facturations_test
+          -v ON_ERROR_STOP=1
+          -c "CREATE ROLE facturations_runtime_test LOGIN PASSWORD 'runtime-only-not-production' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;"
+      - name: Apply explicit runtime grants
+        env:
+          PGPASSWORD: test-only-not-production
+        run: >-
+          psql -h 127.0.0.1 -U postgres -d facturations_test
+          -v runtime_role=facturations_runtime_test
+          -v database_name=facturations_test
+          -f ops/runtime-db-grants.sql
+      - name: Verify least-privilege matrix as runtime role
+        run: node scripts/verify-runtime-db-privileges.js

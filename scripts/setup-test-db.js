@@ -39,6 +39,7 @@ async function main() {
       '021_email_evidence_summary_view.sql',
       '022_signed_webhook_evidence_provenance.sql',
       '023_payment_evidence.sql',
+      '024_payment_evidence_summary.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);

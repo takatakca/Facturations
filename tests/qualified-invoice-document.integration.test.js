@@ -22,6 +22,7 @@ const {
   createQualifiedInvoiceDocumentStore,
   QualifiedInvoiceDocumentError,
 } = require('../src/qualified-invoice-document-store');
+const { createClientPortalPublicationStore } = require('../src/client-portal-publication-store');
 const { buildWaveIssuancePreflight } = require('../src/wave-issuance-preflight');
 
 const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -159,6 +160,7 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
   const profiles = createIssuerProfileStore({ pool, businessId });
   const bindings = createInvoiceIssuerBindingStore({ pool, businessId });
   const qualifiedDocuments = createQualifiedInvoiceDocumentStore({ pool, businessId });
+  const publications = createClientPortalPublicationStore({ pool, businessId });
 
   try {
     const { owner, session } = await provisionOwner({ auth, invitations, password });
@@ -222,6 +224,60 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
     const qualifiedRetry = await qualifiedDocuments.materialize({ bindingId: binding.id });
     assert.equal(qualifiedRetry.id, qualified.id);
     assert.deepEqual(qualifiedRetry.pdfBytes, qualified.pdfBytes);
+
+    const publicationInput = {
+      confirmation: 'AUTHORIZE_CLIENT_PORTAL_PUBLICATION',
+      qualifiedDocumentId: qualified.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    };
+    const publication = await publications.authorize(publicationInput);
+    assert.equal(publication.issuedInvoiceId, fixture.issued.id);
+    assert.equal(publication.qualifiedDocumentId, qualified.id);
+    assert.equal(publication.qualifiedDocumentSha256, qualified.contentSha256);
+    assert.equal(publication.revoked, false);
+
+    const publicationRetry = await publications.authorize(publicationInput);
+    assert.equal(publicationRetry.id, publication.id);
+
+    const publicationLookup = await publications.getByQualifiedDocument({
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(publicationLookup.id, publication.id);
+    assert.equal(publicationLookup.revoked, false);
+
+    const revoked = await publications.revoke({
+      confirmation: 'REVOKE_CLIENT_PORTAL_PUBLICATION',
+      publicationId: publication.id,
+      reasonCode: 'OWNER_REVOKED',
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+    assert.equal(revoked.id, publication.id);
+    assert.equal(revoked.revoked, true);
+    assert.equal(revoked.revocationReason, 'OWNER_REVOKED');
+
+    const revokedLookup = await publications.getByQualifiedDocument({
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(revokedLookup.revoked, true);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_client_portal_publications SET confirmation=confirmation
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, publication.id]
+      ),
+      error => error && error.code === '23514'
+    );
+    await assert.rejects(
+      pool.query(
+        `DELETE FROM facturations_client_portal_publication_revocations
+          WHERE business_id=$1 AND publication_id=$2`,
+        [businessId, publication.id]
+      ),
+      error => error && error.code === '23514'
+    );
 
     const newerProfile = await createProfile({
       profiles, owner, session, suffix: 'newer',

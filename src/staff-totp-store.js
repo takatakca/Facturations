@@ -113,7 +113,7 @@ function createStaffTotpStore({ pool, businessId, encryptionKeyHex, now = Date.n
     try {
       const iv = crypto.randomBytes(12);
       const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-      cipher.setAAD(Buffer.from(`${tenant}\\0${id}`, 'utf8'));
+      cipher.setAAD(Buffer.from(`${tenant}\0${id}`, 'utf8'));
       const encrypted = Buffer.concat([cipher.update(secret), cipher.final()]);
       const tag = cipher.getAuthTag();
       const secretBase32 = base32Encode(secret);

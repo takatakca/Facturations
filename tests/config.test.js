@@ -49,3 +49,24 @@ test('browser login requires paired strong secret, dedicated database and exact 
   assert.throws(() => loadConfig({ ...base, FACTURATIONS_PUBLIC_ORIGIN: 'https://facturations.example.test',
     FACTURATIONS_TOTP_ENCRYPTION_KEY: 'abc' }), /32 bytes/);
 });
+
+
+test('production fails closed unless the dedicated database and HTTPS browser security are complete', () => {
+  const secret = 'ab'.repeat(32);
+  const production = {
+    NODE_ENV: 'production',
+    PORT: '3000',
+    FACTURATIONS_DATABASE_URL: 'postgresql://db.example.test/facturations',
+    WAVE_BUSINESS_ID: 'business-one',
+    FACTURATIONS_PUBLIC_ORIGIN: 'https://facturations.example.test',
+    FACTURATIONS_TOTP_ENCRYPTION_KEY: secret,
+  };
+  assert.equal(loadConfig(production).browserOrigin, 'https://facturations.example.test');
+  assert.throws(() => loadConfig({ NODE_ENV: 'production' }), /Production requires/);
+  assert.throws(() => loadConfig({ ...production, PORT: '0' }), /Production PORT/);
+  assert.throws(() => loadConfig({
+    ...production,
+    FACTURATIONS_PUBLIC_ORIGIN: 'https://localhost',
+  }), /loopback/);
+  assert.throws(() => loadConfig({ ...production, NODE_ENV: 'preview' }), /NODE_ENV/);
+});

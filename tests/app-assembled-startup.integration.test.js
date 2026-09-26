@@ -45,7 +45,7 @@ test('assembled app boots with dedicated disposable PostgreSQL settings and deni
         child.on('exit', code => finish(new Error('Assembled application exited before listening: ' + code)));
         child.stdout.on('data', chunk => {
           output = (output + chunk.toString('utf8')).slice(-2048);
-          const match = /TAKATAK Wave development service listening on port (\d+)/.exec(output);
+          const match = /GROUPE TAKATAK Facturations service listening on port (\d+)/.exec(output);
           if (match) finish(null, Number(match[1]));
         });
         // Avoid echoing stdout/stderr: startup diagnostics might contain sensitive data.
@@ -59,6 +59,10 @@ test('assembled app boots with dedicated disposable PostgreSQL settings and deni
       assert.equal(health.status, 200);
       assert.equal(health.headers.get('cache-control'), 'no-store');
       assert.deepEqual((await health.json()).ok, true);
+      const ready = await get('/ready');
+      assert.equal(ready.status, 200);
+      assert.equal(ready.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(await ready.json(), { ok: true, service: 'takatak-wave' });
       for (const language of ['fr', 'en']) {
         const login = await get('/internal/login?lang=' + language);
         assert.equal(login.status, 200);

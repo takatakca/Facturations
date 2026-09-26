@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
+const { verifyMigrationIntegrity } = require('./verify-migration-integrity');
 
 async function main() {
   const raw = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -13,6 +14,7 @@ async function main() {
       url.pathname !== '/facturations_test') {
     throw new Error('Refusing migration outside localhost/facturations_test');
   }
+  verifyMigrationIntegrity();
   const pool = new Pool({ connectionString: raw, connectionTimeoutMillis: 5000 });
   try {
     for (const migration of [

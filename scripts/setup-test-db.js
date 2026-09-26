@@ -35,11 +35,12 @@ async function main() {
       '017_delivery_authorizations.sql',
       '018_delivery_attempts.sql',
       '019_delivery_receipts.sql',
+      '020_email_provider_evidence.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and verified versioned issuer profiles and issuer-bound qualified invoice PDFs and immutable delivery authorizations and persistent simulated delivery attempts and immutable simulated delivery receipts');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and verified versioned issuer profiles and issuer-bound qualified invoice PDFs and immutable delivery authorizations and persistent simulated delivery attempts and immutable simulated delivery receipts and append-only synthetic provider evidence');
   } finally {
     await pool.end();
   }

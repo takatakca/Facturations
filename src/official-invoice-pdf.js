@@ -224,8 +224,11 @@ function buildLines(invoice, snapshot, issuerProfile = null) {
       );
     });
     add(
-      'Profil emetteur / Issuer profile v' + issuerProfile.version +
-      ' SHA-256 ' + issuerProfile.profileHash,
+      'Profil emetteur / Issuer profile v' + issuerProfile.version,
+      'F3', 7, 2
+    );
+    add(
+      'SHA-256: ' + issuerProfile.profileHash,
       'F3', 7, 8
     );
   }

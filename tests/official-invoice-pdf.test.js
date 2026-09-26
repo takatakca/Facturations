@@ -111,5 +111,6 @@ test('qualified PDF embeds exact verified issuer identity and profile provenance
   assert.ok(text.includes('Synthetic Trade Name'));
   assert.ok(text.includes('SYNTHETIC-GST-001'));
   assert.ok(text.includes('SYNTHETIC-QST-001'));
-  assert.ok(text.includes('v3 SHA-256 ' + 'a'.repeat(64)));
+  assert.ok(text.includes('Issuer profile v3'));
+  assert.ok(text.includes('SHA-256: ' + 'a'.repeat(64)));
 });

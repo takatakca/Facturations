@@ -73,6 +73,16 @@ Le serveur génère un `X-Request-ID` côté serveur et un événement JSON `htt
 
 Les erreurs pool PostgreSQL deviennent un événement générique `database_pool_error / POOL_ERROR` sans détail driver. Voir `docs/production-observability.md` pour les seuils de staging et la politique de collecte à homologuer.
 
+## Gate final GO / NO-GO staging
+
+Le candidat à la mise en service doit être évalué avec un dossier de preuves privé lié au **SHA exact** :
+
+```bash
+FACTURATIONS_RELEASE_SHA=<sha-exact> npm run go-no-go:staging -- /chemin/prive/staging-readiness.json
+```
+
+Le moteur refuse les dossiers incomplets/stale et interdit qu’une preuve CI synthétique satisfasse un contrôle réel de GitHub, staging, fournisseur, fiscalité, sécurité ou hébergement. Voir `docs/staging-go-no-go.md` et `ops/staging-readiness.example.json`.
+
 ## Conditions AVANT toute fusion ou préproduction
 
 1. L'exploitant doit confirmer une application et une base **Facturations seules**, DNS/certificat HTTPS publics, proxy de confiance, port Node inaccessible directement, limitation IP et comptes SQL à droits minimaux. Ne pas toucher aux services TAKATAK existants.

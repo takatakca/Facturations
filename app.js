@@ -28,6 +28,9 @@ const { createLoginAttemptLimit } = require('./src/login-attempt-limit');
 const { createCustomerDirectory } = require('./src/customer-directory');
 const { createCustomerContactStore } = require('./src/customer-contact-store');
 const { createApprovalLedger } = require('./src/approval-ledger');
+const { createClientPortalAuthStore } = require('./src/client-portal-auth-store');
+const { createClientPortalReadStore } = require('./src/client-portal-read-store');
+const { attachBrowserClientPortal } = require('./src/browser-client-portal');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -38,6 +41,8 @@ if (require.main === module) {
   let customerDirectory = null;
   let customerContactStore = null;
   let approvalLedger = null;
+  let clientPortalAuthStore = null;
+  let clientPortalReadStore = null;
   let draftApprovalStore = null;
   let issuanceAuthorizationStore = null;
   let workspaceSubmissionStore = null;
@@ -66,6 +71,8 @@ if (require.main === module) {
     }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
+    clientPortalAuthStore = createClientPortalAuthStore({ pool, businessId: config.businessId });
+    clientPortalReadStore = createClientPortalReadStore({ pool, businessId: config.businessId, authStore: clientPortalAuthStore });
   }
   const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger });
   if (config.browserOrigin) {
@@ -95,6 +102,8 @@ if (require.main === module) {
       staffAuthStore, customerDirectory });
     attachBrowserCustomerContact(server, { origin: config.browserOrigin, businessId: config.businessId,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, contactStore: customerContactStore });
+    attachBrowserClientPortal(server, { origin: config.browserOrigin,
+      authStore: clientPortalAuthStore, readStore: clientPortalReadStore });
   }
   attachReadOnlyDashboardCookie(server);
   server.listen(config.port, () => {

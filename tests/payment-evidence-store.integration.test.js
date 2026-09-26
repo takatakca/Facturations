@@ -16,6 +16,7 @@ const {
   createPaymentEvidenceStore,
   PaymentEvidenceError,
 }=require('../src/payment-evidence-store');
+const {createPaymentSummaryStore}=require('../src/payment-summary-store');
 const {buildWaveIssuancePreflight}=require('../src/wave-issuance-preflight');
 
 const DATABASE=process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -107,6 +108,23 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     const store=createPaymentEvidenceStore({
       pool,businessId,providerKey:'SYNTHETIC_PROCESSOR',
     });
+    const summaryStore=createPaymentSummaryStore({pool,businessId});
+    const emptySummary=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
+    assert.deepEqual({
+      invoiceTotalCents:emptySummary.invoiceTotalCents,
+      paidCents:emptySummary.paidCents,
+      refundedCents:emptySummary.refundedCents,
+      netPaidCents:emptySummary.netPaidCents,
+      balanceCents:emptySummary.balanceCents,
+      evidenceCount:emptySummary.evidenceCount,
+      financialState:emptySummary.financialState,
+      proofScope:emptySummary.proofScope,
+      externallyVerified:emptySummary.externallyVerified,
+    },{
+      invoiceTotalCents:10000,paidCents:0,refundedCents:0,netPaidCents:0,
+      balanceCents:10000,evidenceCount:0,financialState:'NO_EVIDENCE',
+      proofScope:'NONE',externallyVerified:false,
+    });
     assert.equal(typeof store.ingestVerifiedWebhook,'undefined');
 
     const event={
@@ -150,12 +168,81 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
       currency:'CAD',
       occurredAt:'2026-09-26T16:05:00.000Z',
     };
+    const afterPayment=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
+    assert.equal(afterPayment.paidCents,4000);
+    assert.equal(afterPayment.refundedCents,0);
+    assert.equal(afterPayment.netPaidCents,4000);
+    assert.equal(afterPayment.balanceCents,6000);
+    assert.equal(afterPayment.financialState,'PARTIALLY_PAID');
+    assert.equal(afterPayment.proofScope,'SYNTHETIC_ONLY');
+
     const refund=await store.ingestSynthetic({issuedInvoiceId:issued.id,event:refundEvent});
     assert.equal(refund.eventType,'REFUND_ISSUED');
 
+    const afterRefund=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
+    assert.equal(afterRefund.paidCents,4000);
+    assert.equal(afterRefund.refundedCents,1000);
+    assert.equal(afterRefund.netPaidCents,3000);
+    assert.equal(afterRefund.balanceCents,7000);
+    assert.equal(afterRefund.financialState,'PARTIALLY_PAID');
+    assert.equal(afterRefund.hasPaymentEvidence,true);
+    assert.equal(afterRefund.hasRefundEvidence,true);
+    assert.equal(afterRefund.hasVerifiedProviderEvidence,false);
+    assert.equal(afterRefund.proofScope,'SYNTHETIC_ONLY');
+
+    await store.ingestSynthetic({
+      issuedInvoiceId:issued.id,
+      event:{
+        providerKey:'SYNTHETIC_PROCESSOR',
+        eventId:'evt-'+crypto.randomUUID(),
+        providerTransactionId:'txn-'+crypto.randomUUID(),
+        eventType:'PAYMENT_RECEIVED',
+        amountCents:7000,
+        currency:'CAD',
+        occurredAt:'2026-09-26T16:10:00.000Z',
+      },
+    });
+    const paidSummary=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
+    assert.equal(paidSummary.netPaidCents,10000);
+    assert.equal(paidSummary.balanceCents,0);
+    assert.equal(paidSummary.financialState,'PAID');
+
+    await store.ingestSynthetic({
+      issuedInvoiceId:issued.id,
+      event:{
+        providerKey:'SYNTHETIC_PROCESSOR',
+        eventId:'evt-'+crypto.randomUUID(),
+        providerTransactionId:'txn-'+crypto.randomUUID(),
+        eventType:'PAYMENT_RECEIVED',
+        amountCents:1,
+        currency:'CAD',
+        occurredAt:'2026-09-26T16:11:00.000Z',
+      },
+    });
+    const overpaidSummary=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
+    assert.equal(overpaidSummary.financialState,'OVERPAID');
+    assert.equal(overpaidSummary.balanceCents,-1);
+
+    await store.ingestSynthetic({
+      issuedInvoiceId:issued.id,
+      event:{
+        providerKey:'SYNTHETIC_PROCESSOR',
+        eventId:'evt-'+crypto.randomUUID(),
+        providerTransactionId:'refund-'+crypto.randomUUID(),
+        eventType:'REFUND_ISSUED',
+        amountCents:10002,
+        currency:'CAD',
+        occurredAt:'2026-09-26T16:12:00.000Z',
+      },
+    });
+    const anomaly=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
+    assert.equal(anomaly.financialState,'REFUND_EXCEEDS_PAYMENTS');
+
     const listed=await store.listByIssuedInvoice({issuedInvoiceId:issued.id});
-    assert.equal(listed.length,2);
-    assert.deepEqual(listed.map(item=>item.eventType),['PAYMENT_RECEIVED','REFUND_ISSUED']);
+    assert.equal(listed.length,5);
+    assert.deepEqual(listed.map(item=>item.eventType),[
+      'PAYMENT_RECEIVED','REFUND_ISSUED','PAYMENT_RECEIVED','PAYMENT_RECEIVED','REFUND_ISSUED',
+    ]);
 
     const foreign=createPaymentEvidenceStore({
       pool,businessId:'payment-other-'+crypto.randomUUID(),providerKey:'SYNTHETIC_PROCESSOR',

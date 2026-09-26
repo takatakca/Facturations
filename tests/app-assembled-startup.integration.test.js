@@ -44,9 +44,18 @@ test('assembled app boots with dedicated disposable PostgreSQL settings and deni
         child.on('error', () => finish(new Error('Cannot start isolated application process')));
         child.on('exit', code => finish(new Error('Assembled application exited before listening: ' + code)));
         child.stdout.on('data', chunk => {
-          output = (output + chunk.toString('utf8')).slice(-2048);
-          const match = /TAKATAK Wave development service listening on port (\d+)/.exec(output);
-          if (match) finish(null, Number(match[1]));
+          output += chunk.toString('utf8');
+          const lines = output.split('\\n');
+          output = lines.pop().slice(-2048);
+          for (const line of lines) {
+            let event;
+            try { event = JSON.parse(line); } catch { continue; }
+            if (event && event.event === 'service_listening' &&
+                Number.isInteger(event.port) && event.port > 0 && event.port <= 65535) {
+              finish(null, event.port);
+              break;
+            }
+          }
         });
         // Avoid echoing stdout/stderr: startup diagnostics might contain sensitive data.
         child.stderr.resume();

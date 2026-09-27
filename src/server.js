@@ -91,6 +91,17 @@ function parseListOptions(searchParams) {
   return pageOptions(searchParams.get('page') ?? '1', searchParams.get('pageSize') ?? '20');
 }
 
+function resolveIntegrationPrincipal(request, config) {
+  if (!config.integrationEnabled) throw new IntegrationAuthError('INTEGRATION_DISABLED', 404);
+  return verifyIntegrationBearer({
+    authorization: request.headers.authorization,
+    secret: config.integrationSecret,
+    issuer: config.integrationIssuer,
+    audience: config.integrationAudience,
+    businessId: config.businessId,
+  });
+}
+
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
   staffAuthStore = null, customerDirectory = null, approvalLedger = null, readinessCheck = null } = {}) {
   if (!config) throw new Error('Server config is required');
@@ -123,54 +134,77 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isCustomers = path === '/api/customers';
     const isApprovals = path === '/api/approvals';
     const isIntegrationCapabilities = path === '/integration/v1/capabilities';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities) {
+    const isIntegrationDashboard = path === '/integration/v1/dashboard';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities) {
+    if (isIntegrationCapabilities || isIntegrationDashboard) {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       if ([...url.searchParams.keys()].length) return sendJson(response, 422, { error: 'INVALID_QUERY' });
-      if (!config.integrationEnabled) return sendJson(response, 404, { error: 'NOT_FOUND' });
       let principal;
       try {
-        principal = verifyIntegrationBearer({
-          authorization: request.headers.authorization,
-          secret: config.integrationSecret,
-          issuer: config.integrationIssuer,
-          audience: config.integrationAudience,
-          businessId: config.businessId,
-        });
+        principal = resolveIntegrationPrincipal(request, config);
       } catch (error) {
         if (error instanceof IntegrationAuthError) {
-          return sendJson(response, error.statusCode, { error: error.code });
+          const code = error.code === 'INTEGRATION_DISABLED' ? 'NOT_FOUND' : error.code;
+          return sendJson(response, error.statusCode, { error: code });
         }
         return sendJson(response, 503, { error: 'INTEGRATION_AUTH_UNAVAILABLE' });
       }
-      return sendJson(response, 200, {
-        version: 1,
-        requestId: request.requestId || null,
-        businessId: principal.businessId,
-        data: {
-          service: 'facturations',
-          integrationVersion: 1,
-          capabilities: {
-            capabilitiesRead: true,
-            dashboardRead: false,
-            draftsRead: false,
-            customersRead: false,
-            draftWrite: false,
-            ownerApprovalWrite: false,
-            issuanceAuthorizationWrite: false,
-            deliveryAuthorizationWrite: false,
-            portalPublicationWrite: false,
+
+      if (isIntegrationCapabilities) {
+        return sendJson(response, 200, {
+          version: 1,
+          requestId: request.requestId || null,
+          businessId: principal.businessId,
+          data: {
+            service: 'facturations',
+            integrationVersion: 1,
+            capabilities: {
+              capabilitiesRead: true,
+              dashboardRead: true,
+              draftsRead: false,
+              customersRead: false,
+              draftWrite: false,
+              ownerApprovalWrite: false,
+              issuanceAuthorizationWrite: false,
+              deliveryAuthorizationWrite: false,
+              portalPublicationWrite: false,
+            },
+            standalone: {
+              staffWorkspace: true,
+              clientPortal: true,
+              bilingual: ['fr', 'en'],
+            },
           },
-          standalone: {
-            staffWorkspace: true,
-            clientPortal: true,
-            bilingual: ['fr', 'en'],
+        });
+      }
+
+      if (!dashboardStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+      try {
+        const summary = await dashboardStore.getSummary();
+        if (!summary || summary.status !== 'DRAFTS_ONLY' || summary.currency !== 'CAD') {
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
+        return sendJson(response, 200, {
+          version: 1,
+          requestId: request.requestId || null,
+          businessId: principal.businessId,
+          data: {
+            status: 'DRAFTS_ONLY',
+            currency: 'CAD',
+            draftCount: summary.draftCount,
+            draftTotalCents: summary.draftTotalCents,
+            customerCount: summary.customerCount,
+            issuedInvoicesAvailable: false,
+            paymentsAvailable: false,
+            revenueAvailable: false,
           },
-        },
-      });
+        });
+      } catch {
+        return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+      }
     }
 
     const expectedMethod = isPreview ? 'POST' : isCollection ? null : 'GET';

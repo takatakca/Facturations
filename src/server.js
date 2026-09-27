@@ -11,6 +11,7 @@ const { renderDashboard } = require('./dashboard-view');
 const { CustomerDirectoryError, customerListOptions } = require('./customer-directory');
 const { ApprovalLedgerError, approvalPageOptions } = require('./approval-ledger');
 const { resolveReadOnlyStaff } = require('./staff-read-access');
+const { verifyIntegrationBearer, IntegrationAuthError } = require('./integration-auth');
 
 const MAX_BODY_BYTES = 32768;
 
@@ -121,8 +122,55 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isHtml = path === '/internal/dashboard';
     const isCustomers = path === '/api/customers';
     const isApprovals = path === '/api/approvals';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml) {
+    const isIntegrationCapabilities = path === '/integration/v1/capabilities';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
+    }
+
+    if (isIntegrationCapabilities) {
+      if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      if ([...url.searchParams.keys()].length) return sendJson(response, 422, { error: 'INVALID_QUERY' });
+      if (!config.integrationEnabled) return sendJson(response, 404, { error: 'NOT_FOUND' });
+      let principal;
+      try {
+        principal = verifyIntegrationBearer({
+          authorization: request.headers.authorization,
+          secret: config.integrationSecret,
+          issuer: config.integrationIssuer,
+          audience: config.integrationAudience,
+          businessId: config.businessId,
+        });
+      } catch (error) {
+        if (error instanceof IntegrationAuthError) {
+          return sendJson(response, error.statusCode, { error: error.code });
+        }
+        return sendJson(response, 503, { error: 'INTEGRATION_AUTH_UNAVAILABLE' });
+      }
+      return sendJson(response, 200, {
+        version: 1,
+        requestId: request.requestId || null,
+        businessId: principal.businessId,
+        data: {
+          service: 'facturations',
+          integrationVersion: 1,
+          capabilities: {
+            capabilitiesRead: true,
+            dashboardRead: false,
+            draftsRead: false,
+            customersRead: false,
+            draftWrite: false,
+            ownerApprovalWrite: false,
+            issuanceAuthorizationWrite: false,
+            deliveryAuthorizationWrite: false,
+            portalPublicationWrite: false,
+          },
+          standalone: {
+            staffWorkspace: true,
+            clientPortal: true,
+            bilingual: ['fr', 'en'],
+          },
+        },
+      });
     }
 
     const expectedMethod = isPreview ? 'POST' : isCollection ? null : 'GET';

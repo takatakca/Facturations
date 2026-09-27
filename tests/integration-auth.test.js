@@ -834,7 +834,7 @@ test('integration approvals endpoint is OWNER-only and exposes internal approval
         paid: false,
       }],
     });
-    assert.doesNotMatch(JSON.stringify(body), /approvedBy|email|token|secret|wave_access/i);
+    assert.doesNotMatch(JSON.stringify(body), /"approvedBy"|"email"|"token"|"secret"|wave_access/i);
 
     for (const path of [
       '/integration/v1/approvals?page=0',

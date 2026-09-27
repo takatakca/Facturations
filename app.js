@@ -37,6 +37,7 @@ const { attachOperationalTelemetry } = require('./src/operational-telemetry');
 const { attachProductionEdgeGuard } = require('./src/production-edge-guard');
 const { createOpenAiAssistantClient } = require('./src/openai-assistant-client');
 const { attachBrowserAiHelp } = require('./src/browser-ai-help');
+const { attachBrowserAiAssistantPage } = require('./src/browser-ai-assistant-page');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -98,6 +99,7 @@ if (require.main === module) {
         staffAuthStore,
         assistantClient,
       });
+      attachBrowserAiAssistantPage(server, { staffAuthStore });
     }
     attachBrowserWorkspaceRoutes(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });

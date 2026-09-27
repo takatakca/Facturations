@@ -137,13 +137,14 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isIntegrationDashboard = path === '/integration/v1/dashboard';
     const isIntegrationDrafts = path === '/integration/v1/drafts';
     const isIntegrationCustomers = path === '/integration/v1/customers';
+    const isIntegrationApprovals = path === '/integration/v1/approvals';
     const integrationDraftDetailMatch = /^\/integration\/v1\/drafts\/([^/]+)$/.exec(path);
     const isIntegrationDraftDetail = Boolean(integrationDraftDetailMatch);
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationDraftDetail) {
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationDraftDetail) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail) {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail) &&
           [...url.searchParams.keys()].length) {
@@ -174,6 +175,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               draftsRead: true,
               draftDetailsRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
+              approvalsRead: principal.roles.includes('OWNER'),
               draftWrite: false,
               ownerApprovalWrite: false,
               issuanceAuthorizationWrite: false,
@@ -242,6 +244,72 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
           if (error instanceof StoreError || error instanceof DraftValidationError) {
             return sendJson(response, error.statusCode, { error: error.code });
           }
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
+      }
+
+      if (isIntegrationApprovals) {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        if (!approvalLedger) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        let options;
+        try { options = approvalPageOptions(url.searchParams); }
+        catch (error) {
+          if (error instanceof ApprovalLedgerError || error instanceof DashboardError) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          return sendJson(response, 422, { error: 'INVALID_QUERY' });
+        }
+        try {
+          const listed = await approvalLedger.listApprovals(options);
+          if (!listed || listed.status !== 'INTERNAL_APPROVALS_ONLY' ||
+              listed.currency !== 'CAD' ||
+              !Number.isInteger(listed.page) || !Number.isInteger(listed.pageSize) ||
+              typeof listed.hasMore !== 'boolean' ||
+              !Array.isArray(listed.approvals) || listed.approvals.length > listed.pageSize) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          const safeApprovals = [];
+          for (const approval of listed.approvals) {
+            if (!approval || typeof approval.id !== 'string' ||
+                typeof approval.draftId !== 'string' ||
+                typeof approval.approvedAt !== 'string' ||
+                typeof approval.totalCents !== 'string' ||
+                approval.status !== 'APPROVED_INTERNAL_ONLY' ||
+                approval.issued !== false ||
+                approval.waveSynced !== false ||
+                approval.emailed !== false ||
+                approval.paid !== false) {
+              return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+            }
+            safeApprovals.push({
+              id: approval.id,
+              draftId: approval.draftId,
+              approvedAt: approval.approvedAt,
+              totalCents: approval.totalCents,
+              currency: 'CAD',
+              status: 'APPROVED_INTERNAL_ONLY',
+              issued: false,
+              waveSynced: false,
+              emailed: false,
+              paid: false,
+            });
+          }
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              status: 'INTERNAL_APPROVALS_ONLY',
+              currency: 'CAD',
+              page: listed.page,
+              pageSize: listed.pageSize,
+              hasMore: listed.hasMore,
+              approvals: safeApprovals,
+            },
+          });
+        } catch {
           return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
         }
       }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 26,
+  "lockedThrough": 27,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -132,6 +132,11 @@
       "file": "026_client_portal_publications.sql",
       "gitBlobSha1": "bad3aa327351b2a6b66cb84aed8a9de0d69ce09d",
       "bytes": 3348
+    },
+    {
+      "file": "027_mfa_recovery.sql",
+      "gitBlobSha1": "c1dcb26e75ba6027f42699c7e87346c6417754a9",
+      "bytes": 3199
     }
   ]
 }

@@ -15,7 +15,8 @@
     "check": "node --check app.js && for file in src/*.js tests/*.test.js scripts/*.js; do node --check \"$file\" || exit 1; done",
     "test:backup-restore": "node scripts/backup-restore-drill.js",
     "check:migrations": "node scripts/verify-migration-integrity.js",
-    "go-no-go:staging": "node scripts/evaluate-staging-readiness.js"
+    "go-no-go:staging": "node scripts/evaluate-staging-readiness.js",
+    "check:runtime-db": "node scripts/postgres-runtime-preflight.js"
   },
   "dependencies": {
     "pg": "^8.13.0"

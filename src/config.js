@@ -36,6 +36,27 @@ function loadConfig(env = process.env) {
     throw new Error('FACTURATIONS_DATABASE_URL must be a PostgreSQL URL');
   }
 
+  const rawIntegrationEnabled = (env.FACTURATIONS_INTEGRATION_ENABLED || '').trim();
+  if (rawIntegrationEnabled && rawIntegrationEnabled !== '1') {
+    throw new Error('FACTURATIONS_INTEGRATION_ENABLED must be 1 when enabled');
+  }
+  const integrationEnabled = rawIntegrationEnabled === '1';
+  const integrationIssuer = (env.FACTURATIONS_INTEGRATION_ISSUER || '').trim();
+  const integrationAudience = (env.FACTURATIONS_INTEGRATION_AUDIENCE || '').trim();
+  const integrationSecret = env.FACTURATIONS_INTEGRATION_HMAC_SECRET || '';
+  if (integrationEnabled) {
+    if (!databaseUrl || !businessId) {
+      throw new Error('Facturations integration requires dedicated database and business ID');
+    }
+    if (!integrationIssuer || integrationIssuer.length > 200 ||
+        !integrationAudience || integrationAudience.length > 200 ||
+        integrationSecret.length < 32) {
+      throw new Error('Facturations integration issuer, audience and 32+ character HMAC secret are required');
+    }
+  } else if (integrationIssuer || integrationAudience || integrationSecret) {
+    throw new Error('Facturations integration credentials require FACTURATIONS_INTEGRATION_ENABLED=1');
+  }
+
   // Browser login is opt-in and fails closed unless its separate encryption key,
   // a dedicated database and exact external HTTPS origin are ALL configured.
   const browserOrigin = (env.FACTURATIONS_PUBLIC_ORIGIN || '').trim();
@@ -84,6 +105,10 @@ function loadConfig(env = process.env) {
     businessId,
     browserOrigin,
     totpEncryptionKeyHex,
+    integrationEnabled,
+    integrationIssuer,
+    integrationAudience,
+    integrationSecret,
   });
 }
 

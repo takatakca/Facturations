@@ -95,10 +95,10 @@ function renderDashboard({ summary, drafts, language = 'fr', ownerReview = false
        <a class="quick-card" data-guide-id="review" href="/internal/review?lang=${language}"><strong>${t.review}</strong><span>${language === 'fr' ? 'Vérifier les brouillons soumis avant toute émission.' : 'Review submitted drafts before any issuance.'}</span></a>`
     : '';
   const assistantNav = assistantAvailable
-    ? `<a class="nav-link" href="/internal/assistant?lang=${language}">${t.assistant}</a>`
+    ? `<a class="nav-link" href="/internal/assistant?lang=${language}&screen=dashboard">${t.assistant}</a>`
     : '';
   const assistantQuick = assistantAvailable
-    ? `<a class="quick-card" href="/internal/assistant?lang=${language}"><strong>${t.assistant}</strong><span>${language === 'fr' ? 'Poser une question ou préparer un brouillon avec OpenAI, sans exécuter d’action financière.' : 'Ask a question or prepare a draft with OpenAI, without executing a financial action.'}</span></a>`
+    ? `<a class="quick-card" href="/internal/assistant?lang=${language}&screen=dashboard"><strong>${t.assistant}</strong><span>${language === 'fr' ? 'Poser une question ou préparer un brouillon avec OpenAI, sans exécuter d’action financière.' : 'Ask a question or prepare a draft with OpenAI, without executing a financial action.'}</span></a>`
     : '';
 
   // The only form is POST to the existing same-origin, origin-checked logout route.

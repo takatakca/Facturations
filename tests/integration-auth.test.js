@@ -172,6 +172,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       capabilitiesRead: true,
       dashboardRead: true,
       draftsRead: true,
+      draftDetailsRead: true,
       customersRead: true,
       draftWrite: false,
       ownerApprovalWrite: false,
@@ -434,6 +435,7 @@ test('integration capabilities expose customer read only to OWNER identities', a
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.data.capabilities.customersRead, false);
+    assert.equal(body.data.capabilities.draftDetailsRead, false);
     assert.equal(body.data.capabilities.draftsRead, true);
   });
 });
@@ -566,6 +568,173 @@ test('integration customers endpoint fails closed on malformed directory output'
     await once(server, 'listening');
     try {
       const response = await fetch('http://127.0.0.1:' + server.address().port + '/integration/v1/customers', {
+        headers: { Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-' + crypto.randomUUID(),
+        }) },
+      });
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  }
+});
+
+
+test('integration draft detail is OWNER-only and recalculates the stored snapshot before returning it', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const calls = { get: 0 };
+  const draftStore = {
+    async getDraft(requestedId) {
+      calls.get += 1;
+      assert.equal(requestedId, id);
+      return {
+        id,
+        status: 'DRAFT',
+        createdAt: '2026-09-27T20:00:00.000Z',
+        preview: {
+          status: 'DRAFT',
+          persisted: true,
+          waveSynced: false,
+          emailed: false,
+          currency: 'CAD',
+          customer: {
+            name: 'Client Exemple',
+            email: 'client@example.test',
+            address: '123 Rue Exemple',
+          },
+          invoiceDate: '2026-09-27',
+          dueDate: '2026-10-12',
+          notes: 'Travail approuvé pour préparation',
+          lines: [{
+            description: 'Nettoyage de hotte',
+            quantity: 1,
+            unitPriceCents: 85000,
+            discountCents: 0,
+            taxable: false,
+            lineTotalCents: 85000,
+          }],
+          taxes: [],
+          subtotalCents: 85000,
+          taxableSubtotalCents: 0,
+          taxTotalCents: 0,
+          totalCents: 85000,
+          calculation: 'stored value must not be trusted',
+        },
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, draftStore });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const staffDenied = await fetch(base + '/integration/v1/drafts/' + id, {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-live-jti-staff-draft-detail',
+      }) },
+    });
+    assert.equal(staffDenied.status, 403);
+    assert.deepEqual(await staffDenied.json(), { error: 'OWNER_REQUIRED' });
+    assert.equal(calls.get, 0);
+
+    const response = await fetch(base + '/integration/v1/drafts/' + id, {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-draft-detail',
+      }) },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.get, 1);
+    const body = await response.json();
+    assert.equal(body.data.id, id);
+    assert.equal(body.data.status, 'DRAFT');
+    assert.equal(body.data.preview.status, 'PREVIEW_ONLY');
+    assert.equal(body.data.preview.persisted, false);
+    assert.equal(body.data.preview.waveSynced, false);
+    assert.equal(body.data.preview.emailed, false);
+    assert.equal(body.data.preview.totalCents, 85000);
+    assert.equal(body.data.preview.customer.email, 'client@example.test');
+    assert.equal(body.data.preview.calculation,
+      'Independent taxes on taxable discounted subtotal; half-up per tax to nearest cent.');
+    assert.doesNotMatch(JSON.stringify(body), /createdAt|request_hash|idempotency/i);
+
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '?businessId=other', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-draft-detail-query',
+      }) },
+    })).status, 422);
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-draft-detail-post',
+      }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration draft detail preserves store errors and rejects malformed stored snapshots', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+
+  const notFound = createServer({
+    config,
+    draftStore: {
+      async getDraft() {
+        const error = new (require('../src/draft-store').StoreError)('DRAFT_NOT_FOUND', 404);
+        throw error;
+      },
+    },
+  });
+  notFound.listen(0, '127.0.0.1');
+  await once(notFound, 'listening');
+  try {
+    const response = await fetch('http://127.0.0.1:' + notFound.address().port +
+      '/integration/v1/drafts/' + id, {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-detail-not-found',
+      }) },
+    });
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: 'DRAFT_NOT_FOUND' });
+  } finally {
+    await new Promise(resolve => notFound.close(resolve));
+  }
+
+  for (const stored of [
+    null,
+    { id, status: 'ISSUED', preview: {} },
+    { id, status: 'DRAFT', preview: null },
+    { id, status: 'DRAFT', preview: { customer: {}, lines: 'bad', taxes: [] } },
+  ]) {
+    const server = createServer({
+      config,
+      draftStore: { async getDraft() { return stored; } },
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const response = await fetch('http://127.0.0.1:' + server.address().port +
+        '/integration/v1/drafts/' + id, {
         headers: { Authorization: 'Bearer ' + liveToken({
           jti: 'integration-live-jti-' + crypto.randomUUID(),
         }) },

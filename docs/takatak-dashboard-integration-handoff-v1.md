@@ -38,6 +38,7 @@ OWNER example capabilities:
       "draftsRead": true,
       "draftDetailsRead": true,
       "customersRead": true,
+      "approvalsRead": true,
       "draftWrite": false,
       "ownerApprovalWrite": false,
       "issuanceAuthorizationWrite": false,
@@ -173,6 +174,41 @@ OWNER only. Minimum search text is 2 characters and maximum is 80. Response fiel
 
 Address and internal directory metadata are not exposed through this endpoint.
 
+### GET /integration/v1/approvals?page=1&pageSize=20
+
+OWNER only. This endpoint reports **internal Facturations approval state only**. It does not mean an invoice was issued, sent, paid, posted to Wave, or published.
+
+```json
+{
+  "version": 1,
+  "requestId": "<server-generated-uuid>",
+  "businessId": "<verified-business-id>",
+  "data": {
+    "status": "INTERNAL_APPROVALS_ONLY",
+    "currency": "CAD",
+    "page": 1,
+    "pageSize": 20,
+    "hasMore": false,
+    "approvals": [
+      {
+        "id": "<approval-uuid>",
+        "draftId": "<draft-uuid>",
+        "approvedAt": "2026-09-27T21:00:00.000Z",
+        "totalCents": "85000",
+        "currency": "CAD",
+        "status": "APPROVED_INTERNAL_ONLY",
+        "issued": false,
+        "waveSynced": false,
+        "emailed": false,
+        "paid": false
+      }
+    ]
+  }
+}
+```
+
+The integration deliberately omits the internal approver identity. Use this only for workflow/status presentation. Never relabel it as issued, sent, paid, revenue, or accounts receivable.
+
 ## Current service-token format
 
 Current v1 verification is server-to-server HS256. The shared HMAC secret must exist only in the two trusted server environments.
@@ -299,8 +335,9 @@ The dashboard team can safely build against mock responses matching this contrac
 3. Paginated draft list.
 4. OWNER-only draft detail/review screen using the recalculated preview response.
 5. OWNER-only customer directory.
-6. Loading, empty, forbidden and unavailable states.
-7. A link/handoff to the standalone Facturations workspace.
+6. OWNER-only internal approval history/status, clearly labelled as internal-only.
+7. Loading, empty, forbidden and unavailable states.
+8. A link/handoff to the standalone Facturations workspace.
 
 Do **not** build native invoice issuance/send/payment buttons yet because those integration capabilities intentionally remain false.
 

@@ -137,13 +137,15 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isIntegrationDashboard = path === '/integration/v1/dashboard';
     const isIntegrationDrafts = path === '/integration/v1/drafts';
     const isIntegrationCustomers = path === '/integration/v1/customers';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers) {
+    const integrationDraftDetailMatch = /^\/integration\/v1\/drafts\/([^/]+)$/.exec(path);
+    const isIntegrationDraftDetail = Boolean(integrationDraftDetailMatch);
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationDraftDetail) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationDraftDetail) {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
-      if ((isIntegrationCapabilities || isIntegrationDashboard) &&
+      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail) &&
           [...url.searchParams.keys()].length) {
         return sendJson(response, 422, { error: 'INVALID_QUERY' });
       }
@@ -170,6 +172,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               capabilitiesRead: true,
               dashboardRead: true,
               draftsRead: true,
+              draftDetailsRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
               draftWrite: false,
               ownerApprovalWrite: false,
@@ -184,6 +187,63 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             },
           },
         });
+      }
+
+      if (isIntegrationDraftDetail) {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        if (!draftStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        try {
+          const stored = await draftStore.getDraft(integrationDraftDetailMatch[1]);
+          if (!stored || stored.status !== 'DRAFT' || !stored.preview ||
+              typeof stored.preview !== 'object' || Array.isArray(stored.preview)) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          const snapshot = stored.preview;
+          if (!snapshot.customer || typeof snapshot.customer !== 'object' ||
+              !Array.isArray(snapshot.lines) || !Array.isArray(snapshot.taxes)) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          const recalculated = previewDraft({
+            currency: snapshot.currency,
+            customer: {
+              name: snapshot.customer.name,
+              email: snapshot.customer.email,
+              address: snapshot.customer.address ?? null,
+            },
+            invoiceDate: snapshot.invoiceDate,
+            dueDate: snapshot.dueDate,
+            notes: snapshot.notes ?? null,
+            lines: snapshot.lines.map(line => ({
+              description: line.description,
+              quantity: line.quantity,
+              unitPriceCents: line.unitPriceCents,
+              discountCents: line.discountCents ?? 0,
+              taxable: line.taxable,
+            })),
+            taxes: snapshot.taxes.map(tax => ({
+              code: tax.code,
+              label: tax.label,
+              rateMilliPercent: tax.rateMilliPercent,
+            })),
+          });
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              id: stored.id,
+              status: 'DRAFT',
+              preview: recalculated,
+            },
+          });
+        } catch (error) {
+          if (error instanceof StoreError || error instanceof DraftValidationError) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
       }
 
       if (isIntegrationCustomers) {

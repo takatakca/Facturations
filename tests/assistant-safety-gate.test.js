@@ -71,6 +71,25 @@ test('draft changes remain proposals and sensitive actions map to existing human
   assert.equal(publish.requiredGate,'CLIENT_PORTAL_PUBLICATION');
 });
 
+test('new draft creation remains proposal-only without pretending a draft already exists',()=>{
+  const proposalOnly=evaluateAssistantProposal(proposal({
+    intent:'DRAFT_CHANGE',
+    target:{type:'NONE',id:null},
+  }));
+  assert.equal(proposalOnly.decision,'PROPOSAL_ONLY');
+  assert.equal(proposalOnly.requiredGate,'DRAFT_EDITOR_REVIEW');
+  assert.equal(proposalOnly.directExecutionAllowed,false);
+
+  assert.throws(
+    ()=>evaluateAssistantProposal(proposal({
+      intent:'DRAFT_CHANGE',
+      target:{type:'ISSUED_INVOICE',id:INVOICE},
+    })),
+    error=>error instanceof AssistantSafetyError &&
+      error.code==='DRAFT_TARGET_REQUIRED'
+  );
+});
+
 test('payment refund and MFA recovery cannot be executed by the assistant',()=>{
   for(const intent of ['RECORD_PAYMENT','REFUND_PAYMENT']){
     const result=evaluateAssistantProposal(proposal({

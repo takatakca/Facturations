@@ -42,7 +42,7 @@ function liveToken(overrides = {}) {
 
 test('signed short-lived integration token is accepted only for the configured tenant', () => {
   const principal = verifyIntegrationBearer({
-    authorization: 'Bearer ' + liveToken(),
+    authorization: 'Bearer ' + token(),
     secret: SECRET,
     issuer: ISSUER,
     audience: AUDIENCE,

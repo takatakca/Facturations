@@ -174,6 +174,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       draftsRead: true,
       draftDetailsRead: true,
       customersRead: true,
+      approvalsRead: true,
       draftWrite: false,
       ownerApprovalWrite: false,
       issuanceAuthorizationWrite: false,
@@ -437,6 +438,7 @@ test('integration capabilities expose customer read only to OWNER identities', a
     assert.equal(body.data.capabilities.customersRead, false);
     assert.equal(body.data.capabilities.draftDetailsRead, false);
     assert.equal(body.data.capabilities.draftsRead, true);
+    assert.equal(body.data.capabilities.approvalsRead, false);
   });
 });
 
@@ -735,6 +737,164 @@ test('integration draft detail preserves store errors and rejects malformed stor
     try {
       const response = await fetch('http://127.0.0.1:' + server.address().port +
         '/integration/v1/drafts/' + id, {
+        headers: { Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-' + crypto.randomUUID(),
+        }) },
+      });
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  }
+});
+
+
+test('integration approvals endpoint is OWNER-only and exposes internal approval state without issuer identity', async () => {
+  const calls = { list: 0, options: null };
+  const approvalLedger = {
+    async listApprovals(options) {
+      calls.list += 1;
+      calls.options = options;
+      return {
+        status: 'INTERNAL_APPROVALS_ONLY',
+        currency: 'CAD',
+        page: options.page,
+        pageSize: options.pageSize,
+        hasMore: false,
+        approvals: [{
+          id: '33333333-3333-4333-8333-333333333333',
+          draftId: '11111111-1111-4111-8111-111111111111',
+          approvedBy: '22222222-2222-4222-8222-222222222222',
+          approvedAt: '2026-09-27T21:00:00.000Z',
+          totalCents: '85000',
+          status: 'APPROVED_INTERNAL_ONLY',
+          issued: false,
+          waveSynced: false,
+          emailed: false,
+          paid: false,
+        }],
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, approvalLedger });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const unauthenticated = await fetch(base + '/integration/v1/approvals');
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(calls.list, 0);
+
+    const staffDenied = await fetch(base + '/integration/v1/approvals', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-live-jti-staff-approvals',
+      }) },
+    });
+    assert.equal(staffDenied.status, 403);
+    assert.deepEqual(await staffDenied.json(), { error: 'OWNER_REQUIRED' });
+    assert.equal(calls.list, 0);
+
+    const response = await fetch(base + '/integration/v1/approvals?page=2&pageSize=10', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-approvals',
+      }) },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls.options, { page: 2, pageSize: 10, offset: 10 });
+    assert.equal(calls.list, 1);
+
+    const body = await response.json();
+    assert.deepEqual(body.data, {
+      status: 'INTERNAL_APPROVALS_ONLY',
+      currency: 'CAD',
+      page: 2,
+      pageSize: 10,
+      hasMore: false,
+      approvals: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        draftId: '11111111-1111-4111-8111-111111111111',
+        approvedAt: '2026-09-27T21:00:00.000Z',
+        totalCents: '85000',
+        currency: 'CAD',
+        status: 'APPROVED_INTERNAL_ONLY',
+        issued: false,
+        waveSynced: false,
+        emailed: false,
+        paid: false,
+      }],
+    });
+    assert.doesNotMatch(JSON.stringify(body), /approvedBy|email|token|secret|wave_access/i);
+
+    for (const path of [
+      '/integration/v1/approvals?page=0',
+      '/integration/v1/approvals?pageSize=51',
+      '/integration/v1/approvals?page=1&page=2',
+      '/integration/v1/approvals?businessId=other',
+    ]) {
+      const denied = await fetch(base + path, {
+        headers: { Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-' + crypto.randomUUID(),
+        }) },
+      });
+      assert.equal(denied.status, 422);
+    }
+
+    assert.equal((await fetch(base + '/integration/v1/approvals', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-approvals-post',
+      }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration approvals endpoint fails closed on malformed or oversized ledger output', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+
+  for (const result of [
+    null,
+    { status: 'DRAFTS_ONLY', currency: 'CAD', page: 1, pageSize: 20, hasMore: false, approvals: [] },
+    { status: 'INTERNAL_APPROVALS_ONLY', currency: 'USD', page: 1, pageSize: 20, hasMore: false, approvals: [] },
+    { status: 'INTERNAL_APPROVALS_ONLY', currency: 'CAD', page: 1, pageSize: 20, hasMore: false,
+      approvals: [{ id: 'x' }] },
+    { status: 'INTERNAL_APPROVALS_ONLY', currency: 'CAD', page: 1, pageSize: 1, hasMore: false,
+      approvals: [
+        { id: 'a', draftId: 'd1', approvedAt: '2026-09-27T21:00:00.000Z', totalCents: '1',
+          status: 'APPROVED_INTERNAL_ONLY', issued: false, waveSynced: false, emailed: false, paid: false },
+        { id: 'b', draftId: 'd2', approvedAt: '2026-09-27T21:01:00.000Z', totalCents: '2',
+          status: 'APPROVED_INTERNAL_ONLY', issued: false, waveSynced: false, emailed: false, paid: false },
+      ] },
+  ]) {
+    const server = createServer({
+      config,
+      approvalLedger: { async listApprovals() { return result; } },
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const response = await fetch('http://127.0.0.1:' + server.address().port +
+        '/integration/v1/approvals', {
         headers: { Authorization: 'Bearer ' + liveToken({
           jti: 'integration-live-jti-' + crypto.randomUUID(),
         }) },

@@ -66,7 +66,7 @@ test('assistant navigation appears only when the server-side AI feature is enabl
   assert.doesNotMatch(disabled, /\/internal\/assistant\?lang=fr/);
 
   const enabled = renderDashboard({ summary, drafts, language: 'fr', assistantAvailable: true });
-  assert.match(enabled, /href="\/internal\/assistant\?lang=fr"/);
+  assert.match(enabled, /href="\/internal\/assistant\?lang=fr&screen=dashboard"/);
   assert.match(enabled, /Assistant IA/);
 
   assert.throws(() => renderDashboard({

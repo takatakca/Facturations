@@ -8,6 +8,7 @@ const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
 const { DashboardError, pageOptions } = require('./dashboard-store');
 const { renderDashboard } = require('./dashboard-view');
+const { DASHBOARD_GUIDE_CLIENT } = require('./dashboard-guide-client');
 const { CustomerDirectoryError, customerListOptions } = require('./customer-directory');
 const { ApprovalLedgerError, approvalPageOptions } = require('./approval-ledger');
 const { resolveReadOnlyStaff } = require('./staff-read-access');
@@ -30,7 +31,7 @@ function sendHtml(response, html) {
   response.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'private, no-store',
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'none'",
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'none'",
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'no-referrer',
@@ -38,6 +39,20 @@ function sendHtml(response, html) {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   });
   response.end(html);
+}
+
+function sendJavascript(response, body) {
+  if (response.headersSent || response.destroyed) return;
+  response.writeHead(200, {
+    'Content-Type': 'text/javascript; charset=utf-8',
+    'Cache-Control': 'private, no-store',
+    'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+  });
+  response.end(body);
 }
 
 function isAuthorized(provided, expected) {
@@ -119,10 +134,17 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isWave = path === '/api/wave/businesses';
     const isDashboard = path === '/api/dashboard/summary';
     const isHtml = path === '/internal/dashboard';
+    const isDashboardGuide = path === '/internal/dashboard-guide.js';
     const isCustomers = path === '/api/customers';
     const isApprovals = path === '/api/approvals';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml) {
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isDashboardGuide) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
+    }
+
+    if (isDashboardGuide) {
+      if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      if (url.search) return sendJson(response, 422, { error: 'INVALID_QUERY' });
+      return sendJavascript(response, DASHBOARD_GUIDE_CLIENT);
     }
 
     const expectedMethod = isPreview ? 'POST' : isCollection ? null : 'GET';

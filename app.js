@@ -103,7 +103,8 @@ if (require.main === module) {
     }
     attachBrowserWorkspaceRoutes(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
-    attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore });
+    attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore,
+      assistantAvailable: Boolean(config.aiEnabled) });
     attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore });
     attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore, staffAuthStore });
     attachBrowserOwnerReview(server, { origin: config.browserOrigin,

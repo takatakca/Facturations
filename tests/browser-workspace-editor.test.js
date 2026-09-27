@@ -16,7 +16,7 @@ const ID = '22222222-2222-4222-8222-222222222222';
 const csrfToken = 'D'.repeat(43);
 const cookie = value => `${COOKIE_NAME}=${value}`;
 
-async function withServer(run) {
+async function withServer(run, { assistantAvailable = false } = {}) {
   const state = { role: 'OWNER', unavailable: false, sessions: 0 };
   const staffAuthStore = { async getSession(value) {
     state.sessions++;
@@ -24,7 +24,8 @@ async function withServer(run) {
     return value === TOKEN && state.role ? { role: state.role, businessId: 'fictional-editor' } : null;
   } };
   const server = createServer({ config: { businessId: 'fictional-editor', adminKey: 'fictional-internal', waveToken: null } });
-  attachBrowserWorkspaceEditor(server, { origin: 'https://fictional.example.test', staffAuthStore });
+  attachBrowserWorkspaceEditor(server, { origin: 'https://fictional.example.test', staffAuthStore,
+    assistantAvailable });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try { await run({ base: `http://127.0.0.1:${server.address().port}`, state }); }
@@ -88,6 +89,30 @@ test('FR/EN private HTML contains five accessible line rows, three optional tax 
   });
   assert.throws(() => renderEditor('fr', '<img src=x>'), /Invalid editor parameters/);
   assert.throws(() => renderEditor('xx'), /Invalid editor parameters/);
+});
+
+test('editor exposes contextual OpenAI assistant only when server-side AI is enabled', async () => {
+  const disabled = renderEditor('fr', ID, false);
+  assert.doesNotMatch(disabled, /\/internal\/assistant\?lang=fr&screen=draft-editor/);
+
+  const enabled = renderEditor('fr', ID, true);
+  assert.match(enabled, /href="\/internal\/assistant\?lang=fr&screen=draft-editor"/);
+  assert.match(enabled, /Assistant IA/);
+
+  await withServer(async ({ base }) => {
+    const response = await fetch(base + '/internal/editor?lang=en&id=' + ID, {
+      headers: { Cookie: cookie(TOKEN) },
+    });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /href="\/internal\/assistant\?lang=en&screen=draft-editor"/);
+    assert.match(html, /AI Assistant/);
+  }, { assistantAvailable: true });
+
+  assert.throws(
+    () => renderEditor('fr', ID, 'yes'),
+    /Invalid editor parameters/,
+  );
 });
 
 // Actual browser JS under Node VM: synthetic cookie routes, no external services or storage.

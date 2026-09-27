@@ -1,0 +1,7 @@
+# Direct saved-preview navigation (review-only)
+
+Stacked PR on #45 → #44 → #43 → #42. The private FR/EN editor displays a direct **calculated preview of the saved revision (if complete)** only after its current working form matches a confirmed server save or a successfully loaded saved revision. Editing, an in-flight request, a revision conflict, or an invalid/unknown revision hides the link. The link contains **only the workspace UUID and language**; the existing server route rechecks staff session, ownership, business scope, and completeness, and computes amounts from persisted content. An incomplete workspace returns 422 without invented totals.
+
+The entire input fieldset starts disabled, and remains disabled until a valid CSRF response and (for existing workspaces) a successful revisioned GET. It is disabled during saves and reloads, preventing a slow GET from silently overwriting typed form values. After a transient initial GET failure the user can retry **Reload saved version**, but cannot accidentally PUT with a null revision. Reloading dirty content still requires the existing discard confirmation. No browser storage is used for private content or tokens.
+
+No new invoice, approval, PDF, Wave call, email, payment, deployment, or real customer data. Automated Node VM/HTTP tests do not substitute for a real desktop/mobile browser, accessibility checks, independent review, protected `main` (#41), dedicated HTTPS staging, and tax/accounting sign-off.

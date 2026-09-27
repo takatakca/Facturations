@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "algorithm": "git-blob-sha1",
+  "lockedThrough": 27,
+  "migrations": [
+    {
+      "file": "001_draft_storage.sql",
+      "gitBlobSha1": "05ee7870f8e04641eb2d2fa6f7360d23ced43cae",
+      "bytes": 2077
+    },
+    {
+      "file": "002_immutable_drafts_audit.sql",
+      "gitBlobSha1": "7f8fcacf3e28c38269745c0aa8790fc37b360608",
+      "bytes": 1742
+    },
+    {
+      "file": "003_staff_identity_sessions.sql",
+      "gitBlobSha1": "630936f155de213df1d527643b15bc2c988e2596",
+      "bytes": 1844
+    },
+    {
+      "file": "004_staff_invitations.sql",
+      "gitBlobSha1": "25d9d1213f59c8904065acb207cdad0cb6391247",
+      "bytes": 1219
+    },
+    {
+      "file": "005_internal_draft_approvals.sql",
+      "gitBlobSha1": "cca9f332410c563363f07f4402a7061ec4e83d9f",
+      "bytes": 1404
+    },
+    {
+      "file": "006_login_attempt_limits.sql",
+      "gitBlobSha1": "3c49a100bd594cedd484d9a734b0f0a300af001c",
+      "bytes": 699
+    },
+    {
+      "file": "007_staff_totp.sql",
+      "gitBlobSha1": "dd06f9df8b4e521a1a18d3ac9b3198442ff8970b",
+      "bytes": 1158
+    },
+    {
+      "file": "008_draft_workspaces.sql",
+      "gitBlobSha1": "4bb2d48e0eeb15224f16d34b81da5d8721376dea",
+      "bytes": 3889
+    },
+    {
+      "file": "009_workspace_submissions.sql",
+      "gitBlobSha1": "00d14a599b8d3f83fb0564d97d7eb17260f38fba",
+      "bytes": 2007
+    },
+    {
+      "file": "010_customer_contact_changes.sql",
+      "gitBlobSha1": "7dbdb482802ef8a1df572d3f40ae96ffabf57ee6",
+      "bytes": 1146
+    },
+    {
+      "file": "011_issuance_authorizations.sql",
+      "gitBlobSha1": "7a6c981011ea20817eab30098b538c4b39d84674",
+      "bytes": 1979
+    },
+    {
+      "file": "012_provider_issuance_attempts.sql",
+      "gitBlobSha1": "4995a813e724337cab4b2c13973ebe4438729521",
+      "bytes": 3477
+    },
+    {
+      "file": "013_issued_invoice_registry.sql",
+      "gitBlobSha1": "fd4552c90a59e42cc115d375d4d64c1bb4b65f64",
+      "bytes": 2509
+    },
+    {
+      "file": "014_issued_invoice_documents.sql",
+      "gitBlobSha1": "82348691b89740914fdca9c546097b899f3943f3",
+      "bytes": 2064
+    },
+    {
+      "file": "015_verified_issuer_profiles.sql",
+      "gitBlobSha1": "69125be460863131d495c33af1680414f87d6822",
+      "bytes": 2588
+    },
+    {
+      "file": "016_invoice_issuer_binding_and_qualified_pdf.sql",
+      "gitBlobSha1": "f4e4ba5492fb16d16e633793175547d4dffe7f7e",
+      "bytes": 4668
+    },
+    {
+      "file": "017_delivery_authorizations.sql",
+      "gitBlobSha1": "8574eca8db6a5e1d7f88c1adffa18da18efc22f8",
+      "bytes": 2315
+    },
+    {
+      "file": "018_delivery_attempts.sql",
+      "gitBlobSha1": "c6d5a0f8d502bd7fc825853d91cef85397fccd9d",
+      "bytes": 3370
+    },
+    {
+      "file": "019_delivery_receipts.sql",
+      "gitBlobSha1": "a3ee162cba7a31aa94688bb427e332c895cadd71",
+      "bytes": 2926
+    },
+    {
+      "file": "020_email_provider_evidence.sql",
+      "gitBlobSha1": "db5bd22d7f5a02817dca18b9c5a3cd668be860d0",
+      "bytes": 2633
+    },
+    {
+      "file": "021_email_evidence_summary_view.sql",
+      "gitBlobSha1": "12f47d283af4eca9bf43cf6aa4e0a9f5a1abc746",
+      "bytes": 1167
+    },
+    {
+      "file": "022_signed_webhook_evidence_provenance.sql",
+      "gitBlobSha1": "2cce7a7e0e0f486299fb7c34748666154c8f1ade",
+      "bytes": 867
+    },
+    {
+      "file": "023_payment_evidence.sql",
+      "gitBlobSha1": "ce12c7fa76de553d4df843b651734de3405f3679",
+      "bytes": 2373
+    },
+    {
+      "file": "024_payment_evidence_summary.sql",
+      "gitBlobSha1": "7de319dfc6d7714f9e0f42dbc8ec89e6315fc166",
+      "bytes": 3397
+    },
+    {
+      "file": "025_client_portal_auth.sql",
+      "gitBlobSha1": "622a1272f88d58ed68b1a0014ef162db6d00f114",
+      "bytes": 2731
+    },
+    {
+      "file": "026_client_portal_publications.sql",
+      "gitBlobSha1": "bad3aa327351b2a6b66cb84aed8a9de0d69ce09d",
+      "bytes": 3348
+    },
+    {
+      "file": "027_mfa_recovery.sql",
+      "gitBlobSha1": "c1dcb26e75ba6027f42699c7e87346c6417754a9",
+      "bytes": 3199
+    }
+  ]
+}

@@ -37,6 +37,21 @@ function validateApproval(input) {
     expectedCustomerEmail: expectedCustomerEmail.toLowerCase() };
 }
 
+function validateApprovalRead(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) ||
+      Object.keys(input).sort().join(',') !== 'draftId,ownerId,sessionToken') {
+    throw new DraftApprovalError('INVALID_APPROVAL_LOOKUP');
+  }
+  if (typeof input.draftId !== 'string' || !UUID.test(input.draftId) ||
+      typeof input.ownerId !== 'string' || !UUID.test(input.ownerId)) {
+    throw new DraftApprovalError('INVALID_APPROVAL_LOOKUP');
+  }
+  if (typeof input.sessionToken !== 'string' || !TOKEN.test(input.sessionToken)) {
+    throw new DraftApprovalError('INVALID_SESSION', 401);
+  }
+  return input;
+}
+
 function asResult(row) {
   return Object.freeze({ id: row.id, draftId: row.draft_id,
     status: 'APPROVED_INTERNAL_ONLY', approvedBy: row.approved_by,
@@ -53,9 +68,36 @@ function createDraftApprovalStore({ pool, businessId }) {
   }
   const tenant = businessId.trim();
 
-  // TRUSTED backend service only: not exposed over HTTP until MFA, CSRF and audited
-  // owner enrollment are in place. Explicit confirmation is for internal approval,
-  // NOT permission to issue an invoice, sync to Wave, send email or take payment.
+  // Read-only persisted status, with a fresh OWNER session and a real draft in
+  // the exact tenant. A UUID by itself never authorizes disclosure.
+  async function isApproved(input) {
+    const fields = validateApprovalRead(input);
+    const digest = crypto.createHash('sha256').update(fields.sessionToken, 'utf8').digest();
+    let result;
+    try {
+      result = await pool.query(
+        `SELECT a.id AS approval_id FROM facturations_staff_sessions s
+           JOIN facturations_staff_users u
+             ON u.business_id=s.business_id AND u.id=s.user_id
+           JOIN invoice_drafts d
+             ON d.business_id=s.business_id AND d.id=$4 AND d.status='DRAFT'
+           LEFT JOIN facturations_draft_approvals a
+             ON a.business_id=d.business_id AND a.draft_id=d.id
+          WHERE s.business_id=$1 AND s.user_id=$2 AND s.token_hash=$3
+            AND s.revoked_at IS NULL AND s.expires_at > now()
+            AND u.enabled AND u.email_verified_at IS NOT NULL AND u.role='OWNER'`,
+        [tenant, fields.ownerId, digest, fields.draftId]
+      );
+    } catch {
+      throw new DraftApprovalError('STORAGE_UNAVAILABLE', 503);
+    }
+    if (result.rows.length !== 1) throw new DraftApprovalError('APPROVAL_UNAVAILABLE', 403);
+    return result.rows[0].approval_id !== null;
+  }
+
+  // Trusted backend operation exposed only through the independently protected
+  // OWNER, Origin and CSRF browser route. An approval is INTERNAL ONLY, never
+  // permission to issue an invoice, sync Wave, send email or take payment.
   async function approveDraft(input) {
     const fields = validateApproval(input);
     const digest = crypto.createHash('sha256').update(fields.sessionToken, 'utf8').digest();
@@ -119,7 +161,7 @@ function createDraftApprovalStore({ pool, businessId }) {
     }
   }
 
-  return Object.freeze({ approveDraft });
+  return Object.freeze({ approveDraft, isApproved });
 }
 
 module.exports = { createDraftApprovalStore, DraftApprovalError, validateApproval };

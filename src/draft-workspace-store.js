@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { hasUnpairedSurrogate } = require('./unicode-validation');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const KEY = /^[A-Za-z0-9_-]{16,80}$/;
@@ -19,8 +20,8 @@ function validContent(content) {
   if (!content || typeof content !== 'object' || Array.isArray(content)) {
     throw new WorkspaceError('INVALID_WORKSPACE_CONTENT', 422);
   }
-  if (Object.keys(content).some(key => !FIELDS.has(key)) ||
-      (content.currency !== undefined && content.currency !== 'CAD')) {
+  if (Object.keys(content).some(key => !FIELDS.has(key) ||
+      (content.currency !== undefined && content.currency !== 'CAD'))) {
     throw new WorkspaceError('INVALID_WORKSPACE_CONTENT', 422);
   }
   const ancestors = new WeakSet();
@@ -28,7 +29,8 @@ function validContent(content) {
     if (depth > 10) throw new WorkspaceError('INVALID_WORKSPACE_CONTENT', 422);
     if (value === null || typeof value === 'boolean') return;
     if (typeof value === 'number' && Number.isSafeInteger(value)) return;
-    if (typeof value === 'string' && value.length <= 2000 && !value.includes('\u0000')) return;
+    if (typeof value === 'string' && value.length <= 2000 && !value.includes('\u0000') &&
+        !hasUnpairedSurrogate(value)) return;
     if (!value || typeof value !== 'object' || ancestors.has(value)) {
       throw new WorkspaceError('INVALID_WORKSPACE_CONTENT', 422);
     }
@@ -111,6 +113,11 @@ function createDraftWorkspaceStore({ pool, businessId }) {
         try { await client.query('ROLLBACK'); } catch { /* Keep original error internal. */ }
       }
       if (error instanceof WorkspaceError) throw error;
+      // This exact error is raised only by the dedicated submission-freeze trigger.
+      // A stale browser tab must see a conflict, not retry silently as if storage failed.
+      if (error?.code === '23514' && error.message === 'submitted workspace is frozen') {
+        throw new WorkspaceError('WORKSPACE_SUBMITTED', 409);
+      }
       throw new WorkspaceError('STORAGE_UNAVAILABLE', 503);
     } finally {
       if (client) client.release();

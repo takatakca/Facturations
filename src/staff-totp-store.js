@@ -102,6 +102,41 @@ function createStaffTotpStore({ pool, businessId, encryptionKeyHex, now = Date.n
     return { secretBase32: base32Encode(secret) };
   }
 
+  // TRUSTED recovery operation only. It is intentionally not wired to HTTP.
+  // The caller must hold its own recovery authorization ceremony and transaction.
+  async function rotateTrusted(staffId, queryClient = pool) {
+    const id = staffIdValue(staffId);
+    if (!queryClient || typeof queryClient.query !== 'function') {
+      throw new TypeError('A PostgreSQL query client is required');
+    }
+    const secret = crypto.randomBytes(20);
+    try {
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      cipher.setAAD(Buffer.from(`${tenant}\0${id}`, 'utf8'));
+      const encrypted = Buffer.concat([cipher.update(secret), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const secretBase32 = base32Encode(secret);
+      const result = await queryClient.query(
+        `UPDATE facturations_staff_totp t
+            SET secret_iv=$3,secret_ciphertext=$4,secret_tag=$5,
+                active=false,last_used_step=NULL,activated_at=NULL,created_at=now()
+          WHERE t.business_id=$1 AND t.user_id=$2 AND t.active=true
+            AND EXISTS (
+              SELECT 1 FROM facturations_staff_users u
+               WHERE u.business_id=t.business_id AND u.id=t.user_id
+                 AND u.enabled AND u.email_verified_at IS NOT NULL AND u.role='OWNER'
+            )
+          RETURNING t.user_id`,
+        [tenant, id, iv, encrypted, tag]
+      );
+      if (result.rows.length !== 1) throw new Error('TOTP rotation unavailable');
+      return { secretBase32 };
+    } finally {
+      secret.fill(0);
+    }
+  }
+
   // A login already holds a PostgreSQL transaction client and a staff row lock.
   // Use that SAME client for the TOTP read and atomic consume: borrowing another
   // connection from the pool can exhaust it and block every concurrent login.
@@ -142,6 +177,7 @@ function createStaffTotpStore({ pool, businessId, encryptionKeyHex, now = Date.n
 
   return Object.freeze({
     provisionTrusted,
+    rotateTrusted,
     confirmTrusted: (staffId, code) => check(staffId, code, true),
     verify: (staffId, code, transactionClient = pool) => check(staffId, code, false, transactionClient),
   });

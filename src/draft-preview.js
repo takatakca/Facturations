@@ -1,6 +1,7 @@
 'use strict';
 
 // This module only calculates a preview. It NEVER persists, issues, sends, or posts invoices.
+const { hasUnpairedSurrogate } = require('./unicode-validation');
 const MAX_TOTAL_CENTS = 1_000_000_000_000;
 
 class DraftValidationError extends Error {
@@ -23,7 +24,8 @@ function text(value, max, code, required = true) {
   if (value == null && !required) return null;
   if (typeof value !== 'string') throw new DraftValidationError(code);
   const result = value.trim();
-  if ((required && !result) || result.length > max || /[\u0000-\u001f\u007f]/u.test(result)) {
+  if ((required && !result) || result.length > max || /[\u0000-\u001f\u007f]/u.test(result) ||
+      hasUnpairedSurrogate(result)) {
     throw new DraftValidationError(code);
   }
   return result || null;

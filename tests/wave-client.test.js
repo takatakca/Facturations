@@ -69,6 +69,49 @@ test('rejects malformed JSON, missing data, invalid nodes or bad counts', async 
   }) }), 'WAVE_INVALID_RESPONSE', 502);
 });
 
+test('rejects malformed UTF-8 from Wave without altering a business name; accepts valid split characters', async () => {
+  const accented = { data: { businesses: { pageInfo: { totalCount: 1 }, edges: [
+    { node: { id: 'business-1', name: 'Café Démo' } },
+  ] } } };
+  const valid = Buffer.from(JSON.stringify(accented), 'utf8');
+  const accent = valid.indexOf(Buffer.from('é', 'utf8'));
+  assert.notEqual(accent, -1);
+  const invalid = Buffer.from(valid);
+  invalid[accent + 1] = 0x20; // The old permissive decoder accepted the JSON with a replacement glyph.
+  await expectError(() => listBusinesses({ token: 'test-token', fetchImpl: mockFetch(200, {}, {
+    rawBody: invalid,
+  }) }), 'WAVE_INVALID_RESPONSE', 502);
+
+  function chunks(bytes) {
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, accent + 1)); // Split a UTF-8 sequence mid-character.
+        controller.enqueue(bytes.subarray(accent + 1));
+        controller.close();
+      },
+    });
+  }
+  await expectError(() => listBusinesses({ token: 'test-token', fetchImpl: mockFetch(200, {}, {
+    rawBody: chunks(invalid),
+  }) }), 'WAVE_INVALID_RESPONSE', 502);
+  const result = await listBusinesses({ token: 'test-token', fetchImpl: mockFetch(200, {}, {
+    rawBody: chunks(valid),
+  }) });
+  assert.deepEqual(result.businesses, [{ id: 'business-1', name: 'Café Démo' }]);
+
+  // An incomplete final multi-byte character must fail on the decoder's EOF flush.
+  // This is a synthetic incomplete response, not an observed Wave incident.
+  const dangling = new Uint8Array([...valid, 0xc3]);
+  await expectError(() => listBusinesses({ token: 'test-token', fetchImpl: mockFetch(200, {}, {
+    rawBody: new ReadableStream({
+      start(controller) {
+        controller.enqueue(dangling);
+        controller.close();
+      },
+    }),
+  }) }), 'WAVE_INVALID_RESPONSE', 502);
+});
+
 test('bounds the response size', async () => {
   await expectError(() => listBusinesses({ token: 'test-token', fetchImpl: mockFetch(200, {}, {
     rawBody: 'x'.repeat(256 * 1024 + 1),

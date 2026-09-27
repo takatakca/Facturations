@@ -2,6 +2,7 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const { TextDecoder } = require('node:util');
 const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
@@ -73,7 +74,7 @@ function readJson(request) {
     request.on('end', () => {
       if (finished) return;
       finished = true;
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      try { resolve(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)))); }
       catch { reject({ code: 'INVALID_JSON', statusCode: 400 }); }
     });
     request.on('error', () => fail('INVALID_REQUEST', 400));
@@ -90,7 +91,7 @@ function parseListOptions(searchParams) {
 }
 
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
-  staffAuthStore = null, customerDirectory = null, approvalLedger = null } = {}) {
+  staffAuthStore = null, customerDirectory = null, approvalLedger = null, readinessCheck = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -101,6 +102,15 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     if (path === '/health') {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       return sendJson(response, 200, { ok: true, service: 'takatak-wave', phase: 3 });
+    }
+    if (path === '/ready') {
+      if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      if (typeof readinessCheck !== 'function') {
+        return sendJson(response, 503, { ok: false, service: 'takatak-wave' });
+      }
+      let ready = false;
+      try { ready = await readinessCheck(); } catch { ready = false; }
+      return sendJson(response, ready ? 200 : 503, { ok: ready, service: 'takatak-wave' });
     }
 
     const isPreview = path === '/api/drafts/preview';
@@ -127,6 +137,8 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       return sendJson(response, 401, { error: 'UNAUTHORIZED' });
     }
 
+    // Navigation is presentation only; the review route rechecks live OWNER and tenant rights.
+    let ownerReview = false;
     // Staff may list tenant-scoped draft summaries. Full drafts, customer contacts,
     // and internal approvals are OWNER-only. Admin key stays server-to-server ONLY.
     if (request.headers.authorization !== undefined) {
@@ -138,6 +150,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 503, { error: 'AUTH_UNAVAILABLE' });
       }
       if (!staff) return sendJson(response, 401, { error: 'UNAUTHORIZED' });
+      ownerReview = Boolean(config.browserOrigin && staff.role === 'OWNER');
       if (!((isDashboard || isCollection || isGet || isCustomers || isApprovals || isHtml) && request.method === 'GET')) {
         return sendJson(response, 403, { error: 'STAFF_READ_ONLY' });
       }
@@ -162,7 +175,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         const [summary, drafts] = await Promise.all([
           dashboardStore.getSummary(), dashboardStore.listDrafts(pageOptions('1', '20')),
         ]);
-        return sendHtml(response, renderDashboard({ summary, drafts, language }));
+        return sendHtml(response, renderDashboard({ summary, drafts, language, ownerReview }));
       } catch {
         return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }

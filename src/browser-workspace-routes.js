@@ -7,6 +7,7 @@ const { WorkspaceError } = require('./draft-workspace-store');
 
 const MAX_BODY_BYTES = 32768;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const CSRF_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const HEADERS = Object.freeze({
   'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store',
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
@@ -101,7 +102,10 @@ function attachBrowserWorkspaceRoutes(server, { origin, encryptionKeyHex, staffA
       if (!sameOrigin(request, origin)) return reply(response, 403, { error: 'ORIGIN_FORBIDDEN' });
       const supplied = request.headers['x-facturations-csrf'];
       const expected = csrfFor(token);
-      if (typeof supplied !== 'string' || supplied.length !== expected.length ||
+      // Compare only the fixed-width ASCII Base64URL encoding, not UTF-16 string length.
+      // A Unicode string can have 43 characters but more than 43 UTF-8 bytes, which
+      // makes timingSafeEqual throw outside the request's error handler.
+      if (typeof supplied !== 'string' || !CSRF_TOKEN.test(supplied) ||
           !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
         return reply(response, 403, { error: 'CSRF_FORBIDDEN' });
       }

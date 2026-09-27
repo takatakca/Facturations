@@ -34,6 +34,7 @@ const { attachBrowserClientPortal } = require('./src/browser-client-portal');
 const { createReadinessProbe } = require('./src/readiness-probe');
 const { installGracefulShutdown } = require('./src/graceful-shutdown');
 const { attachOperationalTelemetry } = require('./src/operational-telemetry');
+const { attachProductionEdgeGuard } = require('./src/production-edge-guard');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -113,6 +114,12 @@ if (require.main === module) {
   }
   attachReadOnlyDashboardCookie(server);
   attachOperationalTelemetry(server);
+  if (config.browserOrigin) {
+    attachProductionEdgeGuard(server, {
+      origin: config.browserOrigin,
+      enforceProxy: config.productionMode && config.trustProxy,
+    });
+  }
   installGracefulShutdown({ server, pool, readinessProbe });
   server.listen(config.port, () => {
     console.info(`GROUPE TAKATAK Facturations service listening on port ${server.address().port}`);

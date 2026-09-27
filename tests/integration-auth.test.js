@@ -35,10 +35,14 @@ function token(overrides = {}, headerOverrides = {}) {
   const signature = crypto.createHmac('sha256', SECRET).update(input).digest('base64url');
   return input + '.' + signature;
 }
+function liveToken(overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return token({ iat: now - 5, exp: now + 55, jti: 'integration-live-jti-0001', ...overrides });
+}
 
 test('signed short-lived integration token is accepted only for the configured tenant', () => {
   const principal = verifyIntegrationBearer({
-    authorization: 'Bearer ' + token(),
+    authorization: 'Bearer ' + liveToken(),
     secret: SECRET,
     issuer: ISSUER,
     audience: AUDIENCE,
@@ -147,15 +151,15 @@ test('integration capabilities endpoint requires valid service identity and expo
     assert.deepEqual(await unauthorized.json(), { error: 'INTEGRATION_AUTH_REQUIRED' });
 
     assert.equal((await fetch(base + '/integration/v1/capabilities?x=1', {
-      headers: { Authorization: 'Bearer ' + token() },
+      headers: { Authorization: 'Bearer ' + liveToken() },
     })).status, 422);
     assert.equal((await fetch(base + '/integration/v1/capabilities', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
+      headers: { Authorization: 'Bearer ' + liveToken() },
     })).status, 405);
 
     const response = await fetch(base + '/integration/v1/capabilities', {
-      headers: { Authorization: 'Bearer ' + token() },
+      headers: { Authorization: 'Bearer ' + liveToken() },
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');

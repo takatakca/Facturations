@@ -135,13 +135,17 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isApprovals = path === '/api/approvals';
     const isIntegrationCapabilities = path === '/integration/v1/capabilities';
     const isIntegrationDashboard = path === '/integration/v1/dashboard';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard) {
+    const isIntegrationDrafts = path === '/integration/v1/drafts';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts) {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
-      if ([...url.searchParams.keys()].length) return sendJson(response, 422, { error: 'INVALID_QUERY' });
+      if ((isIntegrationCapabilities || isIntegrationDashboard) &&
+          [...url.searchParams.keys()].length) {
+        return sendJson(response, 422, { error: 'INVALID_QUERY' });
+      }
       let principal;
       try {
         principal = resolveIntegrationPrincipal(request, config);
@@ -164,7 +168,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             capabilities: {
               capabilitiesRead: true,
               dashboardRead: true,
-              draftsRead: false,
+              draftsRead: true,
               customersRead: false,
               draftWrite: false,
               ownerApprovalWrite: false,
@@ -182,6 +186,59 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       }
 
       if (!dashboardStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+
+      if (isIntegrationDrafts) {
+        let options;
+        try { options = parseListOptions(url.searchParams); }
+        catch (error) {
+          if (error instanceof DashboardError) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          return sendJson(response, 422, { error: 'INVALID_QUERY' });
+        }
+        try {
+          const listed = await dashboardStore.listDrafts(options);
+          if (!listed || listed.status !== 'DRAFTS_ONLY' ||
+              !Number.isInteger(listed.page) || !Number.isInteger(listed.pageSize) ||
+              !Array.isArray(listed.drafts) || listed.drafts.length > listed.pageSize) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          const safeDrafts = [];
+          for (const draft of listed.drafts) {
+            if (!draft || typeof draft.id !== 'string' ||
+                typeof draft.customerName !== 'string' ||
+                typeof draft.invoiceDate !== 'string' ||
+                typeof draft.dueDate !== 'string' ||
+                typeof draft.totalCents !== 'string' ||
+                draft.currency !== 'CAD' || draft.status !== 'DRAFT') {
+              return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+            }
+            safeDrafts.push({
+              id: draft.id,
+              customerName: draft.customerName,
+              invoiceDate: draft.invoiceDate,
+              dueDate: draft.dueDate,
+              totalCents: draft.totalCents,
+              currency: 'CAD',
+              status: 'DRAFT',
+            });
+          }
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              status: 'DRAFTS_ONLY',
+              page: listed.page,
+              pageSize: listed.pageSize,
+              drafts: safeDrafts,
+            },
+          });
+        } catch {
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
+      }
+
       try {
         const summary = await dashboardStore.getSummary();
         if (!summary || summary.status !== 'DRAFTS_ONLY' || summary.currency !== 'CAD') {

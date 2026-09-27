@@ -61,6 +61,19 @@ test('renderer escapes attacker-controlled names and prints draft-only amounts i
   assert.match(renderDashboard({ summary, drafts, language: 'en' }), /not revenue or payments/);
 });
 
+test('assistant navigation appears only when the server-side AI feature is enabled', () => {
+  const disabled = renderDashboard({ summary, drafts, language: 'fr', assistantAvailable: false });
+  assert.doesNotMatch(disabled, /\/internal\/assistant\?lang=fr/);
+
+  const enabled = renderDashboard({ summary, drafts, language: 'fr', assistantAvailable: true });
+  assert.match(enabled, /href="\/internal\/assistant\?lang=fr"/);
+  assert.match(enabled, /Assistant IA/);
+
+  assert.throws(() => renderDashboard({
+    summary, drafts, language: 'fr', assistantAvailable: 'yes',
+  }), TypeError);
+});
+
 test('renderer fails closed on unsupported data and handles empty drafts', () => {
   assert.throws(() => renderDashboard({ summary: {}, drafts }), TypeError);
   assert.throws(() => renderDashboard({ summary, drafts: {} }), TypeError);

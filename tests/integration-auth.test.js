@@ -35,10 +35,14 @@ function token(overrides = {}, headerOverrides = {}) {
   const signature = crypto.createHmac('sha256', SECRET).update(input).digest('base64url');
   return input + '.' + signature;
 }
+function liveToken(overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return token({ iat: now - 5, exp: now + 55, jti: 'integration-live-jti-0001', ...overrides });
+}
 
 test('signed short-lived integration token is accepted only for the configured tenant', () => {
   const principal = verifyIntegrationBearer({
-    authorization: 'Bearer ' + token(),
+    authorization: 'Bearer ' + liveToken(),
     secret: SECRET,
     issuer: ISSUER,
     audience: AUDIENCE,
@@ -147,15 +151,15 @@ test('integration capabilities endpoint requires valid service identity and expo
     assert.deepEqual(await unauthorized.json(), { error: 'INTEGRATION_AUTH_REQUIRED' });
 
     assert.equal((await fetch(base + '/integration/v1/capabilities?x=1', {
-      headers: { Authorization: 'Bearer ' + token() },
+      headers: { Authorization: 'Bearer ' + liveToken() },
     })).status, 422);
     assert.equal((await fetch(base + '/integration/v1/capabilities', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
+      headers: { Authorization: 'Bearer ' + liveToken() },
     })).status, 405);
 
     const response = await fetch(base + '/integration/v1/capabilities', {
-      headers: { Authorization: 'Bearer ' + token() },
+      headers: { Authorization: 'Bearer ' + liveToken() },
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -166,7 +170,7 @@ test('integration capabilities endpoint requires valid service identity and expo
     assert.equal(body.data.integrationVersion, 1);
     assert.deepEqual(body.data.capabilities, {
       capabilitiesRead: true,
-      dashboardRead: false,
+      dashboardRead: true,
       draftsRead: false,
       customersRead: false,
       draftWrite: false,
@@ -182,4 +186,105 @@ test('integration capabilities endpoint requires valid service identity and expo
     });
     assert.doesNotMatch(JSON.stringify(body), /email|token|secret|wave|payment|amount/i);
   });
+});
+
+
+test('integration dashboard endpoint returns only tenant-scoped draft summary', async () => {
+  const calls = { summary: 0 };
+  const dashboardStore = {
+    async getSummary() {
+      calls.summary += 1;
+      return {
+        status: 'DRAFTS_ONLY',
+        currency: 'CAD',
+        draftCount: '3',
+        draftTotalCents: '125050',
+        customerCount: '2',
+        issuedInvoicesAvailable: false,
+        paymentsAvailable: false,
+        revenueAvailable: false,
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, dashboardStore });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const unauthorized = await fetch(base + '/integration/v1/dashboard');
+    assert.equal(unauthorized.status, 401);
+    assert.equal(calls.summary, 0);
+
+    const response = await fetch(base + '/integration/v1/dashboard', {
+      headers: { Authorization: 'Bearer ' + liveToken() },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(calls.summary, 1);
+    assert.deepEqual(body.data, {
+      status: 'DRAFTS_ONLY',
+      currency: 'CAD',
+      draftCount: '3',
+      draftTotalCents: '125050',
+      customerCount: '2',
+      issuedInvoicesAvailable: false,
+      paymentsAvailable: false,
+      revenueAvailable: false,
+    });
+    assert.doesNotMatch(JSON.stringify(body), /email|address|token|secret/i);
+
+    assert.equal((await fetch(base + '/integration/v1/dashboard?x=1', {
+      headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0002' }) },
+    })).status, 422);
+    assert.equal((await fetch(base + '/integration/v1/dashboard', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0003' }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration dashboard fails closed on missing or invalid summary storage', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  await withServer(config, async (base) => {
+    const response = await fetch(base + '/integration/v1/dashboard', {
+      headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0004' }) },
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'STORAGE_NOT_CONFIGURED' });
+  });
+
+  const server = createServer({
+    config,
+    dashboardStore: { async getSummary() { return { status: 'ISSUED' }; } },
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + '/integration/v1/dashboard', {
+      headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0005' }) },
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });

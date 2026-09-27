@@ -47,7 +47,10 @@ test('renderer escapes attacker-controlled names and prints draft-only amounts i
     assert.match(page, new RegExp(`<html lang="${language}"`));
     assert.ok(page.includes('&lt;img src=x onerror=alert(1)&gt; &amp; &quot;customer&quot;'));
     assert.ok(!page.includes('<img src=x onerror=alert(1)>'));
-    assert.ok(!page.includes('<script'));
+    assert.match(page, /<script src="\/internal\/dashboard-guide\.js" defer><\/script>/);
+    assert.equal((page.match(/<script\b/g) || []).length, 1);
+    assert.match(page, /id="tour-open"/);
+    assert.match(page, /id="product-tour"/);
     assert.match(page, new RegExp(`<form method="post" action="/internal/logout\\?lang=${language}"><button class="signout" type="submit">${logout}</button></form>`));
     assert.equal((page.match(/<form\b/g) || []).length, 1);
     assert.ok(!page.includes('synthetic-admin-key'));
@@ -96,10 +99,29 @@ test('HTML endpoint requires a live staff session, bounds query and locks down b
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     assert.equal(response.headers.get('x-frame-options'), 'DENY');
     assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
+    assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
     assert.match(response.headers.get('content-security-policy'), /form-action 'self'/);
     assert.match(await response.text(), /<form method="post" action="\/internal\/logout\?lang=en"/);
     assert.deepEqual(calls, { summary: 1, drafts: 1 });
     assert.equal((await fetch(base + '/internal/dashboard', { method: 'POST', headers })).status, 405);
+  });
+});
+
+
+test('dashboard tutorial client is self-hosted, bounded and does not touch dashboard storage', async () => {
+  await withServer(async (base, calls) => {
+    const response = await fetch(base + '/internal/dashboard-guide.js');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'text/javascript; charset=utf-8');
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    const script = await response.text();
+    assert.match(script, /takatak\.facturations\.guide\.v1/);
+    assert.match(script, /showModal/);
+    assert.match(script, /prefers-reduced-motion/);
+    assert.doesNotMatch(script, /X-Admin-Key|WAVE_ACCESS_TOKEN|FACTURATIONS_DATABASE_URL/);
+    assert.deepEqual(calls, { summary: 0, drafts: 0 });
+    assert.equal((await fetch(base + '/internal/dashboard-guide.js?x=1')).status, 422);
+    assert.equal((await fetch(base + '/internal/dashboard-guide.js', { method: 'POST' })).status, 405);
   });
 });

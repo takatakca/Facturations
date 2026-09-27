@@ -171,7 +171,7 @@ test('integration capabilities endpoint requires valid service identity and expo
     assert.deepEqual(body.data.capabilities, {
       capabilitiesRead: true,
       dashboardRead: true,
-      draftsRead: false,
+      draftsRead: true,
       customersRead: false,
       draftWrite: false,
       ownerApprovalWrite: false,
@@ -286,5 +286,129 @@ test('integration dashboard fails closed on missing or invalid summary storage',
     assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
   } finally {
     await new Promise(resolve => server.close(resolve));
+  }
+});
+
+
+test('integration drafts endpoint returns bounded paginated draft summaries only', async () => {
+  const calls = { list: 0, options: null };
+  const dashboardStore = {
+    async listDrafts(options) {
+      calls.list += 1;
+      calls.options = options;
+      return {
+        status: 'DRAFTS_ONLY',
+        page: options.page,
+        pageSize: options.pageSize,
+        drafts: [{
+          id: '11111111-1111-4111-8111-111111111111',
+          createdAt: '2026-09-27T20:00:00.000Z',
+          customerName: 'Client Exemple',
+          invoiceDate: '2026-09-27',
+          dueDate: '2026-10-12',
+          totalCents: '125050',
+          currency: 'CAD',
+          status: 'DRAFT',
+        }],
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, dashboardStore });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const unauthorized = await fetch(base + '/integration/v1/drafts');
+    assert.equal(unauthorized.status, 401);
+    assert.equal(calls.list, 0);
+
+    const response = await fetch(base + '/integration/v1/drafts?page=2&pageSize=10', {
+      headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0010' }) },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls.options, { page: 2, pageSize: 10, offset: 10 });
+    assert.equal(calls.list, 1);
+    const body = await response.json();
+    assert.deepEqual(body.data, {
+      status: 'DRAFTS_ONLY',
+      page: 2,
+      pageSize: 10,
+      drafts: [{
+        id: '11111111-1111-4111-8111-111111111111',
+        customerName: 'Client Exemple',
+        invoiceDate: '2026-09-27',
+        dueDate: '2026-10-12',
+        totalCents: '125050',
+        currency: 'CAD',
+        status: 'DRAFT',
+      }],
+    });
+    assert.doesNotMatch(JSON.stringify(body), /createdAt|email|address|token|secret|notes/i);
+
+    for (const path of [
+      '/integration/v1/drafts?page=0',
+      '/integration/v1/drafts?pageSize=51',
+      '/integration/v1/drafts?page=1&page=2',
+      '/integration/v1/drafts?businessId=other',
+    ]) {
+      const denied = await fetch(base + path, {
+        headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-' + crypto.randomUUID() }) },
+      });
+      assert.equal(denied.status, 422);
+    }
+    assert.equal((await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0011' }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration drafts endpoint fails closed on malformed or oversized store output', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  for (const result of [
+    null,
+    { status: 'ISSUED', page: 1, pageSize: 20, drafts: [] },
+    { status: 'DRAFTS_ONLY', page: 1, pageSize: 20, drafts: [{ id: 'x' }] },
+    { status: 'DRAFTS_ONLY', page: 1, pageSize: 1, drafts: [
+      { id: 'a', customerName: 'A', invoiceDate: '2026-09-27', dueDate: '2026-10-01',
+        totalCents: '1', currency: 'CAD', status: 'DRAFT' },
+      { id: 'b', customerName: 'B', invoiceDate: '2026-09-27', dueDate: '2026-10-01',
+        totalCents: '2', currency: 'CAD', status: 'DRAFT' },
+    ] },
+  ]) {
+    const server = createServer({
+      config,
+      dashboardStore: { async listDrafts() { return result; } },
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const response = await fetch('http://127.0.0.1:' + server.address().port + '/integration/v1/drafts', {
+        headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-' + crypto.randomUUID() }) },
+      });
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
   }
 });

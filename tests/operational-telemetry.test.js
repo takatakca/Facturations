@@ -35,6 +35,14 @@ test('route classifier emits only bounded route groups and drops sensitive path/
   assert.equal(routeGroup('/portal/documents/22222222-2222-4222-8222-222222222222.pdf'), 'PORTAL_PDF');
   assert.equal(routeGroup('/internal/workspaces/private-user@example.test'), 'WORKSPACE_ITEM');
   assert.equal(routeGroup('/something/private-user@example.test?token=secret'), 'OTHER');
+  assert.equal(routeGroup('/internal/assistant/help?private=ignored'), 'AI_ASSISTANT_HELP');
+  assert.equal(routeGroup('/internal/assistant/propose-draft'), 'AI_DRAFT_PROPOSAL');
+  assert.equal(routeGroup('/integration/v1/capabilities'), 'INTEGRATION_CAPABILITIES');
+  assert.equal(routeGroup('/integration/v1/dashboard'), 'INTEGRATION_DASHBOARD');
+  assert.equal(routeGroup('/integration/v1/drafts?page=2'), 'INTEGRATION_DRAFTS');
+  assert.equal(routeGroup('/integration/v1/customers?q=private@example.test'), 'INTEGRATION_CUSTOMERS');
+  assert.equal(routeGroup('/integration/v1/approvals?page=2'), 'INTEGRATION_APPROVALS');
+  assert.equal(routeGroup('/integration/v1/drafts/11111111-1111-4111-8111-111111111111?secret=x'), 'INTEGRATION_DRAFT_DETAIL');
   assert.equal(routeGroup('http://[invalid'), 'OTHER');
 });
 
@@ -79,6 +87,22 @@ test('telemetry ignores caller request IDs and logs one redacted JSON event', as
   }
 });
 
+test('integration draft detail telemetry never logs draft identifiers or query values', async () => {
+  const lines = [];
+  const draftId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  await withServer({ logger: line => lines.push(line) }, async base => {
+    const response = await fetch(
+      base + '/integration/v1/drafts/' + draftId + '?secret=DO_NOT_LOG'
+    );
+    assert.equal(response.status, 204);
+  });
+  assert.equal(lines.length, 1);
+  const event = JSON.parse(lines[0]);
+  assert.equal(event.route, 'INTEGRATION_DRAFT_DETAIL');
+  assert.equal(lines[0].includes(draftId), false);
+  assert.equal(lines[0].includes('DO_NOT_LOG'), false);
+});
+
 test('dynamic UUID routes never place identifiers in logs', async () => {
   const lines = [];
   const secretUuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -89,6 +113,27 @@ test('dynamic UUID routes never place identifiers in logs', async () => {
   assert.equal(lines.length, 1);
   assert.equal(JSON.parse(lines[0]).route, 'PORTAL_PDF');
   assert.equal(lines[0].includes(secretUuid), false);
+});
+
+test('server-generated request ID is available to downstream handlers and cannot be caller-selected', async () => {
+  const lines = [];
+  await withServer({
+    logger: line => lines.push(line),
+    handler(request, response) {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ requestId: request.requestId }));
+    },
+  }, async base => {
+    const response = await fetch(base + '/integration/v1/capabilities', {
+      headers: { 'X-Request-ID': 'caller-controlled' },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-request-id'), FIXED_ID);
+    assert.deepEqual(await response.json(), { requestId: FIXED_ID });
+  });
+  assert.equal(lines.length, 1);
+  assert.equal(JSON.parse(lines[0]).requestId, FIXED_ID);
+  assert.equal(lines[0].includes('caller-controlled'), false);
 });
 
 test('logger failure cannot change the HTTP response', async () => {

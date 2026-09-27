@@ -31,6 +31,16 @@ function routeGroup(rawUrl) {
     ['/api/dashboard/summary', 'API_DASHBOARD'],
     ['/api/customers', 'API_CUSTOMERS'],
     ['/api/approvals', 'API_APPROVALS'],
+    ['/internal/assistant', 'AI_ASSISTANT'],
+    ['/internal/assistant-client.js', 'AI_ASSISTANT_CLIENT'],
+    ['/internal/assistant/csrf', 'AI_ASSISTANT_CSRF'],
+    ['/internal/assistant/help', 'AI_ASSISTANT_HELP'],
+    ['/internal/assistant/propose-draft', 'AI_DRAFT_PROPOSAL'],
+    ['/integration/v1/capabilities', 'INTEGRATION_CAPABILITIES'],
+    ['/integration/v1/dashboard', 'INTEGRATION_DASHBOARD'],
+    ['/integration/v1/drafts', 'INTEGRATION_DRAFTS'],
+    ['/integration/v1/customers', 'INTEGRATION_CUSTOMERS'],
+    ['/integration/v1/approvals', 'INTEGRATION_APPROVALS'],
   ]);
   if (exact.has(pathname)) return exact.get(pathname);
 
@@ -44,6 +54,7 @@ function routeGroup(rawUrl) {
     [/^\/portal\/invoices\/[^/]+$/u, 'PORTAL_INVOICE'],
     [/^\/portal\/documents\/[^/]+\.pdf$/u, 'PORTAL_PDF'],
     [/^\/api\/drafts\/[^/]+$/u, 'API_DRAFT_ITEM'],
+    [/^\/integration\/v1\/drafts\/[^/]+$/u, 'INTEGRATION_DRAFT_DETAIL'],
   ];
   for (const [pattern, name] of dynamic) {
     if (pattern.test(pathname)) return name;
@@ -72,6 +83,9 @@ function attachOperationalTelemetry(server, {
     }
 
     const requestId = generated.toLowerCase();
+    // Internal handlers may include this server-generated ID in response envelopes.
+    // Never accept or copy a caller-supplied request ID.
+    request.requestId = requestId;
     const method = typeof request.method === 'string' &&
       /^[A-Z]{1,12}$/u.test(request.method) ? request.method : 'OTHER';
     const route = routeGroup(request.url);

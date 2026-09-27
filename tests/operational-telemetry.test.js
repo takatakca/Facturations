@@ -41,6 +41,8 @@ test('route classifier emits only bounded route groups and drops sensitive path/
   assert.equal(routeGroup('/integration/v1/dashboard'), 'INTEGRATION_DASHBOARD');
   assert.equal(routeGroup('/integration/v1/drafts?page=2'), 'INTEGRATION_DRAFTS');
   assert.equal(routeGroup('/integration/v1/customers?q=private@example.test'), 'INTEGRATION_CUSTOMERS');
+  assert.equal(routeGroup('/integration/v1/approvals?page=2'), 'INTEGRATION_APPROVALS');
+  assert.equal(routeGroup('/integration/v1/drafts/11111111-1111-4111-8111-111111111111?secret=x'), 'INTEGRATION_DRAFT_DETAIL');
   assert.equal(routeGroup('http://[invalid'), 'OTHER');
 });
 
@@ -83,6 +85,22 @@ test('telemetry ignores caller request IDs and logs one redacted JSON event', as
   ]) {
     assert.equal(lines[0].includes(forbidden), false, forbidden + ' leaked to telemetry');
   }
+});
+
+test('integration draft detail telemetry never logs draft identifiers or query values', async () => {
+  const lines = [];
+  const draftId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  await withServer({ logger: line => lines.push(line) }, async base => {
+    const response = await fetch(
+      base + '/integration/v1/drafts/' + draftId + '?secret=DO_NOT_LOG'
+    );
+    assert.equal(response.status, 204);
+  });
+  assert.equal(lines.length, 1);
+  const event = JSON.parse(lines[0]);
+  assert.equal(event.route, 'INTEGRATION_DRAFT_DETAIL');
+  assert.equal(lines[0].includes(draftId), false);
+  assert.equal(lines[0].includes('DO_NOT_LOG'), false);
 });
 
 test('dynamic UUID routes never place identifiers in logs', async () => {

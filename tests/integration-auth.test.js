@@ -172,7 +172,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       capabilitiesRead: true,
       dashboardRead: true,
       draftsRead: true,
-      customersRead: false,
+      customersRead: true,
       draftWrite: false,
       ownerApprovalWrite: false,
       issuanceAuthorizationWrite: false,
@@ -404,6 +404,171 @@ test('integration drafts endpoint fails closed on malformed or oversized store o
     try {
       const response = await fetch('http://127.0.0.1:' + server.address().port + '/integration/v1/drafts', {
         headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-' + crypto.randomUUID() }) },
+      });
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  }
+});
+
+
+test('integration capabilities expose customer read only to OWNER identities', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  await withServer(config, async (base) => {
+    const response = await fetch(base + '/integration/v1/capabilities', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-live-jti-staff-capabilities',
+      }) },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.capabilities.customersRead, false);
+    assert.equal(body.data.capabilities.draftsRead, true);
+  });
+});
+
+test('integration customers endpoint is OWNER-only and returns minimized customer summaries', async () => {
+  const calls = { list: 0, options: null };
+  const customerDirectory = {
+    async listCustomers(options) {
+      calls.list += 1;
+      calls.options = options;
+      return {
+        status: 'CUSTOMERS_ONLY',
+        page: options.page,
+        pageSize: options.pageSize,
+        hasMore: false,
+        customers: [{
+          id: '22222222-2222-4222-8222-222222222222',
+          name: 'Client Exemple',
+          email: 'client@example.test',
+          address: '123 Rue Exemple',
+          createdAt: '2026-09-27T20:00:00.000Z',
+        }],
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, customerDirectory });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const unauthorized = await fetch(base + '/integration/v1/customers');
+    assert.equal(unauthorized.status, 401);
+    assert.equal(calls.list, 0);
+
+    const staffDenied = await fetch(base + '/integration/v1/customers', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-live-jti-staff-customers',
+      }) },
+    });
+    assert.equal(staffDenied.status, 403);
+    assert.deepEqual(await staffDenied.json(), { error: 'OWNER_REQUIRED' });
+    assert.equal(calls.list, 0);
+
+    const response = await fetch(base + '/integration/v1/customers?page=1&pageSize=10&q=Client', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-customers',
+      }) },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.list, 1);
+    assert.deepEqual(calls.options, {
+      page: 1,
+      pageSize: 10,
+      offset: 0,
+      search: '%Client%',
+    });
+    const body = await response.json();
+    assert.deepEqual(body.data, {
+      status: 'CUSTOMERS_ONLY',
+      page: 1,
+      pageSize: 10,
+      hasMore: false,
+      customers: [{
+        id: '22222222-2222-4222-8222-222222222222',
+        name: 'Client Exemple',
+        email: 'client@example.test',
+      }],
+    });
+    assert.doesNotMatch(JSON.stringify(body), /address|createdAt/i);
+
+    for (const path of [
+      '/integration/v1/customers?page=0',
+      '/integration/v1/customers?pageSize=51',
+      '/integration/v1/customers?q=x',
+      '/integration/v1/customers?q=' + encodeURIComponent('x'.repeat(81)),
+      '/integration/v1/customers?businessId=other',
+    ]) {
+      const denied = await fetch(base + path, {
+        headers: { Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-' + crypto.randomUUID(),
+        }) },
+      });
+      assert.equal(denied.status, 422);
+    }
+    assert.equal((await fetch(base + '/integration/v1/customers', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-customers-post',
+      }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration customers endpoint fails closed on malformed directory output', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  for (const result of [
+    null,
+    { status: 'DRAFTS_ONLY', page: 1, pageSize: 20, hasMore: false, customers: [] },
+    { status: 'CUSTOMERS_ONLY', page: 1, pageSize: 20, hasMore: false, customers: [{ id: 'x' }] },
+    { status: 'CUSTOMERS_ONLY', page: 1, pageSize: 1, hasMore: false, customers: [
+      { id: 'a', name: 'A', email: 'a@example.test' },
+      { id: 'b', name: 'B', email: 'b@example.test' },
+    ] },
+  ]) {
+    const server = createServer({
+      config,
+      customerDirectory: { async listCustomers() { return result; } },
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const response = await fetch('http://127.0.0.1:' + server.address().port + '/integration/v1/customers', {
+        headers: { Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-' + crypto.randomUUID(),
+        }) },
       });
       assert.equal(response.status, 503);
       assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });

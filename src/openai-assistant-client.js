@@ -12,6 +12,7 @@ const SCREENS = new Set([
   'review',
   'client-portal',
   'settings',
+  'assistant',
   'unknown',
 ]);
 const SIGNALS = new Set([

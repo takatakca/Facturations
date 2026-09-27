@@ -197,7 +197,8 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         const [summary, drafts] = await Promise.all([
           dashboardStore.getSummary(), dashboardStore.listDrafts(pageOptions('1', '20')),
         ]);
-        return sendHtml(response, renderDashboard({ summary, drafts, language, ownerReview }));
+        return sendHtml(response, renderDashboard({ summary, drafts, language, ownerReview,
+          assistantAvailable: Boolean(config.aiEnabled) }));
       } catch {
         return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
       }

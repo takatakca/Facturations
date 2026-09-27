@@ -16,7 +16,7 @@ const TENANT = 'fictional-ai-help';
 const cookie = token => `${COOKIE_NAME}=${token}`;
 
 async function withServer(run, clientOverride = null) {
-  const calls = { session: 0, help: 0 };
+  const calls = { session: 0, help: 0, propose: 0 };
   const state = { revoked: false, unavailable: false };
   const staffAuthStore = {
     async getSession(token) {
@@ -27,7 +27,7 @@ async function withServer(run, clientOverride = null) {
         : null;
     },
   };
-  const assistantClient = clientOverride || {
+  const defaults = {
     async help(payload) {
       calls.help += 1;
       return {
@@ -43,7 +43,31 @@ async function withServer(run, clientOverride = null) {
         },
       };
     },
+    async proposeDraft() {
+      calls.propose += 1;
+      return {
+        status: 'READY_FOR_PREVIEW',
+        clarifications: [],
+        preview: {
+          status: 'PREVIEW_ONLY',
+          persisted: false,
+          waveSynced: false,
+          emailed: false,
+          totalCents: 85000,
+        },
+        safety: {
+          decision: 'PROPOSAL_ONLY',
+          reasonCode: 'HUMAN_DRAFT_REVIEW_REQUIRED',
+          requiredGate: 'DRAFT_EDITOR_REVIEW',
+          proposalFingerprint: 'c'.repeat(64),
+          directExecutionAllowed: false,
+        },
+      };
+    },
   };
+  const assistantClient = clientOverride
+    ? { ...defaults, ...clientOverride }
+    : defaults;
   const server = createServer({
     config: { businessId: TENANT, adminKey: 'synthetic-admin-key', waveToken: null },
   });
@@ -71,8 +95,8 @@ async function getCsrf(base) {
   return body.csrfToken;
 }
 
-function post(base, origin, csrfToken, payload, headers = {}) {
-  return fetch(base + '/internal/assistant/help', {
+function post(base, origin, csrfToken, payload, headers = {}, path = '/internal/assistant/help') {
+  return fetch(base + path, {
     method: 'POST',
     headers: {
       Cookie: cookie(TOKEN),
@@ -216,4 +240,45 @@ test('provider failures expose stable local error codes only', async () => {
       assert.doesNotMatch(JSON.stringify(body), /raw provider secret text/);
     }, client);
   }
+});
+
+
+test('proposal-only draft endpoint returns preview and never reports persistence or execution', async () => {
+  await withServer(async ({ base, origin, calls }) => {
+    const csrfToken = await getCsrf(base);
+    const response = await post(base, origin, csrfToken, {
+      language: 'fr',
+      message: 'Prépare un brouillon de 850 $.',
+      draftId: null,
+    }, {}, '/internal/assistant/propose-draft');
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(calls.propose, 1);
+    assert.equal(body.status, 'READY_FOR_PREVIEW');
+    assert.equal(body.preview.status, 'PREVIEW_ONLY');
+    assert.equal(body.preview.persisted, false);
+    assert.equal(body.preview.waveSynced, false);
+    assert.equal(body.preview.emailed, false);
+    assert.equal(body.safety.decision, 'PROPOSAL_ONLY');
+    assert.equal(body.safety.requiredGate, 'DRAFT_EDITOR_REVIEW');
+    assert.equal(body.safety.directExecutionAllowed, false);
+  });
+});
+
+test('draft proposal endpoint uses the same staff, origin, CSRF and exact-field boundaries', async () => {
+  await withServer(async ({ base, origin, calls }) => {
+    const csrfToken = await getCsrf(base);
+    const payload = { language: 'en', message: 'Prepare a draft.', draftId: null };
+
+    assert.equal((await post(base, 'https://other.example.test', csrfToken, payload, {},
+      '/internal/assistant/propose-draft')).status, 403);
+    assert.equal((await post(base, origin, 'a'.repeat(43), payload, {},
+      '/internal/assistant/propose-draft')).status, 403);
+    assert.equal((await post(base, origin, csrfToken, { ...payload, issueNow: true }, {},
+      '/internal/assistant/propose-draft')).status, 422);
+    assert.equal((await fetch(base + '/internal/assistant/propose-draft', {
+      headers: { Cookie: cookie(TOKEN) },
+    })).status, 405);
+    assert.equal(calls.propose, 0);
+  });
 });

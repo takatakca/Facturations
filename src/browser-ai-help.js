@@ -92,7 +92,8 @@ function attachBrowserAiHelp(server, {
       !validOrigin ||
       !/^[a-f0-9]{64}$/iu.test(encryptionKeyHex || '') ||
       !staffAuthStore || typeof staffAuthStore.getSession !== 'function' ||
-      !assistantClient || typeof assistantClient.help !== 'function') {
+      !assistantClient || typeof assistantClient.help !== 'function' ||
+      typeof assistantClient.proposeDraft !== 'function') {
     throw new TypeError('Private HTTPS AI help service required');
   }
 
@@ -113,7 +114,8 @@ function attachBrowserAiHelp(server, {
 
     const csrfRoute = url.pathname === '/internal/assistant/csrf';
     const helpRoute = url.pathname === '/internal/assistant/help';
-    if (!csrfRoute && !helpRoute) return previous(request, response);
+    const proposalRoute = url.pathname === '/internal/assistant/propose-draft';
+    if (!csrfRoute && !helpRoute && !proposalRoute) return previous(request, response);
 
     if (url.search || url.hash) {
       return reply(response, 422, { error: 'INVALID_QUERY' });
@@ -127,7 +129,7 @@ function attachBrowserAiHelp(server, {
     if (!token) return reply(response, 401, { error: 'UNAUTHORIZED' });
 
     if ((csrfRoute && request.method !== 'GET') ||
-        (helpRoute && request.method !== 'POST')) {
+        ((helpRoute || proposalRoute) && request.method !== 'POST')) {
       return reply(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
@@ -165,12 +167,31 @@ function attachBrowserAiHelp(server, {
         error: status === 413 ? 'BODY_TOO_LARGE' : 'INVALID_JSON',
       });
     }
-    if (!exactFields(payload, ['language', 'screenId', 'message'])) {
+    if (helpRoute && !exactFields(payload, ['language', 'screenId', 'message'])) {
       return reply(response, 422, { error: 'INVALID_AI_HELP_REQUEST' });
+    }
+    if (proposalRoute && !exactFields(payload, ['language', 'message', 'draftId'])) {
+      return reply(response, 422, { error: 'INVALID_AI_DRAFT_PROPOSAL_REQUEST' });
     }
 
     try {
-      const result = await assistantClient.help(payload);
+      const result = proposalRoute
+        ? await assistantClient.proposeDraft(payload)
+        : await assistantClient.help(payload);
+      if (proposalRoute) {
+        return reply(response, 200, {
+          status: result.status,
+          clarifications: result.clarifications,
+          preview: result.preview,
+          safety: {
+            decision: result.safety.decision,
+            reasonCode: result.safety.reasonCode,
+            requiredGate: result.safety.requiredGate,
+            proposalFingerprint: result.safety.proposalFingerprint,
+            directExecutionAllowed: false,
+          },
+        });
+      }
       return reply(response, 200, {
         answer: result.answer,
         safety: {

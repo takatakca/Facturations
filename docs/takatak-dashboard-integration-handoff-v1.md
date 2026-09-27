@@ -36,6 +36,7 @@ OWNER example capabilities:
       "capabilitiesRead": true,
       "dashboardRead": true,
       "draftsRead": true,
+      "draftDetailsRead": true,
       "customersRead": true,
       "draftWrite": false,
       "ownerApprovalWrite": false,
@@ -103,6 +104,47 @@ Maximum page size is 50. The response deliberately contains only summary data.
   }
 }
 ```
+
+### GET /integration/v1/drafts/:id
+
+OWNER only. Returns the draft through the existing deterministic Facturations preview calculator. Stored calculated totals are not trusted as integration output; Facturations reconstructs the draft inputs and recalculates the preview before responding.
+
+The response includes the customer contact fields and line/tax inputs needed for an authorized OWNER review screen, but does not expose idempotency keys, request hashes, provider payloads or database metadata.
+
+```json
+{
+  "version": 1,
+  "requestId": "<server-generated-uuid>",
+  "businessId": "<verified-business-id>",
+  "data": {
+    "id": "<draft-uuid>",
+    "status": "DRAFT",
+    "preview": {
+      "status": "PREVIEW_ONLY",
+      "persisted": false,
+      "waveSynced": false,
+      "emailed": false,
+      "currency": "CAD",
+      "customer": {
+        "name": "Example Customer",
+        "email": "customer@example.test",
+        "address": null
+      },
+      "invoiceDate": "2026-09-27",
+      "dueDate": "2026-10-12",
+      "notes": null,
+      "lines": [],
+      "taxes": [],
+      "subtotalCents": 0,
+      "taxableSubtotalCents": 0,
+      "taxTotalCents": 0,
+      "totalCents": 0
+    }
+  }
+}
+```
+
+STAFF identities receive `403 OWNER_REQUIRED` before draft storage is read.
 
 ### GET /integration/v1/customers?page=1&pageSize=20&q=Example
 
@@ -255,9 +297,10 @@ The dashboard team can safely build against mock responses matching this contrac
 1. Facturations navigation item.
 2. Draft-only summary cards.
 3. Paginated draft list.
-4. OWNER-only customer directory.
-5. Loading, empty, forbidden and unavailable states.
-6. A link/handoff to the standalone Facturations workspace.
+4. OWNER-only draft detail/review screen using the recalculated preview response.
+5. OWNER-only customer directory.
+6. Loading, empty, forbidden and unavailable states.
+7. A link/handoff to the standalone Facturations workspace.
 
 Do **not** build native invoice issuance/send/payment buttons yet because those integration capabilities intentionally remain false.
 

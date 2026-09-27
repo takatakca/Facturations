@@ -13,7 +13,7 @@ const COPY = Object.freeze({
     dueDate: 'Échéance', total: 'Total', status: 'État', empty: 'Aucun brouillon pour le moment.',
     draft: 'Brouillon', logout: 'Se déconnecter', editor: 'Nouveau brouillon de travail',
     savedWorkspaces: 'Mes brouillons enregistrés', review: 'Réviser les brouillons',
-    directory: 'Répertoire clients', help: 'Aide / Tutoriel', language: 'English',
+    directory: 'Répertoire clients', assistant: 'Assistant IA', help: 'Aide / Tutoriel', language: 'English',
     quickTitle: 'Commencer rapidement',
     quickText: 'Créez un brouillon, retrouvez un travail sauvegardé ou ouvrez les outils réservés au propriétaire.',
     footer: 'Lecture seule. Aucune émission, aucun courriel, aucun paiement.',
@@ -30,7 +30,7 @@ const COPY = Object.freeze({
     dueDate: 'Due date', total: 'Total', status: 'Status', empty: 'No drafts yet.',
     draft: 'Draft', logout: 'Sign out', editor: 'New working draft',
     savedWorkspaces: 'My saved drafts', review: 'Review drafts',
-    directory: 'Customer directory', help: 'Help / Tutorial', language: 'Français',
+    directory: 'Customer directory', assistant: 'AI Assistant', help: 'Help / Tutorial', language: 'Français',
     quickTitle: 'Quick start',
     quickText: 'Create a draft, resume saved work, or open owner-only tools when your role allows it.',
     footer: 'Read-only. No issuance, email or payment.',
@@ -65,10 +65,10 @@ function date(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? escapeHtml(value) : '—';
 }
 
-function renderDashboard({ summary, drafts, language = 'fr', ownerReview = false }) {
+function renderDashboard({ summary, drafts, language = 'fr', ownerReview = false, assistantAvailable = false }) {
   if (!summary || summary.status !== 'DRAFTS_ONLY' || !drafts ||
       drafts.status !== 'DRAFTS_ONLY' || !Array.isArray(drafts.drafts) || drafts.drafts.length > 50 ||
-      typeof ownerReview !== 'boolean') {
+      typeof ownerReview !== 'boolean' || typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Draft-only dashboard data required');
   }
   if (!['fr', 'en'].includes(language)) throw new TypeError('Unsupported dashboard language');
@@ -93,6 +93,12 @@ function renderDashboard({ summary, drafts, language = 'fr', ownerReview = false
   const ownerQuick = ownerReview
     ? `<a class="quick-card" data-guide-id="customers" href="/internal/customers?lang=${language}"><strong>${t.directory}</strong><span>${language === 'fr' ? 'Consulter et gérer les fiches clients autorisées.' : 'View and manage authorized customer records.'}</span></a>
        <a class="quick-card" data-guide-id="review" href="/internal/review?lang=${language}"><strong>${t.review}</strong><span>${language === 'fr' ? 'Vérifier les brouillons soumis avant toute émission.' : 'Review submitted drafts before any issuance.'}</span></a>`
+    : '';
+  const assistantNav = assistantAvailable
+    ? `<a class="nav-link" href="/internal/assistant?lang=${language}">${t.assistant}</a>`
+    : '';
+  const assistantQuick = assistantAvailable
+    ? `<a class="quick-card" href="/internal/assistant?lang=${language}"><strong>${t.assistant}</strong><span>${language === 'fr' ? 'Poser une question ou préparer un brouillon avec OpenAI, sans exécuter d’action financière.' : 'Ask a question or prepare a draft with OpenAI, without executing a financial action.'}</span></a>`
     : '';
 
   // The only form is POST to the existing same-origin, origin-checked logout route.
@@ -120,11 +126,11 @@ footer{color:#758296;font-size:.82rem;padding:24px 0}.tour{border:0;border-radiu
 </style><script src="/internal/dashboard-guide.js" defer></script></head><body><div class="app-shell">
 <header class="topbar"><div class="brand-wrap"><div class="brand-mark" aria-hidden="true">T</div><div><div class="brand">GROUPE TAKATAK · ${t.product}</div><div class="workspace">${t.workspace}</div></div></div>
 <div class="top-actions"><a class="top-link" href="/internal/dashboard?lang=${otherLanguage}" lang="${otherLanguage}">${t.language}</a><button class="help-button" id="tour-open" type="button">${t.help}</button><form method="post" action="/internal/logout?lang=${language}"><button class="signout" type="submit">${t.logout}</button></form></div></header>
-<div class="layout"><aside class="sidebar" aria-label="${t.product}"><nav class="sidebar-inner"><p class="nav-label">${t.product}</p><a class="nav-link active" href="/internal/dashboard?lang=${language}" aria-current="page">${t.title}</a><a class="nav-link" href="/internal/editor?lang=${language}">${t.editor}</a><a class="nav-link" href="/internal/recent-workspaces?lang=${language}">${t.savedWorkspaces}</a>${ownerNav}</nav></aside>
+<div class="layout"><aside class="sidebar" aria-label="${t.product}"><nav class="sidebar-inner"><p class="nav-label">${t.product}</p><a class="nav-link active" href="/internal/dashboard?lang=${language}" aria-current="page">${t.title}</a><a class="nav-link" href="/internal/editor?lang=${language}">${t.editor}</a><a class="nav-link" href="/internal/recent-workspaces?lang=${language}">${t.savedWorkspaces}</a>${ownerNav}${assistantNav}</nav></aside>
 <main><section class="hero"><div><div class="eyebrow">${t.subtitle}</div><h1>${t.title}</h1><p>${t.quickText}</p></div><div class="hero-actions"><span class="tag">${t.draftOnly}</span><a class="editor-link" data-guide-id="new-draft" href="/internal/editor?lang=${language}">${t.editor}</a><a class="secondary-link" data-guide-id="saved-drafts" href="/internal/recent-workspaces?lang=${language}">${t.savedWorkspaces}</a></div></section>
 <section class="metrics" data-guide-id="overview" aria-label="${t.title}"><div class="metric"><span class="label">${t.drafts}</span><strong>${escapeHtml(count(summary.draftCount))}</strong><small>${t.draftOnly}</small></div><div class="metric"><span class="label">${t.customers}</span><strong>${escapeHtml(count(summary.customerCount))}</strong><small>${t.notice}</small></div><div class="metric"><span class="label">${t.amount}</span><strong>${escapeHtml(money(summary.draftTotalCents, language))}</strong><small>${t.notice}</small></div></section>
 <p class="notice" role="note">${t.notice}</p>
-<section class="quick-panel" aria-labelledby="quick-title"><div class="quick-heading"><div><h2 id="quick-title">${t.quickTitle}</h2><p>${t.quickText}</p></div></div><div class="quick-grid"><a class="quick-card" href="/internal/editor?lang=${language}"><strong>${t.editor}</strong><span>${language === 'fr' ? 'Préparer une nouvelle facture sans rien émettre.' : 'Prepare a new invoice without issuing anything.'}</span></a><a class="quick-card" href="/internal/recent-workspaces?lang=${language}"><strong>${t.savedWorkspaces}</strong><span>${language === 'fr' ? 'Reprendre un brouillon déjà enregistré.' : 'Resume a previously saved draft.'}</span></a>${ownerQuick}</div></section>
+<section class="quick-panel" aria-labelledby="quick-title"><div class="quick-heading"><div><h2 id="quick-title">${t.quickTitle}</h2><p>${t.quickText}</p></div></div><div class="quick-grid"><a class="quick-card" href="/internal/editor?lang=${language}"><strong>${t.editor}</strong><span>${language === 'fr' ? 'Préparer une nouvelle facture sans rien émettre.' : 'Prepare a new invoice without issuing anything.'}</span></a><a class="quick-card" href="/internal/recent-workspaces?lang=${language}"><strong>${t.savedWorkspaces}</strong><span>${language === 'fr' ? 'Reprendre un brouillon déjà enregistré.' : 'Resume a previously saved draft.'}</span></a>${ownerQuick}${assistantQuick}</div></section>
 <section class="panel" aria-labelledby="drafts-title"><div class="panel-header"><h2 id="drafts-title">${t.recent}</h2><span>${t.draftOnly}</span></div><div class="scroll" role="region" aria-label="${t.recent}" tabindex="0"><table><thead><tr><th scope="col">${t.customer}</th><th scope="col">${t.invoiceDate}</th><th scope="col">${t.dueDate}</th><th scope="col" class="numeric">${t.total}</th><th scope="col">${t.status}</th></tr></thead><tbody>${content}</tbody></table></div></section>
 <footer>${t.footer}</footer></main></div>
 <dialog class="tour" id="product-tour" aria-labelledby="tour-title"><div class="tour-card"><div class="tour-counter" id="tour-counter">${t.tourLabel}</div><h2 id="tour-title">${t.tourLabel}</h2><p id="tour-text">${t.tourPlaceholder}</p><div class="tour-actions"><button id="tour-skip" type="button">${t.skip}</button><div class="group"><button id="tour-back" type="button">${t.back}</button><button class="primary" id="tour-next" type="button">${t.next}</button></div></div></div></dialog>

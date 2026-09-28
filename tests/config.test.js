@@ -9,7 +9,7 @@ test('defaults to port 3000 and leaves all credentials and database absent', () 
   assert.deepEqual(loadConfig({}), { nodeEnv: 'development', productionMode: false, trustProxy: false,
     port: 3000, adminKey: '', waveToken: '', databaseUrl: '', businessId: '',
     browserOrigin: '', totpEncryptionKeyHex: '', integrationEnabled: false,
-    integrationIssuer: '', integrationAudience: '', integrationSecret: '' });
+    integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '' });
 });
 
 test('accepts port zero, trims token and dedicated database settings', () => {
@@ -20,7 +20,7 @@ test('accepts port zero, trims token and dedicated database settings', () => {
     port: 0, adminKey: key, waveToken: 'abc',
     databaseUrl: 'postgresql://localhost/facturations', businessId: 'business-one',
     browserOrigin: '', totpEncryptionKeyHex: '', integrationEnabled: false,
-    integrationIssuer: '', integrationAudience: '', integrationSecret: '',
+    integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '',
   });
 });
 
@@ -90,9 +90,25 @@ test('TAKATAK integration is explicit, paired and fail-closed', () => {
   };
   const config = loadConfig(env);
   assert.equal(config.integrationEnabled, true);
+  assert.equal(config.integrationWritesEnabled, false);
   assert.equal(config.integrationIssuer, 'https://identity.takatak.ca');
   assert.equal(config.integrationAudience, 'facturations');
   assert.equal(config.integrationSecret, 'z'.repeat(48));
+
+  const writes = loadConfig({
+    ...env,
+    FACTURATIONS_INTEGRATION_WRITES_ENABLED: '1',
+  });
+  assert.equal(writes.integrationWritesEnabled, true);
+
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_INTEGRATION_WRITES_ENABLED: '1',
+  }), /writes require FACTURATIONS_INTEGRATION_ENABLED/);
+  assert.throws(() => loadConfig({
+    ...env,
+    FACTURATIONS_INTEGRATION_WRITES_ENABLED: 'yes',
+  }), /INTEGRATION_WRITES_ENABLED/);
 
   assert.throws(() => loadConfig({
     ...base,

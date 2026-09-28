@@ -25,6 +25,8 @@ Le client ne peut pas obtenir une facture par numéro seul. Les UUID présents d
 
 Les publications révoquées deviennent invisibles.
 
+Avant tout téléchargement PDF, le read-model recalcule le SHA-256 des octets réellement lus de PostgreSQL et le compare au hash de provenance autorisé. Une divergence, un type invalide ou une longueur incohérente retourne 503 et aucun PDF n’est servi.
+
 ## Preuves financières
 
 Les états de paiement sont affichés avec leur `proofScope`.

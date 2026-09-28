@@ -413,7 +413,8 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     });
     assert.equal(signedEvidence.sourceMode, 'SIGNED_WEBHOOK');
     assert.equal(signedEvidence.signatureVerified, true);
-    assert.equal(signedEvidence.realWebhookVerified, true);
+    assert.equal(signedEvidence.signedWebhookVerified, true);
+    assert.equal(signedEvidence.realWebhookVerified, false);
     assert.equal(signedEvidence.webhookBodySha256, signedEnvelope.rawBodySha256);
     assert.equal(signedEvidence.verificationScheme, 'TEST_HMAC_SHA256');
     assert.equal(signedEvidence.eventType, 'COMPLAINT');

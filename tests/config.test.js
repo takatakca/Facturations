@@ -68,6 +68,10 @@ test('production fails closed unless the dedicated database and HTTPS browser se
   };
   assert.equal(loadConfig(production).browserOrigin, 'https://facturations.example.test');
   assert.equal(loadConfig(production).trustProxy, true);
+  assert.throws(() => loadConfig({
+    ...production,
+    TAKATAK_ADMIN_KEY: 'k'.repeat(48),
+  }), /forbids TAKATAK_ADMIN_KEY/);
   assert.throws(() => loadConfig({ ...production, FACTURATIONS_TRUST_PROXY: '' }), /TRUST_PROXY/);
   assert.throws(() => loadConfig({ ...production, FACTURATIONS_TRUST_PROXY: 'yes' }), /TRUST_PROXY/);
   assert.throws(() => loadConfig({ NODE_ENV: 'production' }), /Production requires/);

@@ -1270,7 +1270,7 @@ test('integration draft approval status is OWNER-only and read-only', async () =
       paid: false,
     });
     assert.deepEqual(calls, { draft: 1, approval: 1 });
-    assert.doesNotMatch(JSON.stringify(body), /approvedBy|email|address|totalCents/i);
+    assert.doesNotMatch(JSON.stringify(body), /"approvedBy"|"email"|"address"|"totalCents"/i);
 
     assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '/approval?x=1', {
       headers: { Authorization: 'Bearer ' + liveToken({

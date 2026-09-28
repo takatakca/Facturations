@@ -127,6 +127,26 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     });
     assert.equal(typeof store.ingestVerifiedWebhook,'undefined');
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,event_type,amount_cents,currency,occurred_at,
+            source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,'PAYMENT_RECEIVED',1,'CAD',$5,
+                 'VERIFIED_PROVIDER_WEBHOOK',$6)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-verified-'+crypto.randomUUID(),
+          'txn-direct-verified-'+crypto.randomUUID(),
+          '2026-09-26T15:59:00.000Z',
+          'a'.repeat(64),
+        ]
+      ),
+      error=>error && error.code==='23514'
+    );
+
     const event={
       providerKey:'SYNTHETIC_PROCESSOR',
       eventId:'evt-'+crypto.randomUUID(),

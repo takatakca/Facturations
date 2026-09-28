@@ -1,6 +1,10 @@
 'use strict';
 
 const { previewDraft, DraftValidationError } = require('./draft-preview');
+const {
+  encodePdfWinAnsi,
+  OfficialInvoicePdfError,
+} = require('./official-invoice-pdf');
 
 class WaveIssuancePreflightError extends Error {
   constructor(code, statusCode = 422) {
@@ -17,6 +21,27 @@ function id(value, code) {
   }
   return value.trim();
 }
+function assertPdfTextCompatible(snapshot) {
+  const values = [
+    snapshot.customer.name,
+    snapshot.customer.email,
+    snapshot.customer.address,
+    snapshot.notes,
+    ...snapshot.lines.map(line => line.description),
+    ...snapshot.taxes.flatMap(tax => [tax.code, tax.label]),
+  ].filter(value => typeof value === 'string' && value.length > 0);
+
+  try {
+    for (const value of values) encodePdfWinAnsi(value);
+  } catch (error) {
+    if (error instanceof OfficialInvoicePdfError &&
+        error.code === 'UNSUPPORTED_PDF_CHARACTER') {
+      throw new WaveIssuancePreflightError('PDF_TEXT_UNSUPPORTED', 409);
+    }
+    throw error;
+  }
+}
+
 function immutableSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) ||
       snapshot.status !== 'DRAFT' || snapshot.persisted !== true || snapshot.currency !== 'CAD' ||
@@ -59,6 +84,7 @@ function immutableSnapshot(snapshot) {
       snapshot.taxes.length !== recalculated.taxes.length) {
     throw new WaveIssuancePreflightError('IMMUTABLE_DRAFT_INVALID');
   }
+  assertPdfTextCompatible(recalculated);
   return recalculated;
 }
 function buildWaveIssuancePreflight(input) {

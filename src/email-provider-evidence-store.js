@@ -170,6 +170,25 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
         throw new EmailProviderEvidenceError('EVIDENCE_RECIPIENT_MISMATCH',409);
       }
 
+      if(sourceMode==='SIGNED_WEBHOOK'){
+        const deliveryBinding=await client.query(
+          `SELECT id
+             FROM facturations_delivery_attempts
+            WHERE business_id=$1
+              AND qualified_document_id=$2
+              AND operation_key=$3
+              AND provider_message_id=$4
+              AND state='CONFIRMED'
+            FOR SHARE`,
+          [tenant,qualifiedDocumentId,opKey,event.providerMessageId]
+        );
+        if(deliveryBinding.rows.length!==1){
+          throw new EmailProviderEvidenceError(
+            'SIGNED_WEBHOOK_DELIVERY_BINDING_REQUIRED',409
+          );
+        }
+      }
+
       const fields={
         qualifiedDocumentId,
         qualifiedDocumentSha256:row.content_sha256,

@@ -121,6 +121,10 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
     assert.equal(preparedRetry.id, prepared.id);
     assert.equal(preparedRetry.operationKey, prepared.operationKey);
 
+    const ambiguousFixture = await authorizedDraft({
+      drafts, approvals, authorizations, owner, session, suffix: 'ambiguous',
+    });
+
     const adapterCalls = [];
     const confirmedExecutor = createProviderIssuanceExecutor({
       attemptStore: attempts,
@@ -135,6 +139,19 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
         },
       },
     });
+    await assert.rejects(
+      confirmedExecutor.execute({
+        attemptId: prepared.id,
+        payload: ambiguousFixture.payload,
+      }),
+      error => error instanceof ProviderIssuanceAttemptError &&
+        error.code === 'PROVIDER_PAYLOAD_BINDING_MISMATCH' &&
+        error.statusCode === 409
+    );
+    assert.equal(adapterCalls.length, 0, 'mismatched draft payload must not reach adapter');
+    const stillPrepared = await attempts.get({ attemptId: prepared.id });
+    assert.equal(stillPrepared.state, 'PREPARED');
+
     const confirmed = await confirmedExecutor.execute({
       attemptId: prepared.id,
       payload: confirmedFixture.payload,
@@ -156,9 +173,6 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
       error.statusCode === 409);
     assert.equal(adapterCalls.length, 1, 'confirmed attempt cannot call adapter twice');
 
-    const ambiguousFixture = await authorizedDraft({
-      drafts, approvals, authorizations, owner, session, suffix: 'ambiguous',
-    });
     const ambiguousPrepared = await attempts.prepare({
       authorizationId: ambiguousFixture.authorization.id,
     });

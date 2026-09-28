@@ -111,71 +111,13 @@ test('OpenAPI pagination and search constraints match runtime bounds', () => {
   assert.equal(q.maxLength, 80);
   assert.ok(q.pattern);
 
-  for (const path of [
+  for (const pathName of [
     '/integration/v1/drafts',
     '/integration/v1/customers',
     '/integration/v1/approvals',
   ]) {
-    assert.ok(spec.paths[path].get.responses['404']);
+    assert.ok(spec.paths[pathName].get.responses['404']);
   }
-});
-
-test('OpenAPI contract never embeds real origins, secrets or provider credentials', () => {
-  const serialized = JSON.stringify(spec);
-  assert.doesNotMatch(serialized, /OPENAI_API_KEY|FACTURATIONS_DATABASE_URL|TAKATAK_ADMIN_KEY|WAVE_ACCESS_TOKEN/i);
-  assert.doesNotMatch(serialized, /sk-[A-Za-z0-9_-]{10,}/);
-  assert.doesNotMatch(serialized, /customer@(?!example\.test)/i);
-  assert.match(serialized, /facturations\.example\.invalid/);
-});
-,
-  );
-  assert.ok(create.responses['400']);
-  assert.ok(create.responses['413']);
-
-  const draftInput = spec.components.schemas.DraftInput;
-  const customerInput = spec.components.schemas.CustomerInput;
-  const lineInput = spec.components.schemas.LineInput;
-  assert.equal(draftInput.required.includes('notes'), false);
-  assert.equal(customerInput.required.includes('address'), false);
-  assert.equal(lineInput.required.includes('discountCents'), false);
-  assert.equal(lineInput.properties.unitPriceCents.maximum, 100000000);
-  assert.match(lineInput.properties.discountCents.description, /quantity \* unitPriceCents/);
-
-  const capability = spec.components.schemas.CapabilitiesEnvelope.allOf[1]
-    .properties.data.properties.capabilities.properties;
-  assert.equal(capability.ownerApprovalWrite.const, false);
-  assert.equal(capability.issuanceAuthorizationWrite.const, false);
-  assert.equal(capability.deliveryAuthorizationWrite.const, false);
-  assert.equal(capability.portalPublicationWrite.const, false);
-});
-
-test('OpenAPI read models preserve draft-only and internal-approval semantics', () => {
-  const dashboard = spec.components.schemas.DashboardEnvelope.allOf[1]
-    .properties.data.properties;
-  assert.equal(dashboard.status.const, 'DRAFTS_ONLY');
-  assert.equal(dashboard.issuedInvoicesAvailable.const, false);
-  assert.equal(dashboard.paymentsAvailable.const, false);
-  assert.equal(dashboard.revenueAvailable.const, false);
-
-  const approval = spec.components.schemas.ApprovalSummary.properties;
-  assert.equal(approval.status.const, 'APPROVED_INTERNAL_ONLY');
-  assert.equal(approval.issued.const, false);
-  assert.equal(approval.waveSynced.const, false);
-  assert.equal(approval.emailed.const, false);
-  assert.equal(approval.paid.const, false);
-  assert.equal(approval.approvedBy, undefined);
-
-  const workflow = spec.paths['/integration/v1/drafts/{draftId}/workflow']
-    .get.responses['200'].content['application/json'].schema
-    .properties.data.properties;
-  assert.equal(workflow.status.const, 'DRAFT');
-  assert.deepEqual(workflow.internalApproval.enum.sort(),
-    ['APPROVED_INTERNAL_ONLY', 'NOT_APPROVED'].sort());
-  assert.equal(workflow.nativeActions.properties.approve.const, false);
-  assert.equal(workflow.nativeActions.properties.authorizeIssuance.const, false);
-  assert.equal(workflow.nativeActions.properties.issue.const, false);
-  assert.equal(workflow.nativeActions.properties.deliver.const, false);
-  assert.equal(workflow.nativeActions.properties.recordPayment.const, false);
 });
 
 test('OpenAPI contract never embeds real origins, secrets or provider credentials', () => {

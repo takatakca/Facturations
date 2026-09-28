@@ -150,6 +150,14 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     }
 
     if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow || isIntegrationOwnerReviewHandoff) {
+      // Feature gates are evaluated before route-specific validation/authentication so
+      // disabled integration surfaces are uniformly indistinguishable from NOT_FOUND.
+      if (!config.integrationEnabled) {
+        return sendJson(response, 404, { error: 'NOT_FOUND' });
+      }
+      if (isIntegrationDrafts && request.method === 'POST' && !config.integrationWritesEnabled) {
+        return sendJson(response, 404, { error: 'NOT_FOUND' });
+      }
       if (isIntegrationDrafts) {
         if (!['GET', 'POST'].includes(request.method)) {
           return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
@@ -476,9 +484,6 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       }
 
       if (isIntegrationDrafts && request.method === 'POST') {
-        if (!config.integrationWritesEnabled) {
-          return sendJson(response, 404, { error: 'NOT_FOUND' });
-        }
         if (!principal.roles.includes('OWNER')) {
           return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
         }

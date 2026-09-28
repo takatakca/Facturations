@@ -12,6 +12,7 @@ const { CustomerDirectoryError, customerListOptions } = require('./customer-dire
 const { ApprovalLedgerError, approvalPageOptions } = require('./approval-ledger');
 const { resolveReadOnlyStaff } = require('./staff-read-access');
 const { verifyIntegrationBearer, IntegrationAuthError } = require('./integration-auth');
+const { IntegrationReplayError } = require('./integration-replay-guard');
 
 const MAX_BODY_BYTES = 32768;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
@@ -129,7 +130,8 @@ function resolveIntegrationPrincipal(request, config) {
 }
 
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
-  staffAuthStore = null, customerDirectory = null, approvalLedger = null, readinessCheck = null } = {}) {
+  staffAuthStore = null, customerDirectory = null, approvalLedger = null,
+  integrationReplayGuard = null, readinessCheck = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -513,12 +515,26 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         if (!principal.roles.includes('OWNER')) {
           return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
         }
-        if (!draftStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        if (!draftStore || !integrationReplayGuard ||
+            typeof integrationReplayGuard.consume !== 'function') {
+          return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        }
         if (!/^application\/json(?:\s*;|\s*$)/iu.test(request.headers['content-type'] || '')) {
           return sendJson(response, 415, { error: 'UNSUPPORTED_MEDIA_TYPE' });
         }
         try {
           const payload = await readJson(request);
+          try {
+            await integrationReplayGuard.consume({
+              jti: principal.jti,
+              expiresAt: principal.expiresAt,
+            });
+          } catch (error) {
+            if (error instanceof IntegrationReplayError) {
+              return sendJson(response, error.statusCode, { error: error.code });
+            }
+            return sendJson(response, 503, { error: 'INTEGRATION_REPLAY_GUARD_UNAVAILABLE' });
+          }
           const stored = await draftStore.createDraft(payload, request.headers['idempotency-key']);
           if (!stored || !isUuid(stored.id) || stored.status !== 'DRAFT' ||
               !stored.preview || typeof stored.preview !== 'object' || Array.isArray(stored.preview) ||

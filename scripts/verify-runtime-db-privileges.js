@@ -15,6 +15,7 @@ const EXPECTED_TABLES = Object.freeze([
   'facturations_delivery_receipts',
   'facturations_draft_approvals',
   'facturations_draft_workspace_revisions',
+  'facturations_integration_token_uses',
   'facturations_draft_workspaces',
   'facturations_email_provider_evidence',
   'facturations_invoice_issuer_bindings',

@@ -109,7 +109,8 @@ if (require.main === module) {
     attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore, staffAuthStore });
     attachBrowserOwnerReview(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
-      staffAuthStore, dashboardStore, draftStore, approvalStore: draftApprovalStore });
+      staffAuthStore, dashboardStore, draftStore, approvalStore: draftApprovalStore,
+      assistantAvailable: Boolean(config.aiEnabled) });
     attachBrowserWorkspaceSubmission(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
       staffAuthStore, workspaceStore, submissionStore: workspaceSubmissionStore });

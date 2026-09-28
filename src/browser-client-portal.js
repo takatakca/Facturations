@@ -6,6 +6,7 @@ const {
   clearClientSessionCookie,
   readClientSessionCookie,
 } = require('./client-session-cookie');
+const { ClientPortalAuthError } = require('./client-portal-auth-store');
 
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 const UUID='[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
@@ -224,8 +225,11 @@ function attachBrowserClientPortal(server,{origin,authStore,readStore}={}){
           Location:'/portal?lang='+language,
           'Set-Cookie':createClientSessionCookie(session.token),
         });
-      }catch{
-        return reply(response,401,{'Content-Type':'text/html; charset=utf-8'},renderAccess(language,token,true));
+      }catch(error){
+        if(error instanceof ClientPortalAuthError && error.statusCode===401){
+          return reply(response,401,{'Content-Type':'text/html; charset=utf-8'},renderAccess(language,token,true));
+        }
+        return reply(response,503,{'Content-Type':'text/plain; charset=utf-8'},'Portal unavailable');
       }
     }
 

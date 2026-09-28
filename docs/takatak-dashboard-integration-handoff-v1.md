@@ -115,6 +115,7 @@ Requirements:
 - exact signed integration identity;
 - `Content-Type: application/json`;
 - `Idempotency-Key` header using the existing Facturations 16–80 character contract;
+- on a network retry, reuse the same `Idempotency-Key` for the same payload but mint a fresh short-lived bearer with a fresh `jti`; replaying the previous bearer is rejected by design;
 - no query string;
 - the request body is the normal Facturations draft input shape.
 

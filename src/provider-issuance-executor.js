@@ -16,6 +16,8 @@ function validatePreparedPayload(payload) {
       payload.status !== 'READY_FOR_WAVE_ADAPTER' ||
       payload.operation !== 'CREATE_DRAFT_THEN_APPROVE_SEPARATELY' ||
       payload.currency !== 'CAD' ||
+      typeof payload.sourceRequestHash !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(payload.sourceRequestHash) ||
       !Array.isArray(payload.items) ||
       !payload.expected || typeof payload.expected !== 'object' ||
       !payload.externalActionsPerformed ||
@@ -73,7 +75,10 @@ function createProviderIssuanceExecutor({ attemptStore, adapter }) {
     const payload = validatePreparedPayload(input.payload);
     let started;
     try {
-      started = await attemptStore.start({ attemptId: input.attemptId });
+      started = await attemptStore.start({
+        attemptId: input.attemptId,
+        requestHash: payload.sourceRequestHash,
+      });
     } catch (error) {
       if (error instanceof ProviderIssuanceAttemptError) throw error;
       throw new ProviderIssuanceExecutorError('ATTEMPT_START_FAILED', 503);

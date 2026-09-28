@@ -183,7 +183,14 @@
             }
           },
           "401": {
-            "$ref": "#/components/responses/Unauthorized"
+            "description": "Missing/invalid signed integration identity, or replayed write bearer (INTEGRATION_TOKEN_REPLAY)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           },
           "403": {
             "$ref": "#/components/responses/OwnerRequired"
@@ -225,7 +232,14 @@
             "$ref": "#/components/responses/InvalidQuery"
           },
           "503": {
-            "$ref": "#/components/responses/Unavailable"
+            "description": "Integration auth, storage, or persistent replay guard unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }

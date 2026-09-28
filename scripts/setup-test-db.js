@@ -46,11 +46,12 @@ async function main() {
       '026_client_portal_publications.sql',
       '027_mfa_recovery.sql',
       '028_integration_token_replay_guard.sql',
+      '029_payment_provider_verification_gate.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }
-    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and verified versioned issuer profiles and issuer-bound qualified invoice PDFs and immutable delivery authorizations and persistent simulated delivery attempts and immutable simulated delivery receipts and append-only synthetic provider evidence and read-only evidence summary projection and verified signed webhook evidence provenance, payment projections and passwordless client portal auth and explicit portal publication authorization and offline OWNER MFA recovery ceremony');
+    console.info('Isolated test schema initialized with draft protection, staff invitations, login limits, MFA, revisioned workspaces, immutable submissions, customer contact history and issuance authorization gate and provider execution state and immutable issued invoice registry and immutable issued invoice PDF archive and verified versioned issuer profiles and issuer-bound qualified invoice PDFs and immutable delivery authorizations and persistent simulated delivery attempts and immutable simulated delivery receipts and append-only synthetic provider evidence and read-only evidence summary projection and verified signed webhook evidence provenance, payment projections and passwordless client portal auth and explicit portal publication authorization and offline OWNER MFA recovery ceremony and fail-closed synthetic-only payment evidence gate');
   } finally {
     await pool.end();
   }

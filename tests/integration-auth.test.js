@@ -922,6 +922,92 @@ test('integration approvals endpoint fails closed on malformed or oversized ledg
 });
 
 
+test('integration list boundaries reject type-correct but contract-invalid store values', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: false,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const cases = [
+    {
+      path: '/integration/v1/drafts',
+      stores: {
+        dashboardStore: {
+          async listDrafts() {
+            return {
+              status: 'DRAFTS_ONLY', page: 1, pageSize: 20,
+              drafts: [{
+                id: 'not-a-uuid', customerName: 'Client',
+                invoiceDate: 'not-a-date', dueDate: '2026-10-01',
+                totalCents: 'NaN', currency: 'CAD', status: 'DRAFT',
+              }],
+            };
+          },
+        },
+      },
+    },
+    {
+      path: '/integration/v1/customers',
+      stores: {
+        customerDirectory: {
+          async listCustomers() {
+            return {
+              status: 'CUSTOMERS_ONLY', page: 1, pageSize: 20, hasMore: false,
+              customers: [{ id: 'not-a-uuid', name: 'Client', email: 'not-an-email' }],
+            };
+          },
+        },
+      },
+    },
+    {
+      path: '/integration/v1/approvals',
+      stores: {
+        approvalLedger: {
+          async listApprovals() {
+            return {
+              status: 'INTERNAL_APPROVALS_ONLY', currency: 'CAD',
+              page: 1, pageSize: 20, hasMore: false,
+              approvals: [{
+                id: 'not-a-uuid',
+                draftId: 'also-not-a-uuid',
+                approvedAt: 'not-a-date-time',
+                totalCents: 'NaN',
+                status: 'APPROVED_INTERNAL_ONLY',
+                issued: false, waveSynced: false, emailed: false, paid: false,
+              }],
+            };
+          },
+        },
+      },
+    },
+  ];
+
+  for (const entry of cases) {
+    const server = createServer({ config, ...entry.stores });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const response = await fetch(
+        'http://127.0.0.1:' + server.address().port + entry.path,
+        {
+          headers: { Authorization: 'Bearer ' + liveToken({
+            jti: 'integration-contract-output-' + crypto.randomUUID(),
+          }) },
+        },
+      );
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  }
+});
+
 test('integration draft write stays hidden until the separate write gate is enabled', async () => {
   let calls = 0;
   const config = {
@@ -1195,7 +1281,20 @@ test('integration draft creation fails closed on media, body, idempotency and st
     assert.deepEqual(await malformed.json(), { error: 'INVALID_JSON' });
     assert.equal(calls, 0);
 
-    const conflict = await fetch(base + '/integration/v1/drafts', {
+    const oversized = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: bearer,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-oversized-0001',
+      },
+      body: JSON.stringify({ notes: 'x'.repeat(40000) }),
+    });
+    assert.equal(oversized.status, 413);
+    assert.deepEqual(await oversized.json(), { error: 'BODY_TOO_LARGE' });
+    assert.equal(calls, 0);
+
+        const conflict = await fetch(base + '/integration/v1/drafts', {
       method: 'POST',
       headers: {
         Authorization: bearer,

@@ -35,6 +35,7 @@ const { createReadinessProbe } = require('./src/readiness-probe');
 const { installGracefulShutdown } = require('./src/graceful-shutdown');
 const { attachOperationalTelemetry } = require('./src/operational-telemetry');
 const { attachProductionEdgeGuard } = require('./src/production-edge-guard');
+const { createIntegrationReplayGuard } = require('./src/integration-replay-guard');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -52,6 +53,7 @@ if (require.main === module) {
   let workspaceSubmissionStore = null;
   let workspaceStore = null;
   let recentStore = null;
+  let integrationReplayGuard = null;
   let pool = null;
   let readinessProbe = null;
   if (config.databaseUrl && config.businessId) {
@@ -77,11 +79,17 @@ if (require.main === module) {
     }
     customerDirectory = createCustomerDirectory({ pool, businessId: config.businessId });
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
+    if (config.integrationEnabled) {
+      integrationReplayGuard = createIntegrationReplayGuard({ pool, businessId: config.businessId });
+    }
     clientPortalAuthStore = createClientPortalAuthStore({ pool, businessId: config.businessId });
     clientPortalReadStore = createClientPortalReadStore({ pool, businessId: config.businessId, authStore: clientPortalAuthStore });
   }
-  const server = createServer({ config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger,
-    readinessCheck: readinessProbe ? readinessProbe.check : null });
+  const server = createServer({
+    config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger,
+    integrationReplayGuard,
+    readinessCheck: readinessProbe ? readinessProbe.check : null,
+  });
   if (config.browserOrigin) {
     // Wrap once per service; never pass the shared administrative key to the browser.
     attachBrowserStaffLogin(server, { origin: config.browserOrigin, staffAuthStore, attemptLimit });

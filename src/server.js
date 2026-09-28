@@ -139,12 +139,14 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isIntegrationCustomers = path === '/integration/v1/customers';
     const isIntegrationApprovals = path === '/integration/v1/approvals';
     const integrationDraftDetailMatch = /^\/integration\/v1\/drafts\/([^/]+)$/.exec(path);
+    const integrationDraftApprovalMatch = /^\/integration\/v1\/drafts\/([^/]+)\/approval$/.exec(path);
     const isIntegrationDraftDetail = Boolean(integrationDraftDetailMatch);
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail) {
+    const isIntegrationDraftApproval = Boolean(integrationDraftApprovalMatch);
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail && !isIntegrationDraftApproval) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail || isIntegrationDraftApproval) {
       if (isIntegrationDrafts) {
         if (!['GET', 'POST'].includes(request.method)) {
           return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
@@ -152,7 +154,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       } else if (request.method !== 'GET') {
         return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       }
-      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail ||
+      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail || isIntegrationDraftApproval ||
           (isIntegrationDrafts && request.method === 'POST')) &&
           [...url.searchParams.keys()].length) {
         return sendJson(response, 422, { error: 'INVALID_QUERY' });
@@ -181,6 +183,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               dashboardRead: true,
               draftsRead: true,
               draftDetailsRead: principal.roles.includes('OWNER'),
+              draftApprovalStatusRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
               approvalsRead: principal.roles.includes('OWNER'),
               draftWrite: Boolean(config.integrationWritesEnabled && principal.roles.includes('OWNER')),
@@ -196,6 +199,44 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             },
           },
         });
+      }
+
+      if (isIntegrationDraftApproval) {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        if (!draftStore || !approvalLedger ||
+            typeof approvalLedger.getApprovalByDraftId !== 'function') {
+          return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        }
+        try {
+          const draft = await draftStore.getDraft(integrationDraftApprovalMatch[1]);
+          const approval = await approvalLedger.getApprovalByDraftId(draft.id);
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              draftId: draft.id,
+              approved: Boolean(approval),
+              status: approval ? 'APPROVED_INTERNAL_ONLY' : 'NOT_APPROVED',
+              approval: approval ? {
+                id: approval.id,
+                approvedAt: approval.approvedAt,
+                status: approval.status,
+              } : null,
+              issued: false,
+              waveSynced: false,
+              emailed: false,
+              paid: false,
+            },
+          });
+        } catch (error) {
+          if (error instanceof StoreError || error instanceof ApprovalLedgerError) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
       }
 
       if (isIntegrationDraftDetail) {

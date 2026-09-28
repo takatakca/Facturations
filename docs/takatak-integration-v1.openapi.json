@@ -476,6 +476,131 @@
           }
         }
       }
+    },
+    "/integration/v1/drafts/{draftId}/workflow": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Read OWNER-only draft workflow state",
+        "description": "Returns the safe next standalone step for a draft. It never enables native approval, issuance, delivery or payment actions.",
+        "operationId": "getIntegrationDraftWorkflow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DraftId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "requestId",
+                    "businessId",
+                    "data"
+                  ],
+                  "properties": {
+                    "version": {
+                      "const": 1
+                    },
+                    "requestId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "businessId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "draftId",
+                        "status",
+                        "internalApproval",
+                        "nextStep",
+                        "nativeActions"
+                      ],
+                      "properties": {
+                        "draftId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "status": {
+                          "const": "DRAFT"
+                        },
+                        "internalApproval": {
+                          "enum": [
+                            "APPROVED_INTERNAL_ONLY",
+                            "NOT_APPROVED"
+                          ]
+                        },
+                        "nextStep": {
+                          "enum": [
+                            "STANDALONE_OWNER_REVIEW",
+                            "STANDALONE_ISSUANCE_AUTHORIZATION"
+                          ]
+                        },
+                        "nativeActions": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "approve",
+                            "authorizeIssuance",
+                            "issue",
+                            "deliver",
+                            "recordPayment"
+                          ],
+                          "properties": {
+                            "approve": {
+                              "const": false
+                            },
+                            "authorizeIssuance": {
+                              "const": false
+                            },
+                            "issue": {
+                              "const": false
+                            },
+                            "deliver": {
+                              "const": false
+                            },
+                            "recordPayment": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -659,6 +784,7 @@
                       "draftsRead",
                       "draftDetailsRead",
                       "draftApprovalStatusRead",
+                      "draftWorkflowRead",
                       "customersRead",
                       "approvalsRead",
                       "draftWrite",
@@ -706,6 +832,9 @@
                         "const": false
                       },
                       "draftApprovalStatusRead": {
+                        "type": "boolean"
+                      },
+                      "draftWorkflowRead": {
                         "type": "boolean"
                       }
                     }

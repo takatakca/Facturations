@@ -73,7 +73,9 @@ Les routes `/api/*` restent séparées des cookies navigateur; un UUID n'est jam
 
 ## Final production gate
 
-Le contrat provider-neutral IA/voix est aussi livré : sorties structurées strictes, aucune exécution directe, actions sensibles renvoyées vers les gates OWNER existants, et blocage prompt-injection/multi-action/ambiguïté. Voir [`docs/assistant-voice-safety-contract.md`](docs/assistant-voice-safety-contract.md).\n\nLe dépôt inclut maintenant un dossier GO/NO-GO fail-closed (`npm run go-no-go:staging`) lié au SHA exact du candidat. Les preuves CI synthétiques ne peuvent pas satisfaire les gates réels de staging, GitHub, Wave/email/paiement, fiscalité, hébergement, récupération MFA ou revue humaine. Le rôle PostgreSQL runtime est vérifié séparément avec une matrice least-privilege et n'a aucun accès aux tables de récupération MFA.
+Le contrat provider-neutral IA/voix est aussi livré : sorties structurées strictes, aucune exécution directe, actions sensibles renvoyées vers les gates OWNER existants, et blocage prompt-injection/multi-action/ambiguïté. Voir [`docs/assistant-voice-safety-contract.md`](docs/assistant-voice-safety-contract.md).
+
+Le dépôt inclut maintenant un dossier GO/NO-GO fail-closed (`npm run go-no-go:staging`) lié au SHA exact du candidat. Les preuves CI synthétiques ne peuvent pas satisfaire les gates réels de staging, GitHub, Wave/email/paiement, fiscalité, hébergement, récupération MFA ou revue humaine. Le rôle PostgreSQL runtime est vérifié séparément avec une matrice least-privilege et n'a aucun accès aux tables de récupération MFA.
 
 
 Le rôle PostgreSQL runtime réel doit aussi réussir `npm run check:runtime-db` dans le staging/production cible; ce preflight refuse les capacités administratives, l’ownership applicatif et une connexion distante sans TLS, sans imprimer rôle, host, URL ou credentials. Le runbook final GO-LIVE/rollback est [`docs/final-go-live-runbook.md`](docs/final-go-live-runbook.md).

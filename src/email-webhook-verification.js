@@ -40,7 +40,7 @@ function normalizeHeaders(value){
   const output={};
   for(const [key,raw] of Object.entries(value)){
     const name=key.toLowerCase();
-    if(!/^[a-z0-9-]{1,80}$/u.test(name)){
+    if(!/^[a-z0-9-]{1,80}$/u.test(name) || Object.hasOwn(output,name)){
       throw new EmailWebhookVerificationError('INVALID_WEBHOOK_HEADERS');
     }
     if(typeof raw==='string'){

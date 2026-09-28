@@ -23,6 +23,7 @@ test('integration OpenAPI contract is versioned, server-to-server and exposes on
     '/integration/v1/dashboard',
     '/integration/v1/drafts',
     '/integration/v1/drafts/{draftId}',
+    '/integration/v1/drafts/{draftId}/approval',
   ]);
 
   assert.ok(spec.paths['/integration/v1/drafts'].get);

@@ -1462,3 +1462,62 @@ test('integration draft workflow rejects query/method and missing storage', asyn
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+
+test('integration exposes OWNER-only standalone review handoff without granting native action', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const staff = await fetch(base + '/integration/v1/handoffs/owner-review', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-handoff-staff',
+      }) },
+    });
+    assert.equal(staff.status, 403);
+    assert.deepEqual(await staff.json(), { error: 'OWNER_REQUIRED' });
+
+    const owner = await fetch(base + '/integration/v1/handoffs/owner-review', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-handoff-owner',
+      }) },
+    });
+    assert.equal(owner.status, 200);
+    const body = await owner.json();
+    assert.equal(body.businessId, BUSINESS);
+    assert.deepEqual(body.data, {
+      handoff: 'STANDALONE_OWNER_REVIEW',
+      method: 'GET',
+      path: '/internal/review',
+      query: { lang: 'fr|en' },
+      nativeAction: false,
+      financialAuthorization: false,
+    });
+    assert.doesNotMatch(JSON.stringify(body), /secret|token|cookie|session/i);
+
+    assert.equal((await fetch(base + '/integration/v1/handoffs/owner-review?lang=fr', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-handoff-query',
+      }) },
+    })).status, 422);
+    assert.equal((await fetch(base + '/integration/v1/handoffs/owner-review', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-handoff-post',
+      }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

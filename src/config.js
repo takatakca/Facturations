@@ -87,6 +87,9 @@ function loadConfig(env = process.env) {
   }
 
   if (nodeEnv === 'production') {
+    if (adminKey) {
+      throw new Error('Production forbids TAKATAK_ADMIN_KEY legacy shared-key access');
+    }
     if (port === 0) throw new Error('Production PORT must not be zero');
     if (!databaseUrl || !businessId) {
       throw new Error('Production requires the dedicated Facturations database and business ID');

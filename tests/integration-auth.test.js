@@ -1519,10 +1519,8 @@ test('real PostgreSQL integration retry uses a fresh jti with the same idempoten
       assert.equal(audit.rows[0].count, 1);
     } finally {
       await new Promise(resolve => server.close(resolve));
-      await pool.query('DELETE FROM invoice_audit_events WHERE business_id=$1', [businessId]);
-      await pool.query('DELETE FROM invoice_drafts WHERE business_id=$1', [businessId]);
-      await pool.query('DELETE FROM invoice_customers WHERE business_id=$1', [businessId]);
-      await pool.query('DELETE FROM facturations_integration_token_uses WHERE business_id=$1', [businessId]);
+      // The disposable CI database is destroyed after the run. Do not DELETE immutable
+      // audit evidence merely to clean up a synthetic test tenant.
       await pool.end();
     }
   });

@@ -4,7 +4,7 @@ Cette étape autorise le ledger de preuve à enregistrer `SIGNED_WEBHOOK`, mais 
 
 ## Barrière obligatoire
 
-`ingestVerifiedWebhook()` refuse tout objet qui n’est pas marqué par `isVerifiedEmailWebhookEnvelope()`.
+`ingestVerifiedWebhook()` refuse tout objet qui n’est pas marqué par `isVerifiedEmailWebhookEnvelope()`. Le `verificationScheme` est fixé lors de la création du vérificateur et voyage dans cette enveloppe; l’ingestion ne peut pas le remplacer par un label fourni séparément.
 
 Copier les propriétés d’une enveloppe vérifiée ne suffit pas.
 
@@ -14,7 +14,7 @@ L’ingestion exige aussi :
 - clé d’opération;
 - provider key identique;
 - SHA-256 du body brut présent dans l’enveloppe;
-- identifiant du mécanisme de vérification;
+- identifiant du mécanisme de vérification lié à l’enveloppe par le vérificateur;
 - destinataire identique au snapshot immuable.
 
 ## Provenance persistée
@@ -46,7 +46,7 @@ Ils prouvent :
 
 ## Limite importante
 
-`SIGNED_WEBHOOK` signifie ici que **le vérificateur injecté a accepté la signature**.
+`SIGNED_WEBHOOK` signifie ici que **le vérificateur injecté a accepté la signature**. Le résultat expose `signedWebhookVerified=true`, mais `realWebhookVerified` reste `false` dans cette release tant qu’aucun fournisseur commercial réel n’a été homologué.
 
 Aucun algorithme d’un fournisseur commercial n’est encore implémenté ni homologué. Les tests ne constituent donc pas une preuve d’intégration réelle avec un fournisseur.
 

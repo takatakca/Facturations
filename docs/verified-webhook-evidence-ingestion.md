@@ -15,7 +15,12 @@ L’ingestion exige aussi :
 - provider key identique;
 - SHA-256 du body brut présent dans l’enveloppe;
 - identifiant du mécanisme de vérification;
-- destinataire identique au snapshot immuable.
+- destinataire identique au snapshot immuable;
+- tentative de livraison `CONFIRMED` pour le même document;
+- même `operationKey`;
+- même `providerMessageId`.
+
+Une signature valide n'est donc pas suffisante pour rattacher un événement à n'importe quelle facture du même destinataire.
 
 ## Provenance persistée
 

@@ -27,9 +27,9 @@ const content = Object.freeze({
 const row = Object.freeze({ id: ID, revision: 3, content, status: 'WORK_IN_PROGRESS',
   invoiceIssued: false, emailed: false });
 
-async function withServer(workspaceStore, run) {
+async function withServer(workspaceStore, run, { assistantAvailable = false } = {}) {
   const server = createServer({ config: { businessId: 'fictional-preview', adminKey: 'synthetic-admin', waveToken: null } });
-  attachBrowserWorkspacePreview(server, { origin: 'https://fictional.example.test', workspaceStore });
+  attachBrowserWorkspacePreview(server, { origin: 'https://fictional.example.test', workspaceStore, assistantAvailable });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try { await run(`http://127.0.0.1:${server.address().port}`); }
@@ -64,6 +64,29 @@ test('preview uses server-calculated cents, escapes every client-supplied field,
   assert.match(index, new RegExp(`/internal/workspaces/${ID}/preview\\?lang=fr`));
   assert.match(index, /Aperçu calculé \(si complet\)/);
   assert.doesNotMatch(index, /<img src=x>/);
+});
+
+test('draft preview exposes contextual assistant only when server-side AI is enabled', async () => {
+  const store = { async load() { return row; } };
+
+  await withServer(store, async base => {
+    const response = await fetch(base + PATH + '?lang=fr', { headers: cookie(TOKEN) });
+    assert.equal(response.status, 200);
+    assert.doesNotMatch(await response.text(),
+      /\/internal\/assistant\?lang=fr&screen=saved-drafts/);
+  });
+
+  await withServer(store, async base => {
+    const fr = await fetch(base + PATH + '?lang=fr', { headers: cookie(TOKEN) });
+    assert.equal(fr.status, 200);
+    assert.match(await fr.text(),
+      /href="\/internal\/assistant\?lang=fr&screen=saved-drafts"/);
+
+    const en = await fetch(base + PATH + '?lang=en', { headers: cookie(TOKEN) });
+    assert.equal(en.status, 200);
+    assert.match(await en.text(),
+      /href="\/internal\/assistant\?lang=en&screen=saved-drafts"/);
+  }, { assistantAvailable: true });
 });
 
 test('HTTP preview accepts only a staff session and GET, returns private HTML without writes', async () => {

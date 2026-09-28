@@ -46,6 +46,7 @@ test('builds a no-network provider plan only when every mapping is exact',()=>{
   const draft=snapshot();
   const plan=buildWaveIssuancePreflight({snapshot:draft,...mappings()});
   assert.equal(plan.status,'READY_FOR_WAVE_ADAPTER');
+  assert.match(plan.sourceRequestHash,/^[a-f0-9]{64}$/);
   assert.equal(plan.operation,'CREATE_DRAFT_THEN_APPROVE_SEPARATELY');
   assert.equal(plan.currency,'CAD');
   assert.equal(plan.expected.customerEmail,'customer@example.test');

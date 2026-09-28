@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+const HASH = /^[a-f0-9]{64}$/;
 const STATES = new Set(['PREPARED', 'IN_PROGRESS', 'AMBIGUOUS', 'CONFIRMED', 'FAILED']);
 
 class ProviderIssuanceAttemptError extends Error {
@@ -167,7 +168,7 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
     return asResult(result.rows[0]);
   }
 
-  async function transition(attemptId, allowedStates, nextState, updateSql, params, eventCode) {
+  async function transition(attemptId, allowedStates, nextState, updateSql, params, eventCode, expectedRequestHash = null) {
     const id = uuid(attemptId, 'INVALID_ATTEMPT_ID');
     const client = await pool.connect();
     let transaction = false;
@@ -185,6 +186,19 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
           ? 'AMBIGUOUS_REQUIRES_RECONCILIATION'
           : 'INVALID_ATTEMPT_STATE';
         throw new ProviderIssuanceAttemptError(code, 409);
+      }
+      if (expectedRequestHash !== null) {
+        if (typeof expectedRequestHash !== 'string' || !HASH.test(expectedRequestHash)) {
+          throw new ProviderIssuanceAttemptError('INVALID_PROVIDER_PAYLOAD_BINDING');
+        }
+        const expectedOperationKey = operationKey(
+          tenant, row.authorization_id, expectedRequestHash
+        );
+        if (row.operation_key !== expectedOperationKey) {
+          throw new ProviderIssuanceAttemptError(
+            'PROVIDER_PAYLOAD_BINDING_MISMATCH', 409
+          );
+        }
       }
       const updated = await client.query(updateSql, [tenant, id, ...params]);
       if (updated.rows.length !== 1) throw new ProviderIssuanceAttemptError('STORAGE_UNAVAILABLE', 503);
@@ -209,14 +223,17 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
 
   function start(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
-        Object.keys(input).join(',') !== 'attemptId') {
+        Object.keys(input).sort().join(',') !== 'attemptId,requestHash') {
       throw new ProviderIssuanceAttemptError('INVALID_START_REQUEST');
+    }
+    if (typeof input.requestHash !== 'string' || !HASH.test(input.requestHash)) {
+      throw new ProviderIssuanceAttemptError('INVALID_PROVIDER_PAYLOAD_BINDING');
     }
     return transition(input.attemptId, ['PREPARED'], 'IN_PROGRESS',
       `UPDATE facturations_provider_issuance_attempts
           SET state='IN_PROGRESS',started_at=now()
         WHERE business_id=$1 AND id=$2 RETURNING *`,
-      [], 'ADAPTER_STARTED');
+      [], 'ADAPTER_STARTED', input.requestHash);
   }
 
   function markAmbiguous(input) {

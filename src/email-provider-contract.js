@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto=require('node:crypto');
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const HASH = /^[a-f0-9]{64}$/;
 const OPERATION_KEY = /^[A-Za-z0-9_-]{24,120}$/;
@@ -99,7 +101,7 @@ function validateEmailSubmission(input){
   const qualifiedDocumentSha256=hash(
     input.qualifiedDocumentSha256,'INVALID_QUALIFIED_DOCUMENT_SHA256'
   );
-  const actualPdfSha256=require('node:crypto').createHash('sha256').update(pdf).digest('hex');
+  const actualPdfSha256=crypto.createHash('sha256').update(pdf).digest('hex');
   if(actualPdfSha256!==qualifiedDocumentSha256){
     throw new EmailProviderContractError('EMAIL_PROVIDER_PDF_HASH_MISMATCH',409);
   }

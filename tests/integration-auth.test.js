@@ -6,14 +6,15 @@ const crypto = require('node:crypto');
 const { once } = require('node:events');
 const { verifyIntegrationBearer, IntegrationAuthError } = require('../src/integration-auth');
 const { createServer } = require('../src/server');
-const { StoreError } = require('../src/draft-store');
-const { IntegrationReplayError } = require('../src/integration-replay-guard');
+const { createDraftStore, StoreError } = require('../src/draft-store');
+const { createIntegrationReplayGuard, IntegrationReplayError } = require('../src/integration-replay-guard');
 
 const SECRET = 'integration-test-secret-abcdefghijklmnopqrstuvwxyz012345';
 const ISSUER = 'https://identity.takatak.ca';
 const AUDIENCE = 'facturations';
 const BUSINESS = 'business-one';
 const NOW = 1_800_000_000;
+const DATABASE = process.env.FACTURATIONS_TEST_DATABASE_URL;
 
 function encode(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -1443,6 +1444,88 @@ test('integration write rejects reuse of the same OWNER bearer before a second s
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('real PostgreSQL integration retry uses a fresh jti with the same idempotency key',
+  { skip: !DATABASE }, async () => {
+    const url = new URL(DATABASE);
+    assert.ok(['localhost', '127.0.0.1'].includes(url.hostname));
+    assert.equal(url.pathname, '/facturations_test');
+
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: DATABASE });
+    const businessId = 'integration-retry-' + crypto.randomUUID();
+    const idempotencyKey = 'integrationretry' + crypto.randomUUID().replace(/-/gu, '');
+    const config = {
+      businessId,
+      adminKey: '',
+      waveToken: '',
+      integrationEnabled: true,
+      integrationWritesEnabled: true,
+      integrationIssuer: ISSUER,
+      integrationAudience: AUDIENCE,
+      integrationSecret: SECRET,
+    };
+    const draftStore = createDraftStore({ pool, businessId });
+    const integrationReplayGuard = createIntegrationReplayGuard({ pool, businessId });
+    const server = createServer({ config, draftStore, integrationReplayGuard });
+    const payload = {
+      currency: 'CAD',
+      customer: { name: 'Retry Client', email: 'retry@example.test' },
+      invoiceDate: '2026-09-28',
+      dueDate: '2026-10-13',
+      lines: [{ description: 'Retry-safe service', quantity: 1, unitPriceCents: 1200, taxable: false }],
+      taxes: [],
+    };
+
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const base = 'http://127.0.0.1:' + server.address().port;
+    try {
+      const first = await fetch(base + '/integration/v1/drafts', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + liveToken({
+            business_id: businessId,
+            jti: 'integration-retry-jti-' + crypto.randomUUID(),
+          }),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+      });
+      assert.equal(first.status, 200);
+      const firstBody = await first.json();
+
+      const retry = await fetch(base + '/integration/v1/drafts', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + liveToken({
+            business_id: businessId,
+            jti: 'integration-retry-jti-' + crypto.randomUUID(),
+          }),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+      });
+      assert.equal(retry.status, 200);
+      const retryBody = await retry.json();
+      assert.equal(retryBody.data.id, firstBody.data.id);
+
+      const audit = await pool.query(
+        "SELECT count(*)::int AS count FROM invoice_audit_events WHERE business_id=$1 AND draft_id=$2 AND action='DRAFT_CREATED'",
+        [businessId, firstBody.data.id],
+      );
+      assert.equal(audit.rows[0].count, 1);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+      await pool.query('DELETE FROM invoice_audit_events WHERE business_id=$1', [businessId]);
+      await pool.query('DELETE FROM invoice_drafts WHERE business_id=$1', [businessId]);
+      await pool.query('DELETE FROM invoice_customers WHERE business_id=$1', [businessId]);
+      await pool.query('DELETE FROM facturations_integration_token_uses WHERE business_id=$1', [businessId]);
+      await pool.end();
+    }
+  });
 
 test('integration draft approval status is OWNER-only and read-only', async () => {
   const id = '11111111-1111-4111-8111-111111111111';

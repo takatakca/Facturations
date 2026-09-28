@@ -18,6 +18,12 @@ La clé `operation_key` est dérivée de l'entreprise, de l'autorisation et du `
 
 Une exception de l'adapter ou une réponse invalide devient `AMBIGUOUS`. Une seconde exécution depuis cet état est refusée avant d'appeler l'adapter. Seule une réconciliation explicite peut terminer la tentative en `CONFIRMED` ou `FAILED`.
 
+## Compatibilité du document officiel
+
+Avant de produire un plan fournisseur, le preflight vérifie maintenant que tous les textes du brouillon destinés au PDF officiel v1 sont représentables par le renderer WinAnsi actuel. Un caractère non supporté bloque l'émission avec `PDF_TEXT_UNSUPPORTED` avant tout appel provider.
+
+Le brouillon lui-même peut rester éditable avec Unicode : la restriction s'applique à la frontière d'émission tant que le moteur PDF v1 n'embarque pas de police Unicode.
+
 ## Limite volontaire
 
 `src/provider-issuance-executor.js` reçoit un adapter injecté. Aucun URL, jeton Wave ou client réseau Wave n'est créé ici. Les tests utilisent uniquement des adapters synthétiques.

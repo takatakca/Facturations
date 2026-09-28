@@ -163,6 +163,34 @@ The response includes the customer contact fields and line/tax inputs needed for
 
 STAFF identities receive `403 OWNER_REQUIRED` before draft storage is read.
 
+### GET /integration/v1/drafts/:id/approval
+
+OWNER only. Returns the internal approval status for one draft without exposing the approver identity or any customer/provider payload.
+
+```json
+{
+  "version": 1,
+  "requestId": "<server-generated-uuid>",
+  "businessId": "<verified-business-id>",
+  "data": {
+    "draftId": "<draft-uuid>",
+    "approved": true,
+    "status": "APPROVED_INTERNAL_ONLY",
+    "approval": {
+      "id": "<approval-uuid>",
+      "approvedAt": "2026-09-27T21:00:00.000Z",
+      "status": "APPROVED_INTERNAL_ONLY"
+    },
+    "issued": false,
+    "waveSynced": false,
+    "emailed": false,
+    "paid": false
+  }
+}
+```
+
+When no internal approval exists, `approved` is false, `status` is `NOT_APPROVED`, and `approval` is null. This is read-only state and must never be interpreted as authorization to issue or send an invoice.
+
 ### GET /integration/v1/customers?page=1&pageSize=20&q=Example
 
 OWNER only. Minimum search text is 2 characters and maximum is 80. Response fields are minimized:

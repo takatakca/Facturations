@@ -111,6 +111,14 @@ test('raw body and headers are bounded and normalized before provider verificati
       error.code==='INVALID_WEBHOOK_HEADERS'
   );
   await assert.rejects(
+    verifier.verify({
+      headers:{'X-Test-Signature':'first','x-test-signature':'second'},
+      rawBody:Buffer.from('payload'),
+    }),
+    error=>error instanceof EmailWebhookVerificationError &&
+      error.code==='INVALID_WEBHOOK_HEADERS'
+  );
+  await assert.rejects(
     verifier.verify({headers:{},rawBody:Buffer.alloc(1_048_577)}),
     error=>error instanceof EmailWebhookVerificationError &&
       error.code==='INVALID_WEBHOOK_RAW_BODY'

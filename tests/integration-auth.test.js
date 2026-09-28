@@ -7,6 +7,7 @@ const { once } = require('node:events');
 const { verifyIntegrationBearer, IntegrationAuthError } = require('../src/integration-auth');
 const { createServer } = require('../src/server');
 const { StoreError } = require('../src/draft-store');
+const { IntegrationReplayError } = require('../src/integration-replay-guard');
 
 const SECRET = 'integration-test-secret-abcdefghijklmnopqrstuvwxyz012345';
 const ISSUER = 'https://identity.takatak.ca';
@@ -115,6 +116,10 @@ test('integration verifier enforces short lifetime and clock bounds', () => {
     );
   }
 });
+
+function acceptingReplayGuard() {
+  return { async consume() { return true; } };
+}
 
 async function withServer(config, run) {
   const server = createServer({ config });
@@ -1148,7 +1153,11 @@ test('integration draft creation is OWNER-only, idempotent and persists only a D
     integrationAudience: AUDIENCE,
     integrationSecret: SECRET,
   };
-  const server = createServer({ config, draftStore });
+  const server = createServer({
+    config,
+    draftStore,
+    integrationReplayGuard: acceptingReplayGuard(),
+  });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = 'http://127.0.0.1:' + server.address().port;
@@ -1263,7 +1272,11 @@ test('integration draft creation fails closed on media, body, idempotency and st
       return { id: 'x', status: 'ISSUED', preview: {} };
     },
   };
-  const server = createServer({ config, draftStore });
+  const server = createServer({
+    config,
+    draftStore,
+    integrationReplayGuard: acceptingReplayGuard(),
+  });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = 'http://127.0.0.1:' + server.address().port;
@@ -1339,6 +1352,97 @@ test('integration draft creation fails closed on media, body, idempotency and st
   }
 });
 
+
+test('integration write rejects reuse of the same OWNER bearer before a second store write', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  let creates = 0;
+  const seen = new Set();
+  const integrationReplayGuard = {
+    async consume({ jti }) {
+      if (seen.has(jti)) throw new IntegrationReplayError('INTEGRATION_TOKEN_REPLAY', 401);
+      seen.add(jti);
+      return true;
+    },
+  };
+  const draftStore = {
+    async createDraft() {
+      creates += 1;
+      return {
+        id: '33333333-3333-4333-8333-333333333333',
+        status: 'DRAFT',
+        preview: {
+          status: 'DRAFT',
+          persisted: true,
+          waveSynced: false,
+          emailed: false,
+          currency: 'CAD',
+          customer: { name: 'Client Exemple', email: 'client@example.test', address: null },
+          invoiceDate: '2026-09-27',
+          dueDate: '2026-10-12',
+          notes: null,
+          lines: [{
+            description: 'Service',
+            quantity: 1,
+            unitPriceCents: 1000,
+            discountCents: 0,
+            taxable: false,
+          }],
+          taxes: [],
+        },
+      };
+    },
+  };
+  const payload = {
+    currency: 'CAD',
+    customer: { name: 'Client Exemple', email: 'client@example.test' },
+    invoiceDate: '2026-09-27',
+    dueDate: '2026-10-12',
+    lines: [{ description: 'Service', quantity: 1, unitPriceCents: 1000, taxable: false }],
+    taxes: [],
+  };
+  const server = createServer({ config, draftStore, integrationReplayGuard });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const bearer = 'Bearer ' + liveToken({ jti: 'integration-replay-once-0001' });
+  try {
+    const first = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: bearer,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-replay-key-0001',
+      },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(first.status, 200);
+    assert.equal(creates, 1);
+
+    const replay = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: bearer,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-replay-key-0002',
+      },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(replay.status, 401);
+    assert.deepEqual(await replay.json(), { error: 'INTEGRATION_TOKEN_REPLAY' });
+    assert.equal(creates, 1);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
 
 test('integration draft approval status is OWNER-only and read-only', async () => {
   const id = '11111111-1111-4111-8111-111111111111';

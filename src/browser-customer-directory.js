@@ -13,13 +13,13 @@ const LANG = Object.freeze({
     name: 'Client', email: 'Courriel', address: 'Adresse enregistrée', none: 'Aucun client trouvé.',
     previous: 'Page précédente', next: 'Page suivante', page: 'Page', add: 'Ajouter un client', edit: 'Corriger les coordonnées',
     note: 'Répertoire privé. Seul le propriétaire peut ajouter ou corriger une fiche. Les brouillons déjà figés ne changent pas. Vérifiez le destinataire avant toute émission. Aucun courriel ni facture n’est envoyé.',
-    results: 'Seuls les 20 premiers résultats de cette recherche sont affichés.' }),
+    results: 'Seuls les 20 premiers résultats de cette recherche sont affichés.', assistant: 'Assistant IA' }),
   en: Object.freeze({ title: 'Customer directory', dashboard: 'Dashboard', language: 'Français', other: 'fr',
     searchLabel: 'Customer name or email', search: 'Search', clear: 'Clear',
     name: 'Customer', email: 'Email', address: 'Saved address', none: 'No customers found.',
     previous: 'Previous page', next: 'Next page', page: 'Page', add: 'Add customer', edit: 'Correct contact details',
     note: 'Private directory. Only the owner can add or correct a record. Existing frozen drafts do not change. Verify recipients before issuance. No email or invoice is sent.',
-    results: 'Only the first 20 results of this search are shown.' }),
+    results: 'Only the first 20 results of this search are shown.', assistant: 'AI Assistant' }),
 });
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
@@ -39,15 +39,19 @@ function pageNumber(value) {
   if (!/^[1-9][0-9]{0,3}$/.test(value)) throw new TypeError('Invalid page');
   return Number(value);
 }
-function renderCustomerDirectory(data, language = 'fr', query = '') {
+function renderCustomerDirectory(data, language = 'fr', query = '', assistantAvailable = false) {
   if (!Object.hasOwn(LANG, language) || !data || data.status !== 'CUSTOMERS_ONLY' ||
       !Array.isArray(data.customers) || data.customers.length > 20 ||
       !Number.isSafeInteger(data.page) || data.page < 1 || data.page > 9999 ||
       data.pageSize !== 20 || typeof data.hasMore !== 'boolean' ||
-      typeof query !== 'string' || query.length > 80 || /[\u0000-\u001f\u007f]/u.test(query)) {
+      typeof query !== 'string' || query.length > 80 || /[\u0000-\u001f\u007f]/u.test(query) ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Bounded private customer listing required');
   }
   const t = LANG[language];
+  const assistantLink = assistantAvailable
+    ? `<a href="/internal/assistant?lang=${language}&amp;screen=customers">${t.assistant}</a>`
+    : '';
   const rows = data.customers.map(row => {
     if (!row || typeof row.name !== 'string' || typeof row.email !== 'string' ||
         (row.address !== null && typeof row.address !== 'string') ||
@@ -62,7 +66,7 @@ function renderCustomerDirectory(data, language = 'fr', query = '') {
   const results = query ? `<p class="muted">${t.results}</p>` : `<p class="muted">${t.page} · ${t.title}</p>`;
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title} — GROUPE TAKATAK</title><style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f6fa;color:#17253c}*{box-sizing:border-box}body{margin:0;line-height:1.5}main{max-width:1020px;margin:auto;padding:clamp(18px,4vw,48px)}header,nav,.controls,.paging{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}header{margin-bottom:30px}.brand{font-weight:800;color:#14536b;letter-spacing:.08em}a{color:#194a91;font-weight:700}a:focus-visible,input:focus-visible,button:focus-visible{outline:3px solid #3567b7;outline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.7rem)}.panel{background:#fff;border:1px solid #dce5ef;border-radius:16px;padding:clamp(16px,3vw,28px);margin:22px 0}.muted{color:#52647c}.controls{justify-content:flex-start;align-items:end}.controls label{flex:1 1 240px;font-weight:700}.controls input{width:100%;display:block;padding:12px;font:inherit;margin-top:6px;border:1px solid #b3c2d6;border-radius:8px}.controls button{font:inherit;padding:12px 16px;border:0;border-radius:8px;background:#164b9b;color:#fff;font-weight:700;cursor:pointer}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;min-width:520px}th,td{padding:14px 10px;border-bottom:1px solid #e7edf4;overflow-wrap:anywhere;vertical-align:top}.paging{justify-content:flex-start;margin:20px 0}.notice{background:#eaf1ff;padding:14px;border-left:4px solid #3567b7;border-radius:8px}.add{display:inline-block;background:#164b9b;color:#fff;border-radius:8px;padding:11px 15px;text-decoration:none}</style></head><body><main>
-<header><div class="brand">GROUPE TAKATAK</div><nav aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.dashboard}</a><a href="/internal/customers?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header>
+<header><div class="brand">GROUPE TAKATAK</div><nav aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.dashboard}</a>${assistantLink}<a href="/internal/customers?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header>
 <h1>${t.title}</h1><p class="notice" role="note">${t.note}</p><p><a class="add" href="/internal/customer-contact?lang=${language}">${t.add}</a></p><section class="panel"><form class="controls" method="post" action="/internal/customers?lang=${language}" autocomplete="off"><label for="q">${t.searchLabel}<input id="q" name="q" type="search" minlength="2" maxlength="80" value="${escapeHtml(query)}" autocomplete="off"></label><button type="submit">${t.search}</button><a href="/internal/customers?lang=${language}">${t.clear}</a></form></section>
 <section class="panel" aria-label="${t.title}">${rows ? `<div class="scroll" role="region" aria-label="${t.title}" tabindex="0"><table><thead><tr><th scope="col">${t.name}</th><th scope="col">${t.email}</th><th scope="col">${t.address}</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p>${t.none}</p>`}</section>${results}<nav class="paging" aria-label="${t.page}">${previous}${next}</nav></main></body></html>`;
 }
@@ -93,13 +97,14 @@ function readSearch(request) {
   });
 }
 // Attach to the isolated private browser service only. Never grant browser cookies to /api/*.
-function attachBrowserCustomerDirectory(server, { origin, businessId, staffAuthStore, customerDirectory }) {
+function attachBrowserCustomerDirectory(server, { origin, businessId, staffAuthStore, customerDirectory, assistantAvailable = false }) {
   let validOrigin = false;
   try { validOrigin = typeof origin === 'string' && origin.startsWith('https://') && new URL(origin).origin === origin; }
   catch { /* Reject invalid configuration. */ }
   if (!server || typeof server.listeners !== 'function' || server.listeners('request').length !== 1 ||
       !validOrigin || !businessId || !staffAuthStore || typeof staffAuthStore.getSession !== 'function' ||
-      !customerDirectory || typeof customerDirectory.listCustomers !== 'function') {
+      !customerDirectory || typeof customerDirectory.listCustomers !== 'function' ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Dedicated owner customer directory dependencies required');
   }
   const previous = server.listeners('request')[0];
@@ -132,7 +137,8 @@ function attachBrowserCustomerDirectory(server, { origin, businessId, staffAuthS
       const params = new URLSearchParams({ page: String(page), pageSize: '20' });
       if (query) params.set('q', query);
       const data = await customerDirectory.listCustomers(customerListOptions(params));
-      reply(response, 200, 'text/html; charset=utf-8', renderCustomerDirectory(data, language, query));
+      reply(response, 200, 'text/html; charset=utf-8',
+        renderCustomerDirectory(data, language, query, assistantAvailable));
     } catch (error) {
       if ([400, 413, 422].includes(error)) return deny(response, error);
       return deny(response, 503);

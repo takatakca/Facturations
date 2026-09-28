@@ -145,8 +145,15 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     }
 
     if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail) {
-      if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
-      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail) &&
+      if (isIntegrationDrafts) {
+        if (!['GET', 'POST'].includes(request.method)) {
+          return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+        }
+      } else if (request.method !== 'GET') {
+        return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      }
+      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail ||
+          (isIntegrationDrafts && request.method === 'POST')) &&
           [...url.searchParams.keys()].length) {
         return sendJson(response, 422, { error: 'INVALID_QUERY' });
       }
@@ -176,7 +183,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               draftDetailsRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
               approvalsRead: principal.roles.includes('OWNER'),
-              draftWrite: false,
+              draftWrite: principal.roles.includes('OWNER'),
               ownerApprovalWrite: false,
               issuanceAuthorizationWrite: false,
               deliveryAuthorizationWrite: false,
@@ -361,6 +368,78 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             },
           });
         } catch {
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
+      }
+
+      if (isIntegrationDrafts && request.method === 'POST') {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        if (!draftStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        if (!/^application\/json(?:\s*;|\s*$)/iu.test(request.headers['content-type'] || '')) {
+          return sendJson(response, 415, { error: 'UNSUPPORTED_MEDIA_TYPE' });
+        }
+        try {
+          const payload = await readJson(request);
+          const stored = await draftStore.createDraft(payload, request.headers['idempotency-key']);
+          if (!stored || typeof stored.id !== 'string' || stored.status !== 'DRAFT' ||
+              !stored.preview || typeof stored.preview !== 'object' || Array.isArray(stored.preview) ||
+              stored.preview.status !== 'DRAFT' || stored.preview.persisted !== true ||
+              !stored.preview.customer || typeof stored.preview.customer !== 'object' ||
+              !Array.isArray(stored.preview.lines) || !Array.isArray(stored.preview.taxes)) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          let recalculated;
+          try {
+            recalculated = previewDraft({
+              currency: stored.preview.currency,
+              customer: {
+                name: stored.preview.customer.name,
+                email: stored.preview.customer.email,
+                address: stored.preview.customer.address ?? null,
+              },
+              invoiceDate: stored.preview.invoiceDate,
+              dueDate: stored.preview.dueDate,
+              notes: stored.preview.notes ?? null,
+              lines: stored.preview.lines.map(line => ({
+                description: line.description,
+                quantity: line.quantity,
+                unitPriceCents: line.unitPriceCents,
+                discountCents: line.discountCents ?? 0,
+                taxable: line.taxable,
+              })),
+              taxes: stored.preview.taxes.map(tax => ({
+                code: tax.code,
+                label: tax.label,
+                rateMilliPercent: tax.rateMilliPercent,
+              })),
+            });
+          } catch {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              id: stored.id,
+              status: 'DRAFT',
+              preview: {
+                ...recalculated,
+                status: 'DRAFT',
+                persisted: true,
+              },
+            },
+          });
+        } catch (error) {
+          if (error instanceof DraftValidationError || error instanceof StoreError) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          if (error && typeof error.statusCode === 'number' &&
+              ['BODY_TOO_LARGE', 'INVALID_JSON', 'INVALID_REQUEST'].includes(error.code)) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
           return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
         }
       }

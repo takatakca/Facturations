@@ -42,7 +42,21 @@ test('OpenAPI write contract stays DRAFT-only and requires idempotency', () => {
   ));
   assert.equal(
     spec.components.parameters.IdempotencyKey.schema.pattern,
-    '^[A-Za-z0-9_-]{16,80} spec.components.schemas.CapabilitiesEnvelope.allOf[1]
+    '^[A-Za-z0-9_-]{16,80}$',
+  );
+  assert.ok(create.responses['400']);
+  assert.ok(create.responses['413']);
+
+  const draftInput = spec.components.schemas.DraftInput;
+  const customerInput = spec.components.schemas.CustomerInput;
+  const lineInput = spec.components.schemas.LineInput;
+  assert.equal(draftInput.required.includes('notes'), false);
+  assert.equal(customerInput.required.includes('address'), false);
+  assert.equal(lineInput.required.includes('discountCents'), false);
+  assert.equal(lineInput.properties.unitPriceCents.maximum, 100000000);
+  assert.match(lineInput.properties.discountCents.description, /quantity \* unitPriceCents/);
+
+  const capability = spec.components.schemas.CapabilitiesEnvelope.allOf[1]
     .properties.data.properties.capabilities.properties;
   assert.equal(capability.ownerApprovalWrite.const, false);
   assert.equal(capability.issuanceAuthorizationWrite.const, false);

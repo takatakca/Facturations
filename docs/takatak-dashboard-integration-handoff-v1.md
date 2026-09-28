@@ -108,7 +108,7 @@ Maximum page size is 50. The response deliberately contains only summary data.
 
 ### POST /integration/v1/drafts
 
-OWNER only. Creates a persisted **DRAFT** and nothing else.
+OWNER only. Creates a persisted **DRAFT** and nothing else. This endpoint stays hidden unless the separate server-side `FACTURATIONS_INTEGRATION_WRITES_ENABLED=1` gate is enabled.
 
 Requirements:
 
@@ -357,6 +357,18 @@ The dashboard team can safely build against mock responses matching this contrac
 9. A link/handoff to the standalone Facturations workspace.
 
 Do **not** build native invoice issuance/send/payment buttons yet because those integration capabilities intentionally remain false.
+
+## Read vs write activation
+
+`FACTURATIONS_INTEGRATION_ENABLED=1` enables the signed integration identity and read surfaces.
+
+Native writes remain separately disabled until:
+
+`FACTURATIONS_INTEGRATION_WRITES_ENABLED=1`
+
+is explicitly configured on the Facturations server. When blank, `draftWrite` is false and POST `/integration/v1/drafts` returns 404 without touching draft storage.
+
+This separation lets the TAKATAK dashboard team integrate read-only views first without accidentally enabling financial workflow state changes.
 
 ## Activation gate
 

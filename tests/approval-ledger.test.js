@@ -105,6 +105,47 @@ function makeDraft(email, amount) {
     lines: [{ description: 'Synthetic service', quantity: 1, unitPriceCents: amount, taxable: false }], taxes: [] };
 }
 
+test('approval lookup validates draft id and returns minimized status', async () => {
+  const seen = [];
+  const ledger = createApprovalLedger({
+    businessId: BUSINESS,
+    pool: {
+      async query(sql, params) {
+        seen.push({ sql, params });
+        return { rows: [{
+          id: '33333333-3333-4333-8333-333333333333',
+          draft_id: '22222222-2222-4222-8222-222222222222',
+          approved_at: new Date('2026-09-27T21:00:00.000Z'),
+          total_cents: '85000',
+        }] };
+      },
+    },
+  });
+  const result = await ledger.getApprovalByDraftId('22222222-2222-4222-8222-222222222222');
+  assert.deepEqual(result, {
+    id: '33333333-3333-4333-8333-333333333333',
+    draftId: '22222222-2222-4222-8222-222222222222',
+    approvedAt: '2026-09-27T21:00:00.000Z',
+    totalCents: '85000',
+    status: 'APPROVED_INTERNAL_ONLY',
+    issued: false,
+    waveSynced: false,
+    emailed: false,
+    paid: false,
+  });
+  assert.deepEqual(seen[0].params, [BUSINESS, '22222222-2222-4222-8222-222222222222']);
+  await assert.rejects(
+    () => ledger.getApprovalByDraftId('not-a-uuid'),
+    error => error instanceof ApprovalLedgerError && error.code === 'INVALID_DRAFT_ID'
+  );
+
+  const empty = createApprovalLedger({
+    businessId: BUSINESS,
+    pool: { async query() { return { rows: [] }; } },
+  });
+  assert.equal(await empty.getApprovalByDraftId('22222222-2222-4222-8222-222222222222'), null);
+});
+
 test('isolated PostgreSQL history is paginated, tenant-scoped and excludes customer contacts',
   { skip: !DATABASE }, async () => {
     const url = new URL(DATABASE);

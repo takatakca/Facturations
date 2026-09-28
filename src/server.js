@@ -317,7 +317,37 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
           const stored = await draftStore.createDraft(payload, request.headers['idempotency-key']);
           if (!stored || typeof stored.id !== 'string' || stored.status !== 'DRAFT' ||
               !stored.preview || typeof stored.preview !== 'object' || Array.isArray(stored.preview) ||
-              stored.preview.status !== 'DRAFT' || stored.preview.persisted !== true) {
+              stored.preview.status !== 'DRAFT' || stored.preview.persisted !== true ||
+              !stored.preview.customer || typeof stored.preview.customer !== 'object' ||
+              !Array.isArray(stored.preview.lines) || !Array.isArray(stored.preview.taxes)) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          let recalculated;
+          try {
+            recalculated = previewDraft({
+              currency: stored.preview.currency,
+              customer: {
+                name: stored.preview.customer.name,
+                email: stored.preview.customer.email,
+                address: stored.preview.customer.address ?? null,
+              },
+              invoiceDate: stored.preview.invoiceDate,
+              dueDate: stored.preview.dueDate,
+              notes: stored.preview.notes ?? null,
+              lines: stored.preview.lines.map(line => ({
+                description: line.description,
+                quantity: line.quantity,
+                unitPriceCents: line.unitPriceCents,
+                discountCents: line.discountCents ?? 0,
+                taxable: line.taxable,
+              })),
+              taxes: stored.preview.taxes.map(tax => ({
+                code: tax.code,
+                label: tax.label,
+                rateMilliPercent: tax.rateMilliPercent,
+              })),
+            });
+          } catch {
             return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
           }
           return sendJson(response, 200, {
@@ -327,7 +357,11 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             data: {
               id: stored.id,
               status: 'DRAFT',
-              preview: stored.preview,
+              preview: {
+                ...recalculated,
+                status: 'DRAFT',
+                persisted: true,
+              },
             },
           });
         } catch (error) {

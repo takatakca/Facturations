@@ -341,6 +341,141 @@
           }
         }
       }
+    },
+    "/integration/v1/drafts/{draftId}/approval": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Read OWNER-only internal approval status for a draft",
+        "description": "Returns internal approval state only. Approval is not invoice issuance, delivery, payment, Wave sync or portal publication.",
+        "operationId": "getIntegrationDraftApprovalStatus",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DraftId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Internal-only draft approval status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "requestId",
+                    "businessId",
+                    "data"
+                  ],
+                  "properties": {
+                    "version": {
+                      "const": 1
+                    },
+                    "requestId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "businessId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "draftId",
+                        "approved",
+                        "status",
+                        "approval",
+                        "issued",
+                        "waveSynced",
+                        "emailed",
+                        "paid"
+                      ],
+                      "properties": {
+                        "draftId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "approved": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "enum": [
+                            "APPROVED_INTERNAL_ONLY",
+                            "NOT_APPROVED"
+                          ]
+                        },
+                        "approval": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "id",
+                                "approvedAt",
+                                "status"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "approvedAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "status": {
+                                  "const": "APPROVED_INTERNAL_ONLY"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "issued": {
+                          "const": false
+                        },
+                        "waveSynced": {
+                          "const": false
+                        },
+                        "emailed": {
+                          "const": false
+                        },
+                        "paid": {
+                          "const": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -523,6 +658,7 @@
                       "dashboardRead",
                       "draftsRead",
                       "draftDetailsRead",
+                      "draftApprovalStatusRead",
                       "customersRead",
                       "approvalsRead",
                       "draftWrite",
@@ -568,6 +704,9 @@
                       "portalPublicationWrite": {
                         "type": "boolean",
                         "const": false
+                      },
+                      "draftApprovalStatusRead": {
+                        "type": "boolean"
                       }
                     }
                   },

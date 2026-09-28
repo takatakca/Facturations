@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { once } = require('node:events');
 const { verifyIntegrationBearer, IntegrationAuthError } = require('../src/integration-auth');
 const { createServer } = require('../src/server');
+const { StoreError } = require('../src/draft-store');
 
 const SECRET = 'integration-test-secret-abcdefghijklmnopqrstuvwxyz012345';
 const ISSUER = 'https://identity.takatak.ca';
@@ -174,7 +175,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       draftsRead: true,
       draftDetailsRead: true,
       customersRead: true,
-      draftWrite: false,
+      draftWrite: true,
       ownerApprovalWrite: false,
       issuanceAuthorizationWrite: false,
       deliveryAuthorizationWrite: false,
@@ -367,7 +368,7 @@ test('integration drafts endpoint returns bounded paginated draft summaries only
       assert.equal(denied.status, 422);
     }
     assert.equal((await fetch(base + '/integration/v1/drafts', {
-      method: 'POST',
+      method: 'PATCH',
       headers: { Authorization: 'Bearer ' + liveToken({ jti: 'integration-live-jti-0011' }) },
     })).status, 405);
   } finally {
@@ -437,6 +438,7 @@ test('integration capabilities expose customer read only to OWNER identities', a
     assert.equal(body.data.capabilities.customersRead, false);
     assert.equal(body.data.capabilities.draftDetailsRead, false);
     assert.equal(body.data.capabilities.draftsRead, true);
+    assert.equal(body.data.capabilities.draftWrite, false);
   });
 });
 
@@ -744,5 +746,239 @@ test('integration draft detail preserves store errors and rejects malformed stor
     } finally {
       await new Promise(resolve => server.close(resolve));
     }
+  }
+});
+
+
+test('integration draft creation is OWNER-only, idempotent and persists only a DRAFT', async () => {
+  const calls = { create: 0, payload: null, key: null };
+  const draftStore = {
+    async createDraft(payload, key) {
+      calls.create += 1;
+      calls.payload = payload;
+      calls.key = key;
+      return {
+        id: '33333333-3333-4333-8333-333333333333',
+        status: 'DRAFT',
+        createdAt: '2026-09-27T21:00:00.000Z',
+        preview: {
+          status: 'DRAFT',
+          persisted: true,
+          waveSynced: false,
+          emailed: false,
+          currency: 'CAD',
+          customer: {
+            name: 'Client Exemple',
+            email: 'client@example.test',
+            address: null,
+          },
+          invoiceDate: '2026-09-27',
+          dueDate: '2026-10-12',
+          notes: null,
+          lines: [{
+            description: 'Nettoyage de hotte',
+            quantity: 1,
+            unitPriceCents: 85000,
+            discountCents: 0,
+            taxable: false,
+            lineTotalCents: 85000,
+          }],
+          taxes: [],
+          subtotalCents: 85000,
+          taxableSubtotalCents: 0,
+          taxTotalCents: 0,
+          totalCents: 85000,
+          calculation: 'Independent taxes on taxable discounted subtotal; half-up per tax to nearest cent.',
+        },
+        waveSynced: false,
+        emailed: false,
+        internalSecret: 'must-not-leak',
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, draftStore });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const payload = {
+    currency: 'CAD',
+    customer: {
+      name: 'Client Exemple',
+      email: 'client@example.test',
+      address: null,
+    },
+    invoiceDate: '2026-09-27',
+    dueDate: '2026-10-12',
+    notes: null,
+    lines: [{
+      description: 'Nettoyage de hotte',
+      quantity: 1,
+      unitPriceCents: 85000,
+      discountCents: 0,
+      taxable: false,
+    }],
+    taxes: [],
+  };
+
+  try {
+    const unauthenticated = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'integration-draft-0001' },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(calls.create, 0);
+
+    const staffDenied = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + liveToken({
+          roles: ['STAFF'],
+          jti: 'integration-live-jti-staff-draft-create',
+        }),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-draft-0001',
+      },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(staffDenied.status, 403);
+    assert.deepEqual(await staffDenied.json(), { error: 'OWNER_REQUIRED' });
+    assert.equal(calls.create, 0);
+
+    const response = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-owner-draft-create',
+        }),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-draft-0001',
+      },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.create, 1);
+    assert.equal(calls.key, 'integration-draft-0001');
+    assert.deepEqual(calls.payload, payload);
+    const body = await response.json();
+    assert.equal(body.data.id, '33333333-3333-4333-8333-333333333333');
+    assert.equal(body.data.status, 'DRAFT');
+    assert.equal(body.data.preview.status, 'DRAFT');
+    assert.equal(body.data.preview.persisted, true);
+    assert.equal(body.data.preview.waveSynced, false);
+    assert.equal(body.data.preview.emailed, false);
+    assert.equal(body.data.preview.totalCents, 85000);
+    assert.doesNotMatch(JSON.stringify(body), /internalSecret|createdAt/i);
+
+    assert.equal((await fetch(base + '/integration/v1/drafts?businessId=other', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-owner-draft-create-query',
+        }),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-draft-0002',
+      },
+      body: JSON.stringify(payload),
+    })).status, 422);
+    assert.equal(calls.create, 1);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration draft creation fails closed on media, body, idempotency and storage errors', async () => {
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  let calls = 0;
+  const draftStore = {
+    async createDraft(_payload, key) {
+      calls += 1;
+      if (key === 'integration-conflict-0001') {
+        throw new StoreError('IDEMPOTENCY_CONFLICT', 409);
+      }
+      if (key === 'integration-invalid-key') {
+        throw new StoreError('INVALID_IDEMPOTENCY_KEY', 422);
+      }
+      return { id: 'x', status: 'ISSUED', preview: {} };
+    },
+  };
+  const server = createServer({ config, draftStore });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const auth = Authorization => ({ Authorization });
+  const bearer = 'Bearer ' + liveToken({ jti: 'integration-live-jti-draft-errors' });
+  try {
+    const media = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: { ...auth(bearer), 'Content-Type': 'text/plain' },
+      body: '{}',
+    });
+    assert.equal(media.status, 415);
+    assert.equal(calls, 0);
+
+    const malformed = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: { ...auth(bearer), 'Content-Type': 'application/json' },
+      body: '{',
+    });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { error: 'INVALID_JSON' });
+    assert.equal(calls, 0);
+
+    const conflict = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        ...auth(bearer),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-conflict-0001',
+      },
+      body: '{}',
+    });
+    assert.equal(conflict.status, 409);
+    assert.deepEqual(await conflict.json(), { error: 'IDEMPOTENCY_CONFLICT' });
+
+    const invalidKey = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        ...auth(bearer),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-invalid-key',
+      },
+      body: '{}',
+    });
+    assert.equal(invalidKey.status, 422);
+    assert.deepEqual(await invalidKey.json(), { error: 'INVALID_IDEMPOTENCY_KEY' });
+
+    const malformedStore = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        ...auth(bearer),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-malformed-store',
+      },
+      body: '{}',
+    });
+    assert.equal(malformedStore.status, 503);
+    assert.deepEqual(await malformedStore.json(), { error: 'STORAGE_UNAVAILABLE' });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
   }
 });

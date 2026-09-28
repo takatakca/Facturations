@@ -316,7 +316,8 @@ Rules:
 - accepted roles are currently `OWNER` and `STAFF`;
 - never derive OWNER from a browser field;
 - do not put the token in a query string, URL, browser storage or logs;
-- generate a fresh `jti` for each token;\n- for native write attempts, Facturations persists a SHA-256 digest of the accepted `jti` and rejects reuse with `401 INTEGRATION_TOKEN_REPLAY`; raw JWTs and raw `jti` values are not stored.
+- generate a fresh `jti` for each token;
+- for native write attempts, Facturations persists a SHA-256 digest of the accepted `jti` and rejects reuse with `401 INTEGRATION_TOKEN_REPLAY`; raw JWTs and raw `jti` values are not stored.
 
 ## Minimal Node.js signer example for the TAKATAK server
 

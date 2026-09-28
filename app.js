@@ -124,7 +124,7 @@ if (require.main === module) {
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, draftStore,
       approvalStore: draftApprovalStore, authorizationStore: issuanceAuthorizationStore });
     attachBrowserCustomerDirectory(server, { origin: config.browserOrigin, businessId: config.businessId,
-      staffAuthStore, customerDirectory });
+      staffAuthStore, customerDirectory, assistantAvailable: Boolean(config.aiEnabled) });
     attachBrowserCustomerContact(server, { origin: config.browserOrigin, businessId: config.businessId,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, contactStore: customerContactStore });
     attachBrowserClientPortal(server, { origin: config.browserOrigin,

@@ -183,7 +183,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               draftDetailsRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
               approvalsRead: principal.roles.includes('OWNER'),
-              draftWrite: principal.roles.includes('OWNER'),
+              draftWrite: Boolean(config.integrationWritesEnabled && principal.roles.includes('OWNER')),
               ownerApprovalWrite: false,
               issuanceAuthorizationWrite: false,
               deliveryAuthorizationWrite: false,
@@ -373,6 +373,9 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       }
 
       if (isIntegrationDrafts && request.method === 'POST') {
+        if (!config.integrationWritesEnabled) {
+          return sendJson(response, 404, { error: 'NOT_FOUND' });
+        }
         if (!principal.roles.includes('OWNER')) {
           return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
         }

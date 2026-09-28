@@ -131,9 +131,16 @@ test('integration capabilities endpoint is hidden when disabled', async () => {
     waveToken: '',
     integrationEnabled: false,
   }, async (base) => {
-    const response = await fetch(base + '/integration/v1/capabilities');
-    assert.equal(response.status, 404);
-    assert.deepEqual(await response.json(), { error: 'NOT_FOUND' });
+    for (const request of [
+      () => fetch(base + '/integration/v1/capabilities'),
+      () => fetch(base + '/integration/v1/capabilities?x=1'),
+      () => fetch(base + '/integration/v1/capabilities', { method: 'POST' }),
+      () => fetch(base + '/integration/v1/handoffs/owner-review?lang=fr'),
+    ]) {
+      const response = await request();
+      assert.equal(response.status, 404);
+      assert.deepEqual(await response.json(), { error: 'NOT_FOUND' });
+    }
   });
 });
 
@@ -938,6 +945,33 @@ test('integration draft write stays hidden until the separate write gate is enab
   await once(server, 'listening');
   try {
     const base = 'http://127.0.0.1:' + server.address().port;
+
+    for (const request of [
+      () => fetch(base + '/integration/v1/drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+      () => fetch(base + '/integration/v1/drafts', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer invalid-token',
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      }),
+      () => fetch(base + '/integration/v1/drafts?businessId=other', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+    ]) {
+      const hidden = await request();
+      assert.equal(hidden.status, 404);
+      assert.deepEqual(await hidden.json(), { error: 'NOT_FOUND' });
+      assert.equal(calls, 0);
+    }
+
     const response = await fetch(base + '/integration/v1/drafts', {
       method: 'POST',
       headers: {

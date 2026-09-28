@@ -9,7 +9,7 @@ Le rôle runtime ne doit jamais être propriétaire du schéma, des tables, séq
 
 ## Politique
 
-Le fichier `ops/runtime-db-grants.sql` est appliqué **après** les migrations 001–027 par le rôle de migration.
+Le fichier `ops/runtime-db-grants.sql` est appliqué **après** les migrations 001–028 par le rôle de migration.
 
 Il retire les privilèges implicites dangereux sur la base dédiée puis accorde explicitement :
 

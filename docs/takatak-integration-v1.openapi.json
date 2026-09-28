@@ -1,0 +1,1208 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GROUPE TAKATAK Facturations Integration API",
+    "version": "1.0.0-staged",
+    "description": "Server-to-server contract for the staged TAKATAK Dashboard integration. This contract does not authorize production deployment or invoice issuance/delivery/payment."
+  },
+  "servers": [
+    {
+      "url": "{facturationsOrigin}",
+      "variables": {
+        "facturationsOrigin": {
+          "default": "https://facturations.example.invalid",
+          "description": "Exact isolated HTTPS Facturations origin"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Capabilities"
+    },
+    {
+      "name": "Dashboard"
+    },
+    {
+      "name": "Drafts"
+    },
+    {
+      "name": "Customers"
+    },
+    {
+      "name": "Approvals"
+    }
+  ],
+  "paths": {
+    "/integration/v1/capabilities": {
+      "get": {
+        "tags": [
+          "Capabilities"
+        ],
+        "summary": "Discover enabled integration capabilities",
+        "operationId": "getIntegrationCapabilities",
+        "responses": {
+          "200": {
+            "description": "Capability envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/integration/v1/dashboard": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "Read draft-only dashboard summary",
+        "operationId": "getIntegrationDashboard",
+        "responses": {
+          "200": {
+            "description": "Draft-only summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/integration/v1/drafts": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "List tenant-scoped draft summaries",
+        "operationId": "listIntegrationDrafts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated draft summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftsEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Create an OWNER-only persisted draft",
+        "description": "Requires FACTURATIONS_INTEGRATION_WRITES_ENABLED=1. Creates a DRAFT only; it does not issue, send, publish, pay or write an invoice to Wave.",
+        "operationId": "createIntegrationDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created persisted draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraftEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Idempotency conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/integration/v1/drafts/{draftId}": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Read OWNER-only recalculated draft detail",
+        "operationId": "getIntegrationDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DraftId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recalculated preview-only detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftDetailEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/integration/v1/customers": {
+      "get": {
+        "tags": [
+          "Customers"
+        ],
+        "summary": "List OWNER-only minimized customer summaries",
+        "operationId": "listIntegrationCustomers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80
+            },
+            "description": "Optional bounded customer search"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated customer summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomersEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/integration/v1/approvals": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "List OWNER-only internal approval state",
+        "description": "Internal approval is not issuance, delivery, payment, Wave sync or portal publication.",
+        "operationId": "listIntegrationApprovals",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Internal-only approval history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalsEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Short-lived server-to-server token. Exact issuer, audience, business_id and role claims are verified by Facturations."
+      }
+    },
+    "parameters": {
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 20
+        }
+      },
+      "DraftId": {
+        "name": "draftId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,80}$",
+          "minLength": 16,
+          "maxLength": 80
+        },
+        "description": "Stable key for retrying the same draft create request."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid signed integration identity",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        }
+      },
+      "OwnerRequired": {
+        "description": "OWNER role required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Integration or gated route disabled/not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        }
+      },
+      "InvalidQuery": {
+        "description": "Invalid bounded query or request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "Integration auth or storage unavailable",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorBody": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "EnvelopeBase": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "requestId",
+          "businessId",
+          "data"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "requestId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "businessId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      },
+      "CapabilitiesEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "service",
+                  "integrationVersion",
+                  "capabilities",
+                  "standalone"
+                ],
+                "properties": {
+                  "service": {
+                    "const": "facturations"
+                  },
+                  "integrationVersion": {
+                    "const": 1
+                  },
+                  "capabilities": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "capabilitiesRead",
+                      "dashboardRead",
+                      "draftsRead",
+                      "draftDetailsRead",
+                      "customersRead",
+                      "approvalsRead",
+                      "draftWrite",
+                      "ownerApprovalWrite",
+                      "issuanceAuthorizationWrite",
+                      "deliveryAuthorizationWrite",
+                      "portalPublicationWrite"
+                    ],
+                    "properties": {
+                      "capabilitiesRead": {
+                        "type": "boolean"
+                      },
+                      "dashboardRead": {
+                        "type": "boolean"
+                      },
+                      "draftsRead": {
+                        "type": "boolean"
+                      },
+                      "draftDetailsRead": {
+                        "type": "boolean"
+                      },
+                      "customersRead": {
+                        "type": "boolean"
+                      },
+                      "approvalsRead": {
+                        "type": "boolean"
+                      },
+                      "draftWrite": {
+                        "type": "boolean"
+                      },
+                      "ownerApprovalWrite": {
+                        "type": "boolean",
+                        "const": false
+                      },
+                      "issuanceAuthorizationWrite": {
+                        "type": "boolean",
+                        "const": false
+                      },
+                      "deliveryAuthorizationWrite": {
+                        "type": "boolean",
+                        "const": false
+                      },
+                      "portalPublicationWrite": {
+                        "type": "boolean",
+                        "const": false
+                      }
+                    }
+                  },
+                  "standalone": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "staffWorkspace",
+                      "clientPortal",
+                      "bilingual"
+                    ],
+                    "properties": {
+                      "staffWorkspace": {
+                        "type": "boolean"
+                      },
+                      "clientPortal": {
+                        "type": "boolean"
+                      },
+                      "bilingual": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "const": "fr"
+                          },
+                          {
+                            "const": "en"
+                          }
+                        ],
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DashboardEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "currency",
+                  "draftCount",
+                  "draftTotalCents",
+                  "customerCount",
+                  "issuedInvoicesAvailable",
+                  "paymentsAvailable",
+                  "revenueAvailable"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "DRAFTS_ONLY"
+                  },
+                  "currency": {
+                    "const": "CAD"
+                  },
+                  "draftCount": {
+                    "$ref": "#/components/schemas/UnsignedIntegerString"
+                  },
+                  "draftTotalCents": {
+                    "$ref": "#/components/schemas/UnsignedIntegerString"
+                  },
+                  "customerCount": {
+                    "$ref": "#/components/schemas/UnsignedIntegerString"
+                  },
+                  "issuedInvoicesAvailable": {
+                    "const": false
+                  },
+                  "paymentsAvailable": {
+                    "const": false
+                  },
+                  "revenueAvailable": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UnsignedIntegerString": {
+        "type": "string",
+        "pattern": "^[0-9]+$"
+      },
+      "DraftSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "customerName",
+          "invoiceDate",
+          "dueDate",
+          "totalCents",
+          "currency",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "invoiceDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "totalCents": {
+            "$ref": "#/components/schemas/UnsignedIntegerString"
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "status": {
+            "const": "DRAFT"
+          }
+        }
+      },
+      "DraftsEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "page",
+                  "pageSize",
+                  "drafts"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "DRAFTS_ONLY"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "drafts": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/DraftSummary"
+                    },
+                    "maxItems": 50
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CustomerInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "email",
+          "address"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        }
+      },
+      "LineInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "description",
+          "quantity",
+          "unitPriceCents",
+          "discountCents",
+          "taxable"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "unitPriceCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "discountCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TaxInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "label",
+          "rateMilliPercent"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "rateMilliPercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        }
+      },
+      "DraftInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "currency",
+          "customer",
+          "invoiceDate",
+          "dueDate",
+          "notes",
+          "lines",
+          "taxes"
+        ],
+        "properties": {
+          "currency": {
+            "const": "CAD"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerInput"
+          },
+          "invoiceDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "lines": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/LineInput"
+            }
+          },
+          "taxes": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/TaxInput"
+            }
+          }
+        }
+      },
+      "Preview": {
+        "type": "object",
+        "description": "Deterministic Facturations preview. Detail fields are bounded by the live draft-preview validator.",
+        "required": [
+          "status",
+          "persisted",
+          "waveSynced",
+          "emailed",
+          "currency",
+          "customer",
+          "invoiceDate",
+          "dueDate",
+          "lines",
+          "taxes",
+          "subtotalCents",
+          "taxableSubtotalCents",
+          "taxTotalCents",
+          "totalCents"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "PREVIEW_ONLY",
+              "DRAFT"
+            ]
+          },
+          "persisted": {
+            "type": "boolean"
+          },
+          "waveSynced": {
+            "const": false
+          },
+          "emailed": {
+            "const": false
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerInput"
+          },
+          "invoiceDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lines": {
+            "type": "array"
+          },
+          "taxes": {
+            "type": "array"
+          },
+          "subtotalCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxableSubtotalCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxTotalCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "calculation": {
+            "type": "string"
+          }
+        }
+      },
+      "DraftDetailEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "status",
+                  "preview"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "const": "DRAFT"
+                  },
+                  "preview": {
+                    "$ref": "#/components/schemas/Preview"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CreatedDraftEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "status",
+                  "preview"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "const": "DRAFT"
+                  },
+                  "preview": {
+                    "$ref": "#/components/schemas/Preview"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CustomerSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "CustomersEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "page",
+                  "pageSize",
+                  "hasMore",
+                  "customers"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "CUSTOMERS_ONLY"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "hasMore": {
+                    "type": "boolean"
+                  },
+                  "customers": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "$ref": "#/components/schemas/CustomerSummary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ApprovalSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "draftId",
+          "approvedAt",
+          "totalCents",
+          "currency",
+          "status",
+          "issued",
+          "waveSynced",
+          "emailed",
+          "paid"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "draftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "approvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalCents": {
+            "$ref": "#/components/schemas/UnsignedIntegerString"
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "status": {
+            "const": "APPROVED_INTERNAL_ONLY"
+          },
+          "issued": {
+            "const": false
+          },
+          "waveSynced": {
+            "const": false
+          },
+          "emailed": {
+            "const": false
+          },
+          "paid": {
+            "const": false
+          }
+        }
+      },
+      "ApprovalsEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "currency",
+                  "page",
+                  "pageSize",
+                  "hasMore",
+                  "approvals"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "INTERNAL_APPROVALS_ONLY"
+                  },
+                  "currency": {
+                    "const": "CAD"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "hasMore": {
+                    "type": "boolean"
+                  },
+                  "approvals": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "$ref": "#/components/schemas/ApprovalSummary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

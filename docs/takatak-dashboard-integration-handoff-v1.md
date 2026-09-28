@@ -191,6 +191,32 @@ OWNER only. Returns the internal approval status for one draft without exposing 
 
 When no internal approval exists, `approved` is false, `status` is `NOT_APPROVED`, and `approval` is null. This is read-only state and must never be interpreted as authorization to issue or send an invoice.
 
+### GET /integration/v1/drafts/:id/workflow
+
+OWNER only. Returns the current draft workflow state without granting native financial actions to TAKATAK.
+
+Before internal approval:
+
+```json
+{
+  "data": {
+    "draftId": "<draft-uuid>",
+    "status": "DRAFT",
+    "internalApproval": "NOT_APPROVED",
+    "nextStep": "STANDALONE_OWNER_REVIEW",
+    "nativeActions": {
+      "approve": false,
+      "authorizeIssuance": false,
+      "issue": false,
+      "deliver": false,
+      "recordPayment": false
+    }
+  }
+}
+```
+
+After internal approval, `nextStep` becomes `STANDALONE_ISSUANCE_AUTHORIZATION`. This is navigation guidance only; it is not authorization to issue or send an invoice.
+
 ### GET /integration/v1/customers?page=1&pageSize=20&q=Example
 
 OWNER only. Minimum search text is 2 characters and maximum is 80. Response fields are minimized:

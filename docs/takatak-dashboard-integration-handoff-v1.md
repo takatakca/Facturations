@@ -39,7 +39,7 @@ OWNER example capabilities:
       "draftDetailsRead": true,
       "customersRead": true,
       "approvalsRead": true,
-      "draftWrite": false,
+      "draftWrite": true,
       "ownerApprovalWrite": false,
       "issuanceAuthorizationWrite": false,
       "deliveryAuthorizationWrite": false,
@@ -105,6 +105,22 @@ Maximum page size is 50. The response deliberately contains only summary data.
   }
 }
 ```
+
+### POST /integration/v1/drafts
+
+OWNER only. Creates a persisted **DRAFT** and nothing else.
+
+Requirements:
+
+- exact signed integration identity;
+- `Content-Type: application/json`;
+- `Idempotency-Key` header using the existing Facturations 16–80 character contract;
+- no query string;
+- the request body is the normal Facturations draft input shape.
+
+A successful response contains only the created draft ID and a recalculated/minimized persisted draft preview. Facturations recalculates the response rather than reflecting arbitrary store fields.
+
+This endpoint does **not** issue, send, publish, pay or write an invoice to Wave.
 
 ### GET /integration/v1/drafts/:id
 
@@ -333,11 +349,12 @@ The dashboard team can safely build against mock responses matching this contrac
 1. Facturations navigation item.
 2. Draft-only summary cards.
 3. Paginated draft list.
-4. OWNER-only draft detail/review screen using the recalculated preview response.
-5. OWNER-only customer directory.
-6. OWNER-only internal approval history/status, clearly labelled as internal-only.
-7. Loading, empty, forbidden and unavailable states.
-8. A link/handoff to the standalone Facturations workspace.
+4. OWNER-only draft creation using deterministic validation and Idempotency-Key.
+5. OWNER-only draft detail/review screen using the recalculated preview response.
+6. OWNER-only customer directory.
+7. OWNER-only internal approval history/status, clearly labelled as internal-only.
+8. Loading, empty, forbidden and unavailable states.
+9. A link/handoff to the standalone Facturations workspace.
 
 Do **not** build native invoice issuance/send/payment buttons yet because those integration capabilities intentionally remain false.
 

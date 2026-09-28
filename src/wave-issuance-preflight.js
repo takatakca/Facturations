@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const {
   encodePdfWinAnsi,
@@ -136,8 +138,13 @@ function buildWaveIssuancePreflight(input) {
     salesTaxIds: line.taxable ? [...appliedTaxIds] : [],
   }));
 
+  const sourceRequestHash = crypto.createHash('sha256')
+    .update(JSON.stringify(snapshot))
+    .digest('hex');
+
   return Object.freeze({
     status: 'READY_FOR_WAVE_ADAPTER',
+    sourceRequestHash,
     operation: 'CREATE_DRAFT_THEN_APPROVE_SEPARATELY',
     businessId,
     customerId,

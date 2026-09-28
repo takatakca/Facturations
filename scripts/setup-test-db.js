@@ -45,6 +45,7 @@ async function main() {
       '025_client_portal_auth.sql',
       '026_client_portal_publications.sql',
       '027_mfa_recovery.sql',
+      '028_integration_token_replay_guard.sql',
     ]) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);

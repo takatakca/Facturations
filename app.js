@@ -105,7 +105,8 @@ if (require.main === module) {
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
     attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore,
       assistantAvailable: Boolean(config.aiEnabled) });
-    attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore });
+    attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore,
+      assistantAvailable: Boolean(config.aiEnabled) });
     attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore, staffAuthStore });
     attachBrowserOwnerReview(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,

@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto=require('node:crypto');
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const HASH = /^[a-f0-9]{64}$/;
 const OPERATION_KEY = /^[A-Za-z0-9_-]{24,120}$/;
@@ -96,6 +98,13 @@ function validateEmailSubmission(input){
   if(input.contentType!=='application/pdf'){
     throw new EmailProviderContractError('INVALID_EMAIL_CONTENT_TYPE');
   }
+  const qualifiedDocumentSha256=hash(
+    input.qualifiedDocumentSha256,'INVALID_QUALIFIED_DOCUMENT_SHA256'
+  );
+  const actualPdfSha256=crypto.createHash('sha256').update(pdf).digest('hex');
+  if(actualPdfSha256!==qualifiedDocumentSha256){
+    throw new EmailProviderContractError('EMAIL_PROVIDER_PDF_HASH_MISMATCH',409);
+  }
 
   return Object.freeze({
     operationKey:operationKey(input.operationKey),
@@ -105,9 +114,7 @@ function validateEmailSubmission(input){
     contentType:'application/pdf',
     pdfBytes:Buffer.from(pdf),
     qualifiedDocumentId,
-    qualifiedDocumentSha256:hash(
-      input.qualifiedDocumentSha256,'INVALID_QUALIFIED_DOCUMENT_SHA256'
-    ),
+    qualifiedDocumentSha256,
   });
 }
 

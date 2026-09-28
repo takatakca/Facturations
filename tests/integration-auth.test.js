@@ -176,7 +176,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       draftDetailsRead: true,
       customersRead: true,
       approvalsRead: true,
-      draftWrite: true,
+      draftWrite: false,
       ownerApprovalWrite: false,
       issuanceAuthorizationWrite: false,
       deliveryAuthorizationWrite: false,
@@ -910,6 +910,58 @@ test('integration approvals endpoint fails closed on malformed or oversized ledg
 });
 
 
+test('integration draft write stays hidden until the separate write gate is enabled', async () => {
+  let calls = 0;
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: false,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const draftStore = {
+    async createDraft() {
+      calls += 1;
+      throw new Error('must not run');
+    },
+  };
+  const server = createServer({ config, draftStore });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const response = await fetch(base + '/integration/v1/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-write-disabled',
+        }),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'integration-write-disabled-0001',
+      },
+      body: '{}',
+    });
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: 'NOT_FOUND' });
+    assert.equal(calls, 0);
+
+    const capabilities = await fetch(base + '/integration/v1/capabilities', {
+      headers: {
+        Authorization: 'Bearer ' + liveToken({
+          jti: 'integration-live-jti-write-disabled-capabilities',
+        }),
+      },
+    });
+    assert.equal(capabilities.status, 200);
+    assert.equal((await capabilities.json()).data.capabilities.draftWrite, false);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test('integration draft creation is OWNER-only, idempotent and persists only a DRAFT', async () => {
   const calls = { create: 0, payload: null, key: null };
   const draftStore = {
@@ -961,6 +1013,7 @@ test('integration draft creation is OWNER-only, idempotent and persists only a D
     adminKey: '',
     waveToken: '',
     integrationEnabled: true,
+    integrationWritesEnabled: true,
     integrationIssuer: ISSUER,
     integrationAudience: AUDIENCE,
     integrationSecret: SECRET,
@@ -1062,6 +1115,7 @@ test('integration draft creation fails closed on media, body, idempotency and st
     adminKey: '',
     waveToken: '',
     integrationEnabled: true,
+    integrationWritesEnabled: true,
     integrationIssuer: ISSUER,
     integrationAudience: AUDIENCE,
     integrationSecret: SECRET,

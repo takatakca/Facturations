@@ -369,6 +369,7 @@ test('integration drafts endpoint returns bounded paginated draft summaries only
 
     for (const path of [
       '/integration/v1/drafts?page=0',
+      '/integration/v1/drafts?page=1001',
       '/integration/v1/drafts?pageSize=51',
       '/integration/v1/drafts?page=1&page=2',
       '/integration/v1/drafts?businessId=other',
@@ -534,8 +535,11 @@ test('integration customers endpoint is OWNER-only and returns minimized custome
 
     for (const path of [
       '/integration/v1/customers?page=0',
+      '/integration/v1/customers?page=1001',
       '/integration/v1/customers?pageSize=51',
       '/integration/v1/customers?q=x',
+      '/integration/v1/customers?q=' + encodeURIComponent('  '),
+      '/integration/v1/customers?q=' + encodeURIComponent('ab\n'),
       '/integration/v1/customers?q=' + encodeURIComponent('x'.repeat(81)),
       '/integration/v1/customers?businessId=other',
     ]) {
@@ -852,6 +856,7 @@ test('integration approvals endpoint is OWNER-only and exposes internal approval
 
     for (const path of [
       '/integration/v1/approvals?page=0',
+      '/integration/v1/approvals?page=1001',
       '/integration/v1/approvals?pageSize=51',
       '/integration/v1/approvals?page=1&page=2',
       '/integration/v1/approvals?businessId=other',

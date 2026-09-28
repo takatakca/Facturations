@@ -79,6 +79,20 @@ test('refuses missing customer, product and exact sales-tax mappings',()=>{
   }}),'WAVE_TAX_MAPPING_MISMATCH');
 });
 
+test('blocks provider preflight before issuance when official PDF v1 cannot represent draft text',()=>{
+  const draft=snapshot();
+  draft.customer={...draft.customer,name:'Synthetic 客户'};
+  expectCode(()=>buildWaveIssuancePreflight({snapshot:draft,...mappings()}),
+    'PDF_TEXT_UNSUPPORTED',409);
+
+  const lineDraft=snapshot();
+  lineDraft.lines=lineDraft.lines.map((line,index)=>index===0
+    ? {...line,description:'Service العربية'}
+    : line);
+  expectCode(()=>buildWaveIssuancePreflight({snapshot:lineDraft,...mappings()}),
+    'PDF_TEXT_UNSUPPORTED',409);
+});
+
 test('refuses line discounts rather than approximating Wave invoice-level discount semantics',()=>{
   const draft=snapshot({discount:100});
   expectCode(()=>buildWaveIssuancePreflight({snapshot:draft,...mappings()}),

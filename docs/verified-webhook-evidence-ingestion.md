@@ -55,4 +55,6 @@ Ils prouvent :
 
 Aucun algorithme d’un fournisseur commercial n’est encore implémenté ni homologué. Les tests ne constituent donc pas une preuve d’intégration réelle avec un fournisseur.
 
+Dans les résultats applicatifs, `signatureVerified` / `signedWebhookVerified` signifient uniquement que l’enveloppe a franchi le vérificateur injecté. `realWebhookVerified` reste `false` dans cette release tant qu’un fournisseur commercial réel n’est pas homologué.
+
 Cette étape n’ajoute toujours aucune route HTTP publique.

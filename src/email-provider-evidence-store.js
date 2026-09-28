@@ -291,7 +291,7 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
   async function ingestVerifiedWebhook(input){
     if(!input || typeof input!=='object' || Array.isArray(input) ||
        Object.keys(input).sort().join(',')!==
-         'operationKey,qualifiedDocumentId,verificationScheme,verifiedEnvelope'){
+         'operationKey,qualifiedDocumentId,verifiedEnvelope'){
       throw new EmailProviderEvidenceError('INVALID_VERIFIED_WEBHOOK_REQUEST');
     }
     if(!isVerifiedEmailWebhookEnvelope(input.verifiedEnvelope)){
@@ -299,8 +299,8 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
     }
     const qualifiedDocumentId=uuid(input.qualifiedDocumentId,'INVALID_QUALIFIED_DOCUMENT_ID');
     const opKey=operationKey(input.operationKey);
-    const scheme=verificationScheme(input.verificationScheme);
     const envelope=input.verifiedEnvelope;
+    const scheme=verificationScheme(envelope.verificationScheme);
 
     if(envelope.providerKey!==provider){
       throw new EmailProviderEvidenceError('PROVIDER_KEY_MISMATCH',409);

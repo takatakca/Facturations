@@ -32,6 +32,6 @@ La projection ne supprime aucun fait. Un remboursement après paiement reste vis
 - `SYNTHETIC_ONLY`
 - `VERIFIED_PROVIDER_PRESENT`
 
-Tant que le ledger n’ingère que `SYNTHETIC_TEST`, aucune projection n’est présentée comme preuve de paiement réelle.
+Dans cette release, la base refuse toute insertion `VERIFIED_PROVIDER_WEBHOOK` : seul `SYNTHETIC_TEST` est accepté. Une future intégration de paiement réelle devra ajouter une nouvelle migration avec provenance/signature vérifiable avant de pouvoir produire `VERIFIED_PROVIDER_PRESENT`.
 
 La vue ne débite, ne rembourse et ne contacte aucun provider.

@@ -14,6 +14,32 @@ const { resolveReadOnlyStaff } = require('./staff-read-access');
 const { verifyIntegrationBearer, IntegrationAuthError } = require('./integration-auth');
 
 const MAX_BODY_BYTES = 32768;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
+const UNSIGNED_INTEGER = /^[0-9]+$/u;
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
+
+function isUuid(value) {
+  return typeof value === 'string' && UUID.test(value);
+}
+
+function isDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00.000Z');
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isDateTime(value) {
+  return typeof value === 'string' && RFC3339.test(value) && Number.isFinite(Date.parse(value));
+}
+
+function isEmail(value) {
+  return typeof value === 'string' && value.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value);
+}
+
+function isUnsignedIntegerString(value) {
+  return typeof value === 'string' && UNSIGNED_INTEGER.test(value);
+}
 
 function sendJson(response, statusCode, body) {
   if (response.headersSent || response.destroyed) return;
@@ -390,10 +416,10 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
           }
           const safeApprovals = [];
           for (const approval of listed.approvals) {
-            if (!approval || typeof approval.id !== 'string' ||
-                typeof approval.draftId !== 'string' ||
-                typeof approval.approvedAt !== 'string' ||
-                typeof approval.totalCents !== 'string' ||
+            if (!approval || !isUuid(approval.id) ||
+                !isUuid(approval.draftId) ||
+                !isDateTime(approval.approvedAt) ||
+                !isUnsignedIntegerString(approval.totalCents) ||
                 approval.status !== 'APPROVED_INTERNAL_ONLY' ||
                 approval.issued !== false ||
                 approval.waveSynced !== false ||
@@ -455,9 +481,9 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
           }
           const safeCustomers = [];
           for (const customer of listed.customers) {
-            if (!customer || typeof customer.id !== 'string' ||
+            if (!customer || !isUuid(customer.id) ||
                 typeof customer.name !== 'string' ||
-                typeof customer.email !== 'string') {
+                !isEmail(customer.email)) {
               return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
             }
             safeCustomers.push({
@@ -494,7 +520,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         try {
           const payload = await readJson(request);
           const stored = await draftStore.createDraft(payload, request.headers['idempotency-key']);
-          if (!stored || typeof stored.id !== 'string' || stored.status !== 'DRAFT' ||
+          if (!stored || !isUuid(stored.id) || stored.status !== 'DRAFT' ||
               !stored.preview || typeof stored.preview !== 'object' || Array.isArray(stored.preview) ||
               stored.preview.status !== 'DRAFT' || stored.preview.persisted !== true ||
               !stored.preview.customer || typeof stored.preview.customer !== 'object' ||
@@ -575,11 +601,11 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
           }
           const safeDrafts = [];
           for (const draft of listed.drafts) {
-            if (!draft || typeof draft.id !== 'string' ||
+            if (!draft || !isUuid(draft.id) ||
                 typeof draft.customerName !== 'string' ||
-                typeof draft.invoiceDate !== 'string' ||
-                typeof draft.dueDate !== 'string' ||
-                typeof draft.totalCents !== 'string' ||
+                !isDate(draft.invoiceDate) ||
+                !isDate(draft.dueDate) ||
+                !isUnsignedIntegerString(draft.totalCents) ||
                 draft.currency !== 'CAD' || draft.status !== 'DRAFT') {
               return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
             }

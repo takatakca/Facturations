@@ -41,6 +41,8 @@ Un scanner de courriel qui fait seulement un GET ne consomme pas le lien. La con
 
 Le token n’est jamais stocké dans localStorage ou JavaScript client. Les réponses sont `no-store` et `Referrer-Policy: no-referrer`.
 
+Un lien réellement invalide/expiré/utilisé retourne 401. Une panne inattendue du store/DB pendant la consommation retourne 503 générique et n’est jamais présentée comme une erreur d’authentification ni accompagnée d’un détail SQL.
+
 ## Frontière
 
 Cette brique rend le portail navigable, mais ne crée pas elle-même un email réel contenant le magic link.

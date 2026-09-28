@@ -195,9 +195,14 @@ test('isolated PostgreSQL history is paginated, tenant-scoped and excludes custo
       assert.deepEqual(empty.approvals, []);
       const raw = JSON.stringify([first, second]);
       for (const sensitive of ['first@example.test', 'second@example.test', 'foreign@example.test',
-        'Synthetic address', 'Private synthetic note', '9999']) {
+        'Synthetic address', 'Private synthetic note', foreignDraft.id]) {
         assert.equal(raw.includes(sensitive), false, sensitive);
       }
+      // Do not search for the short string "9999" in arbitrary JSON: a random UUID may
+      // legitimately contain those digits. Assert the structured foreign amount instead.
+      const ownApprovalTotals = [...first.approvals, ...second.approvals]
+        .map(item => item.totalCents);
+      assert.equal(ownApprovalTotals.includes('9999'), false);
       const foreignLedger = await createApprovalLedger({ pool, businessId: other }).listApprovals();
       assert.equal(foreignLedger.approvals.length, 1);
       assert.equal(foreignLedger.approvals[0].draftId, foreignDraft.id);

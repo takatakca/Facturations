@@ -1,6 +1,10 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const {
+  encodePdfWinAnsi,
+  OfficialInvoicePdfError,
+} = require('./official-invoice-pdf');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -54,6 +58,31 @@ function normalizeTaxRegistrations(value) {
   return Object.freeze(normalized);
 }
 
+function assertPdfCompatibleIssuer(profile) {
+  const values = [
+    profile.legalName,
+    profile.displayName,
+    ...profile.addressLines,
+    profile.city,
+    profile.region,
+    profile.postalCode,
+    profile.countryCode,
+    profile.contactEmail,
+    profile.contactPhone,
+    ...profile.taxRegistrations.flatMap(item => [item.scheme, item.registrationNumber]),
+  ].filter(value => typeof value === 'string' && value.length > 0);
+
+  try {
+    for (const value of values) encodePdfWinAnsi(value);
+  } catch (error) {
+    if (error instanceof OfficialInvoicePdfError &&
+        error.code === 'UNSUPPORTED_PDF_CHARACTER') {
+      throw new IssuerProfileError('ISSUER_PROFILE_PDF_TEXT_UNSUPPORTED', 409);
+    }
+    throw error;
+  }
+}
+
 function normalizeInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       Object.keys(input).sort().join(',') !==
@@ -86,7 +115,7 @@ function normalizeInput(input) {
   }
   const contactPhone = safeText(input.contactPhone, 40, 'INVALID_CONTACT_PHONE', { required: false });
 
-  return Object.freeze({
+  const normalized = {
     legalName: safeText(input.legalName, 200, 'INVALID_LEGAL_NAME'),
     displayName: safeText(input.displayName, 200, 'INVALID_DISPLAY_NAME'),
     addressLines: Object.freeze(addressLines),
@@ -103,7 +132,9 @@ function normalizeInput(input) {
     ),
     ownerId: input.ownerId.toLowerCase(),
     sessionToken: input.sessionToken,
-  });
+  };
+  assertPdfCompatibleIssuer(normalized);
+  return Object.freeze(normalized);
 }
 
 function canonicalProfile(fields) {

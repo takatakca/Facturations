@@ -24,6 +24,7 @@ test('integration OpenAPI contract is versioned, server-to-server and exposes on
     '/integration/v1/drafts',
     '/integration/v1/drafts/{draftId}',
     '/integration/v1/drafts/{draftId}/approval',
+    '/integration/v1/drafts/{draftId}/workflow',
   ]);
 
   assert.ok(spec.paths['/integration/v1/drafts'].get);
@@ -66,6 +67,18 @@ test('OpenAPI read models preserve draft-only and internal-approval semantics', 
   assert.equal(approval.emailed.const, false);
   assert.equal(approval.paid.const, false);
   assert.equal(approval.approvedBy, undefined);
+
+  const workflow = spec.paths['/integration/v1/drafts/{draftId}/workflow']
+    .get.responses['200'].content['application/json'].schema
+    .properties.data.properties;
+  assert.equal(workflow.status.const, 'DRAFT');
+  assert.deepEqual(workflow.internalApproval.enum.sort(),
+    ['APPROVED_INTERNAL_ONLY', 'NOT_APPROVED'].sort());
+  assert.equal(workflow.nativeActions.properties.approve.const, false);
+  assert.equal(workflow.nativeActions.properties.authorizeIssuance.const, false);
+  assert.equal(workflow.nativeActions.properties.issue.const, false);
+  assert.equal(workflow.nativeActions.properties.deliver.const, false);
+  assert.equal(workflow.nativeActions.properties.recordPayment.const, false);
 });
 
 test('OpenAPI contract never embeds real origins, secrets or provider credentials', () => {

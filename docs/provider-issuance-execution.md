@@ -18,6 +18,12 @@ La clé `operation_key` est dérivée de l'entreprise, de l'autorisation et du `
 
 Une exception de l'adapter ou une réponse invalide devient `AMBIGUOUS`. Une seconde exécution depuis cet état est refusée avant d'appeler l'adapter. Seule une réconciliation explicite peut terminer la tentative en `CONFIRMED` ou `FAILED`.
 
+## Liaison payload ↔ autorisation
+
+Le plan fournisseur transporte `sourceRequestHash`, calculé sur le même preview serveur déterministe que le `request_hash` du brouillon immuable.
+
+Avant de passer une tentative de `PREPARED` à `IN_PROGRESS`, le store recalcule l'`operation_key` attendue avec ce hash et l'autorisation persistée. Un payload préparé pour un autre brouillon est rejeté avec `PROVIDER_PAYLOAD_BINDING_MISMATCH` avant tout appel adapter.
+
 ## Compatibilité du document officiel
 
 Avant de produire un plan fournisseur, le preflight vérifie maintenant que tous les textes du brouillon destinés au PDF officiel v1 sont représentables par le renderer WinAnsi actuel. Un caractère non supporté bloque l'émission avec `PDF_TEXT_UNSUPPORTED` avant tout appel provider.

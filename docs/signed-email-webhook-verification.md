@@ -23,7 +23,8 @@ Elle devra vérifier la signature selon la documentation officielle du fournisse
 1. validation des headers et du body;
 2. succès de `verifyAndParse()`;
 3. normalisation de l’événement avec le contrat fournisseur;
-4. correspondance exacte du provider key.
+4. correspondance exacte du provider key;
+5. scellement du `verificationScheme` configuré dans l’enveloppe interne.
 
 L’enveloppe contient aussi le SHA-256 du body brut.
 
@@ -53,3 +54,5 @@ Cette PR :
 - n’envoie aucun courriel.
 
 Le lot suivant pourra permettre au ledger d’accepter uniquement ces enveloppes vérifiées, tout en persistant le hash du body et la provenance de vérification.
+
+Le store d’évidence ne reçoit plus le mécanisme de vérification comme paramètre séparé : il persiste uniquement la valeur scellée dans l’enveloppe effectivement vérifiée.

@@ -366,7 +366,6 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     });
     const signedVerifier = createEmailWebhookVerifier({
       providerKey: 'TEST_SIGNED_PROVIDER',
-      verificationScheme: 'TEST_HMAC_SHA256',
       async verifyAndParse() {
         return {
           providerKey: 'TEST_SIGNED_PROVIDER',
@@ -410,7 +409,6 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     const signedEvidence = await signedProviderEvidence.ingestVerifiedWebhook({
       qualifiedDocumentId: qualified.id,
       operationKey: signedOperationKey,
-      verificationScheme: 'TEST_HMAC_SHA256',
       verifiedEnvelope: signedEnvelope,
     });
     assert.equal(signedEvidence.sourceMode, 'SIGNED_WEBHOOK');
@@ -423,7 +421,6 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     const signedRetry = await signedProviderEvidence.ingestVerifiedWebhook({
       qualifiedDocumentId: qualified.id,
       operationKey: signedOperationKey,
-      verificationScheme: 'TEST_HMAC_SHA256',
       verifiedEnvelope: signedEnvelope,
     });
     assert.equal(signedRetry.id, signedEvidence.id);

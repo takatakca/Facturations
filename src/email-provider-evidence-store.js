@@ -103,7 +103,8 @@ function resultOf(row){
     evidenceHash:row.evidence_hash,
     recordedAt:row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
     signatureVerified:signed,
-    realWebhookVerified:signed,
+    signedWebhookVerified:signed,
+    realWebhookVerified:false,
   });
 }
 

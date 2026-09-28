@@ -144,11 +144,12 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isIntegrationDraftDetail = Boolean(integrationDraftDetailMatch);
     const isIntegrationDraftApproval = Boolean(integrationDraftApprovalMatch);
     const isIntegrationDraftWorkflow = Boolean(integrationDraftWorkflowMatch);
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail && !isIntegrationDraftApproval && !isIntegrationDraftWorkflow) {
+    const isIntegrationOwnerReviewHandoff = path === '/integration/v1/handoffs/owner-review';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail && !isIntegrationDraftApproval && !isIntegrationDraftWorkflow && !isIntegrationOwnerReviewHandoff) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow || isIntegrationOwnerReviewHandoff) {
       if (isIntegrationDrafts) {
         if (!['GET', 'POST'].includes(request.method)) {
           return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
@@ -157,7 +158,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       }
       if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow ||
-          (isIntegrationDrafts && request.method === 'POST')) &&
+          (isIntegrationDrafts && request.method === 'POST') || isIntegrationOwnerReviewHandoff) &&
           [...url.searchParams.keys()].length) {
         return sendJson(response, 422, { error: 'INVALID_QUERY' });
       }
@@ -187,6 +188,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               draftDetailsRead: principal.roles.includes('OWNER'),
               draftApprovalStatusRead: principal.roles.includes('OWNER'),
               draftWorkflowRead: principal.roles.includes('OWNER'),
+              ownerReviewHandoffRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
               approvalsRead: principal.roles.includes('OWNER'),
               draftWrite: Boolean(config.integrationWritesEnabled && principal.roles.includes('OWNER')),
@@ -200,6 +202,25 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               clientPortal: true,
               bilingual: ['fr', 'en'],
             },
+          },
+        });
+      }
+
+      if (isIntegrationOwnerReviewHandoff) {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        return sendJson(response, 200, {
+          version: 1,
+          requestId: request.requestId || null,
+          businessId: principal.businessId,
+          data: {
+            handoff: 'STANDALONE_OWNER_REVIEW',
+            method: 'GET',
+            path: '/internal/review',
+            query: { lang: 'fr|en' },
+            nativeAction: false,
+            financialAuthorization: false,
           },
         });
       }

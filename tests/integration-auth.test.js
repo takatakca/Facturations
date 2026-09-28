@@ -174,6 +174,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       dashboardRead: true,
       draftsRead: true,
       draftDetailsRead: true,
+      draftApprovalStatusRead: true,
       customersRead: true,
       approvalsRead: true,
       draftWrite: false,
@@ -438,6 +439,7 @@ test('integration capabilities expose customer read only to OWNER identities', a
     const body = await response.json();
     assert.equal(body.data.capabilities.customersRead, false);
     assert.equal(body.data.capabilities.draftDetailsRead, false);
+    assert.equal(body.data.capabilities.draftApprovalStatusRead, false);
     assert.equal(body.data.capabilities.draftsRead, true);
     assert.equal(body.data.capabilities.approvalsRead, false);
     assert.equal(body.data.capabilities.draftWrite, false);
@@ -1191,6 +1193,133 @@ test('integration draft creation fails closed on media, body, idempotency and st
     });
     assert.equal(malformedStore.status, 503);
     assert.deepEqual(await malformedStore.json(), { error: 'STORAGE_UNAVAILABLE' });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+
+test('integration draft approval status is OWNER-only and read-only', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const calls = { draft: 0, approval: 0 };
+  const draftStore = {
+    async getDraft(requestedId) {
+      calls.draft += 1;
+      assert.equal(requestedId, id);
+      return { id, status: 'DRAFT', preview: { status: 'DRAFT' } };
+    },
+  };
+  const approvalLedger = {
+    async getApprovalByDraftId(requestedId) {
+      calls.approval += 1;
+      assert.equal(requestedId, id);
+      return {
+        id: '33333333-3333-4333-8333-333333333333',
+        draftId: id,
+        approvedAt: '2026-09-27T21:00:00.000Z',
+        totalCents: '85000',
+        status: 'APPROVED_INTERNAL_ONLY',
+        issued: false, waveSynced: false, emailed: false, paid: false,
+      };
+    },
+  };
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: false,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({ config, draftStore, approvalLedger });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const denied = await fetch(base + '/integration/v1/drafts/' + id + '/approval', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-live-jti-staff-approval-status',
+      }) },
+    });
+    assert.equal(denied.status, 403);
+    assert.deepEqual(await denied.json(), { error: 'OWNER_REQUIRED' });
+    assert.deepEqual(calls, { draft: 0, approval: 0 });
+
+    const response = await fetch(base + '/integration/v1/drafts/' + id + '/approval', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-approval-status',
+      }) },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data, {
+      draftId: id,
+      approved: true,
+      status: 'APPROVED_INTERNAL_ONLY',
+      approval: {
+        id: '33333333-3333-4333-8333-333333333333',
+        approvedAt: '2026-09-27T21:00:00.000Z',
+        status: 'APPROVED_INTERNAL_ONLY',
+      },
+      issued: false,
+      waveSynced: false,
+      emailed: false,
+      paid: false,
+    });
+    assert.deepEqual(calls, { draft: 1, approval: 1 });
+    assert.doesNotMatch(JSON.stringify(body), /approvedBy|email|address|totalCents/i);
+
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '/approval?x=1', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-approval-query',
+      }) },
+    })).status, 422);
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '/approval', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-approval-post',
+      }) },
+    })).status, 405);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration draft approval status returns explicit NOT_APPROVED without inventing approval', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: false,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  const server = createServer({
+    config,
+    draftStore: { async getDraft() { return { id, status: 'DRAFT', preview: {} }; } },
+    approvalLedger: { async getApprovalByDraftId() { return null; } },
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const response = await fetch('http://127.0.0.1:' + server.address().port +
+      '/integration/v1/drafts/' + id + '/approval', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-not-approved',
+      }) },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.approved, false);
+    assert.equal(body.data.status, 'NOT_APPROVED');
+    assert.equal(body.data.approval, null);
+    assert.equal(body.data.issued, false);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

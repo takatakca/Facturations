@@ -41,6 +41,15 @@ function loadConfig(env = process.env) {
     throw new Error('FACTURATIONS_INTEGRATION_ENABLED must be 1 when enabled');
   }
   const integrationEnabled = rawIntegrationEnabled === '1';
+  const rawIntegrationWritesEnabled =
+    (env.FACTURATIONS_INTEGRATION_WRITES_ENABLED || '').trim();
+  if (rawIntegrationWritesEnabled && rawIntegrationWritesEnabled !== '1') {
+    throw new Error('FACTURATIONS_INTEGRATION_WRITES_ENABLED must be 1 when enabled');
+  }
+  const integrationWritesEnabled = rawIntegrationWritesEnabled === '1';
+  if (integrationWritesEnabled && !integrationEnabled) {
+    throw new Error('Facturations integration writes require FACTURATIONS_INTEGRATION_ENABLED=1');
+  }
   const integrationIssuer = (env.FACTURATIONS_INTEGRATION_ISSUER || '').trim();
   const integrationAudience = (env.FACTURATIONS_INTEGRATION_AUDIENCE || '').trim();
   const integrationSecret = env.FACTURATIONS_INTEGRATION_HMAC_SECRET || '';
@@ -106,6 +115,7 @@ function loadConfig(env = process.env) {
     browserOrigin,
     totpEncryptionKeyHex,
     integrationEnabled,
+    integrationWritesEnabled,
     integrationIssuer,
     integrationAudience,
     integrationSecret,

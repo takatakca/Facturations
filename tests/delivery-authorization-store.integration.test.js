@@ -268,89 +268,6 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(summaries[0].lastBouncedAt, '2026-09-26T16:35:00.000Z');
     assert.equal(summaries[0].lastComplaintAt, null);
 
-    const signedProviderEvidence = createEmailProviderEvidenceStore({
-      pool,
-      businessId,
-      providerKey: 'TEST_SIGNED_PROVIDER',
-    });
-    const signedVerifier = createEmailWebhookVerifier({
-      providerKey: 'TEST_SIGNED_PROVIDER',
-      verificationScheme: 'TEST_HMAC_SHA256',
-      async verifyAndParse() {
-        return {
-          providerKey: 'TEST_SIGNED_PROVIDER',
-          eventId: 'signed-event-' + crypto.randomUUID(),
-          providerMessageId: 'signed-message-' + crypto.randomUUID(),
-          eventType: 'COMPLAINT',
-          occurredAt: '2026-09-26T16:40:00.000Z',
-          recipientEmail: recipient,
-        };
-      },
-    });
-    const signedEnvelope = await signedVerifier.verify({
-      headers: { 'x-test-signature': 'verified-by-test-verifier' },
-      rawBody: Buffer.from('{"syntheticSignedWebhook":true}', 'utf8'),
-    });
-    assert.match(signedEnvelope.rawBodySha256, /^[a-f0-9]{64}$/);
-    assert.equal(signedEnvelope.verificationScheme, 'TEST_HMAC_SHA256');
-
-    await assert.rejects(
-      signedProviderEvidence.ingestVerifiedWebhook({
-        qualifiedDocumentId: qualified.id,
-        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
-        verificationScheme: 'FAKE_PRODUCTION_SCHEME',
-        verifiedEnvelope: signedEnvelope,
-      }),
-      error => error instanceof EmailProviderEvidenceError &&
-        error.code === 'INVALID_VERIFIED_WEBHOOK_REQUEST'
-    );
-
-    await assert.rejects(
-      signedProviderEvidence.ingestVerifiedWebhook({
-        qualifiedDocumentId: qualified.id,
-        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
-        verifiedEnvelope: { ...signedEnvelope },
-      }),
-      error => error instanceof EmailProviderEvidenceError &&
-        error.code === 'VERIFIED_WEBHOOK_ENVELOPE_REQUIRED' &&
-        error.statusCode === 403
-    );
-
-    const signedOperationKey = 'mail_' + crypto.randomBytes(32).toString('base64url');
-    const signedEvidence = await signedProviderEvidence.ingestVerifiedWebhook({
-      qualifiedDocumentId: qualified.id,
-      operationKey: signedOperationKey,
-      verifiedEnvelope: signedEnvelope,
-    });
-    assert.equal(signedEvidence.sourceMode, 'SIGNED_WEBHOOK');
-    assert.equal(signedEvidence.signatureVerified, true);
-    assert.equal(signedEvidence.signedWebhookVerified, true);
-    assert.equal(signedEvidence.realWebhookVerified, false);
-    assert.equal(signedEvidence.webhookBodySha256, signedEnvelope.rawBodySha256);
-    assert.equal(signedEvidence.verificationScheme, 'TEST_HMAC_SHA256');
-    assert.equal(signedEvidence.eventType, 'COMPLAINT');
-
-    const signedRetry = await signedProviderEvidence.ingestVerifiedWebhook({
-      qualifiedDocumentId: qualified.id,
-      operationKey: signedOperationKey,
-      verifiedEnvelope: signedEnvelope,
-    });
-    assert.equal(signedRetry.id, signedEvidence.id);
-
-    const summariesAfterSigned = await evidenceSummary.getByQualifiedDocument({
-      qualifiedDocumentId: qualified.id,
-    });
-    assert.equal(summariesAfterSigned.length, 2);
-    const signedSummary = summariesAfterSigned.find(
-      row => row.providerKey === 'TEST_SIGNED_PROVIDER'
-    );
-    assert.ok(signedSummary);
-    assert.equal(signedSummary.eventCount, 1);
-    assert.equal(signedSummary.latestEventType, 'COMPLAINT');
-    assert.equal(signedSummary.hasComplaint, true);
-    assert.equal(signedSummary.proofScope, 'SIGNED_WEBHOOK_PRESENT');
-    assert.equal(signedSummary.syntheticOnly, false);
-    assert.equal(signedSummary.hasSignedWebhook, true);
 
     await assert.rejects(
       delivery.authorize({
@@ -421,6 +338,101 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(delivered.state, 'CONFIRMED');
     assert.ok(delivered.providerMessageId.startsWith('simulated-message-'));
     assert.equal(delivered.emailed, true);
+
+    const signedProviderEvidence = createEmailProviderEvidenceStore({
+      pool,
+      businessId,
+      providerKey: 'SIMULATED_EMAIL',
+    });
+    const signedVerifier = createEmailWebhookVerifier({
+      providerKey: 'SIMULATED_EMAIL',
+      verificationScheme: 'TEST_HMAC_SHA256',
+      async verifyAndParse() {
+        return {
+          providerKey: 'SIMULATED_EMAIL',
+          eventId: 'signed-event-' + crypto.randomUUID(),
+          providerMessageId: delivered.providerMessageId,
+          eventType: 'COMPLAINT',
+          occurredAt: '2026-09-26T16:40:00.000Z',
+          recipientEmail: recipient,
+        };
+      },
+    });
+    const signedEnvelope = await signedVerifier.verify({
+      headers: { 'x-test-signature': 'verified-by-test-verifier' },
+      rawBody: Buffer.from('{"syntheticSignedWebhook":true}', 'utf8'),
+    });
+    assert.match(signedEnvelope.rawBodySha256, /^[a-f0-9]{64}$/);
+    assert.equal(signedEnvelope.verificationScheme, 'TEST_HMAC_SHA256');
+
+    await assert.rejects(
+      signedProviderEvidence.ingestVerifiedWebhook({
+        qualifiedDocumentId: qualified.id,
+        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
+        verificationScheme: 'FAKE_PRODUCTION_SCHEME',
+        verifiedEnvelope: signedEnvelope,
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'INVALID_VERIFIED_WEBHOOK_REQUEST'
+    );
+
+    await assert.rejects(
+      signedProviderEvidence.ingestVerifiedWebhook({
+        qualifiedDocumentId: qualified.id,
+        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
+        verifiedEnvelope: { ...signedEnvelope },
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'VERIFIED_WEBHOOK_ENVELOPE_REQUIRED' &&
+        error.statusCode === 403
+    );
+
+    await assert.rejects(
+      signedProviderEvidence.ingestVerifiedWebhook({
+        qualifiedDocumentId: qualified.id,
+        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
+        verifiedEnvelope: signedEnvelope,
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'SIGNED_WEBHOOK_DELIVERY_BINDING_REQUIRED' &&
+        error.statusCode === 409
+    );
+
+    const signedOperationKey = delivered.operationKey;
+    const signedEvidence = await signedProviderEvidence.ingestVerifiedWebhook({
+      qualifiedDocumentId: qualified.id,
+      operationKey: signedOperationKey,
+      verifiedEnvelope: signedEnvelope,
+    });
+    assert.equal(signedEvidence.sourceMode, 'SIGNED_WEBHOOK');
+    assert.equal(signedEvidence.signatureVerified, true);
+    assert.equal(signedEvidence.signedWebhookVerified, true);
+    assert.equal(signedEvidence.realWebhookVerified, false);
+    assert.equal(signedEvidence.webhookBodySha256, signedEnvelope.rawBodySha256);
+    assert.equal(signedEvidence.verificationScheme, 'TEST_HMAC_SHA256');
+    assert.equal(signedEvidence.eventType, 'COMPLAINT');
+
+    const signedRetry = await signedProviderEvidence.ingestVerifiedWebhook({
+      qualifiedDocumentId: qualified.id,
+      operationKey: signedOperationKey,
+      verifiedEnvelope: signedEnvelope,
+    });
+    assert.equal(signedRetry.id, signedEvidence.id);
+
+    const summariesAfterSigned = await evidenceSummary.getByQualifiedDocument({
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(summariesAfterSigned.length, 2);
+    const signedSummary = summariesAfterSigned.find(
+      row => row.providerKey === 'SIMULATED_EMAIL'
+    );
+    assert.ok(signedSummary);
+    assert.equal(signedSummary.eventCount, 1);
+    assert.equal(signedSummary.latestEventType, 'COMPLAINT');
+    assert.equal(signedSummary.hasComplaint, true);
+    assert.equal(signedSummary.proofScope, 'SIGNED_WEBHOOK_PRESENT');
+    assert.equal(signedSummary.syntheticOnly, false);
+    assert.equal(signedSummary.hasSignedWebhook, true);
 
     const receipt = await deliveryReceipts.materialize({ attemptId: delivered.id });
     assert.equal(receipt.attemptId, delivered.id);

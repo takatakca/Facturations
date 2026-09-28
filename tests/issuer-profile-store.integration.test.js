@@ -67,6 +67,18 @@ test('verified issuer profiles are OWNER-only, versioned, idempotent and immutab
   try {
     const { owner, session } = await provisionOwner({ auth, invitations, password });
 
+    await assert.rejects(
+      profiles.createVerified(verifiedInput({
+        owner,
+        session,
+        suffix: 'unsupported',
+        legalName: 'Synthetic Legal 客户',
+      })),
+      error => error instanceof IssuerProfileError &&
+        error.code === 'ISSUER_PROFILE_PDF_TEXT_UNSUPPORTED' &&
+        error.statusCode === 409
+    );
+
     const firstInput = verifiedInput({ owner, session, suffix: 'first' });
     const first = await profiles.createVerified(firstInput);
 

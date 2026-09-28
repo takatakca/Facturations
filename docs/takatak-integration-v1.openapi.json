@@ -128,6 +128,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "422": {
             "$ref": "#/components/responses/InvalidQuery"
           },
@@ -169,6 +172,16 @@
               }
             }
           },
+          "400": {
+            "description": "Malformed JSON, invalid UTF-8, or invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -180,6 +193,16 @@
           },
           "409": {
             "description": "Idempotency conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 32768 bytes",
             "content": {
               "application/json": {
                 "schema": {
@@ -269,9 +292,10 @@
             "schema": {
               "type": "string",
               "minLength": 2,
-              "maxLength": 80
+              "maxLength": 80,
+              "pattern": "^(?!.*[\\u0000-\\u001f\\u007f])\\s*\\S(?:.*\\S)\\s*$"
             },
-            "description": "Optional bounded customer search"
+            "description": "Optional customer search. Raw input is at most 80 characters, control characters are rejected, surrounding whitespace is trimmed, and at least 2 characters must remain after trimming."
           }
         ],
         "responses": {
@@ -290,6 +314,9 @@
           },
           "403": {
             "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "422": {
             "$ref": "#/components/responses/InvalidQuery"
@@ -332,6 +359,9 @@
           },
           "403": {
             "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "422": {
             "$ref": "#/components/responses/InvalidQuery"
@@ -601,6 +631,93 @@
           }
         }
       }
+    },
+    "/integration/v1/handoffs/owner-review": {
+      "get": {
+        "tags": [
+          "Workflow"
+        ],
+        "summary": "Return safe metadata for the standalone OWNER review handoff",
+        "description": "OWNER-only navigation metadata. This grants no native action or financial authorization.",
+        "operationId": "getIntegrationOwnerReviewHandoff",
+        "responses": {
+          "200": {
+            "description": "Standalone OWNER review handoff metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/EnvelopeBase"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "handoff",
+                            "method",
+                            "path",
+                            "query",
+                            "nativeAction",
+                            "financialAuthorization"
+                          ],
+                          "properties": {
+                            "handoff": {
+                              "const": "STANDALONE_OWNER_REVIEW"
+                            },
+                            "method": {
+                              "const": "GET"
+                            },
+                            "path": {
+                              "const": "/internal/review"
+                            },
+                            "query": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "lang"
+                              ],
+                              "properties": {
+                                "lang": {
+                                  "const": "fr|en"
+                                }
+                              }
+                            },
+                            "nativeAction": {
+                              "const": false
+                            },
+                            "financialAuthorization": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -620,7 +737,8 @@
         "schema": {
           "type": "integer",
           "minimum": 1,
-          "default": 1
+          "default": 1,
+          "maximum": 1000
         }
       },
       "PageSize": {
@@ -791,7 +909,8 @@
                       "ownerApprovalWrite",
                       "issuanceAuthorizationWrite",
                       "deliveryAuthorizationWrite",
-                      "portalPublicationWrite"
+                      "portalPublicationWrite",
+                      "ownerReviewHandoffRead"
                     ],
                     "properties": {
                       "capabilitiesRead": {
@@ -835,6 +954,9 @@
                         "type": "boolean"
                       },
                       "draftWorkflowRead": {
+                        "type": "boolean"
+                      },
+                      "ownerReviewHandoffRead": {
                         "type": "boolean"
                       }
                     }
@@ -1018,8 +1140,7 @@
         "additionalProperties": false,
         "required": [
           "name",
-          "email",
-          "address"
+          "email"
         ],
         "properties": {
           "name": {
@@ -1048,7 +1169,6 @@
           "description",
           "quantity",
           "unitPriceCents",
-          "discountCents",
           "taxable"
         ],
         "properties": {
@@ -1064,11 +1184,14 @@
           },
           "unitPriceCents": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000
           },
           "discountCents": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000000,
+            "description": "Optional; defaults to 0. Runtime also requires discountCents <= quantity * unitPriceCents."
           },
           "taxable": {
             "type": "boolean"
@@ -1109,7 +1232,6 @@
           "customer",
           "invoiceDate",
           "dueDate",
-          "notes",
           "lines",
           "taxes"
         ],

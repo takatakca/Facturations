@@ -175,6 +175,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       draftsRead: true,
       draftDetailsRead: true,
       draftApprovalStatusRead: true,
+      draftWorkflowRead: true,
       customersRead: true,
       approvalsRead: true,
       draftWrite: false,
@@ -440,6 +441,7 @@ test('integration capabilities expose customer read only to OWNER identities', a
     assert.equal(body.data.capabilities.customersRead, false);
     assert.equal(body.data.capabilities.draftDetailsRead, false);
     assert.equal(body.data.capabilities.draftApprovalStatusRead, false);
+    assert.equal(body.data.capabilities.draftWorkflowRead, false);
     assert.equal(body.data.capabilities.draftsRead, true);
     assert.equal(body.data.capabilities.approvalsRead, false);
     assert.equal(body.data.capabilities.draftWrite, false);
@@ -1320,6 +1322,142 @@ test('integration draft approval status returns explicit NOT_APPROVED without in
     assert.equal(body.data.status, 'NOT_APPROVED');
     assert.equal(body.data.approval, null);
     assert.equal(body.data.issued, false);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+
+test('integration draft workflow tells OWNER the safe next step without enabling native financial actions', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: false,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  let approved = false;
+  const calls = { draft: 0, approval: 0 };
+  const server = createServer({
+    config,
+    draftStore: {
+      async getDraft(requestedId) {
+        calls.draft += 1;
+        assert.equal(requestedId, id);
+        return { id, status: 'DRAFT', preview: {} };
+      },
+    },
+    approvalLedger: {
+      async getApprovalByDraftId(requestedId) {
+        calls.approval += 1;
+        assert.equal(requestedId, id);
+        return approved ? {
+          id: '33333333-3333-4333-8333-333333333333',
+          draftId: id,
+          status: 'APPROVED_INTERNAL_ONLY',
+        } : null;
+      },
+    },
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const denied = await fetch(base + '/integration/v1/drafts/' + id + '/workflow', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        roles: ['STAFF'],
+        jti: 'integration-live-jti-staff-workflow',
+      }) },
+    });
+    assert.equal(denied.status, 403);
+    assert.deepEqual(calls, { draft: 0, approval: 0 });
+
+    const before = await fetch(base + '/integration/v1/drafts/' + id + '/workflow', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-workflow-before',
+      }) },
+    });
+    assert.equal(before.status, 200);
+    assert.deepEqual((await before.json()).data, {
+      draftId: id,
+      status: 'DRAFT',
+      internalApproval: 'NOT_APPROVED',
+      nextStep: 'STANDALONE_OWNER_REVIEW',
+      nativeActions: {
+        approve: false,
+        authorizeIssuance: false,
+        issue: false,
+        deliver: false,
+        recordPayment: false,
+      },
+    });
+
+    approved = true;
+    const after = await fetch(base + '/integration/v1/drafts/' + id + '/workflow', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-owner-workflow-after',
+      }) },
+    });
+    assert.equal(after.status, 200);
+    assert.deepEqual((await after.json()).data, {
+      draftId: id,
+      status: 'DRAFT',
+      internalApproval: 'APPROVED_INTERNAL_ONLY',
+      nextStep: 'STANDALONE_ISSUANCE_AUTHORIZATION',
+      nativeActions: {
+        approve: false,
+        authorizeIssuance: false,
+        issue: false,
+        deliver: false,
+        recordPayment: false,
+      },
+    });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('integration draft workflow rejects query/method and missing storage', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const config = {
+    businessId: BUSINESS,
+    adminKey: '',
+    waveToken: '',
+    integrationEnabled: true,
+    integrationWritesEnabled: false,
+    integrationIssuer: ISSUER,
+    integrationAudience: AUDIENCE,
+    integrationSecret: SECRET,
+  };
+  await withServer(config, async (base) => {
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '/workflow', {
+      headers: { Authorization: 'Bearer ' + liveToken({
+        jti: 'integration-live-jti-workflow-storage',
+      }) },
+    })).status, 503);
+  });
+
+  const server = createServer({
+    config,
+    draftStore: { async getDraft() { return { id, status: 'DRAFT', preview: {} }; } },
+    approvalLedger: { async getApprovalByDraftId() { return null; } },
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const bearer = 'Bearer ' + liveToken({ jti: 'integration-live-jti-workflow-bounds' });
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '/workflow?x=1', {
+      headers: { Authorization: bearer },
+    })).status, 422);
+    assert.equal((await fetch(base + '/integration/v1/drafts/' + id + '/workflow', {
+      method: 'POST',
+      headers: { Authorization: bearer },
+    })).status, 405);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

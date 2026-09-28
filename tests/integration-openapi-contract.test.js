@@ -46,6 +46,8 @@ test('OpenAPI write contract stays DRAFT-only and requires idempotency', () => {
   );
   assert.ok(create.responses['400']);
   assert.ok(create.responses['413']);
+  assert.match(create.responses['401'].description, /replayed write bearer|INTEGRATION_TOKEN_REPLAY/i);
+  assert.match(create.responses['503'].description, /replay guard/i);
 
   const draftInput = spec.components.schemas.DraftInput;
   const customerInput = spec.components.schemas.CustomerInput;

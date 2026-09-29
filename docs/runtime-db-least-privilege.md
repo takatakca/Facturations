@@ -9,7 +9,7 @@ Le rôle runtime ne doit jamais être propriétaire du schéma, des tables, séq
 
 ## Politique
 
-Le fichier `ops/runtime-db-grants.sql` est appliqué **après** la liste verrouillée des migrations 001–042 par le rôle de migration.
+Le fichier `ops/runtime-db-grants.sql` est appliqué **après** la liste verrouillée des migrations 001–044 par le rôle de migration.
 
 Il retire les privilèges implicites dangereux sur la base dédiée puis accorde explicitement :
 
@@ -41,7 +41,7 @@ Le script de vérification refuse toute cible autre que la base jetable locale `
 
 ## Ordre de déploiement
 
-1. le migrateur applique la liste verrouillée 001–042;
+1. le migrateur applique la liste verrouillée 001–044;
 2. le migrateur applique `ops/runtime-db-grants.sql`;
 3. l’application démarre avec l’URL du **rôle runtime**, jamais avec l’URL du propriétaire/migrateur;
 4. `/ready` vérifie la connectivité runtime;

@@ -1,6 +1,7 @@
 'use strict';
 
 const { ProviderIssuanceAttemptError } = require('./provider-issuance-attempt-store');
+const { computeWaveProviderPlanHash } = require('./wave-issuance-preflight');
 
 class ProviderIssuanceExecutorError extends Error {
   constructor(code, statusCode = 422) {
@@ -18,6 +19,8 @@ function validatePreparedPayload(payload) {
       payload.currency !== 'CAD' ||
       typeof payload.sourceRequestHash !== 'string' ||
       !/^[a-f0-9]{64}$/.test(payload.sourceRequestHash) ||
+      typeof payload.providerPlanHash !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(payload.providerPlanHash) ||
       !Array.isArray(payload.items) ||
       !payload.expected || typeof payload.expected !== 'object' ||
       !payload.externalActionsPerformed ||
@@ -25,6 +28,15 @@ function validatePreparedPayload(payload) {
       payload.externalActionsPerformed.approveInvoice !== false ||
       payload.externalActionsPerformed.sendInvoice !== false) {
     throw new ProviderIssuanceExecutorError('INVALID_PROVIDER_PAYLOAD');
+  }
+  let actualPlanHash;
+  try {
+    actualPlanHash = computeWaveProviderPlanHash(payload);
+  } catch {
+    throw new ProviderIssuanceExecutorError('INVALID_PROVIDER_PAYLOAD');
+  }
+  if (actualPlanHash !== payload.providerPlanHash) {
+    throw new ProviderIssuanceExecutorError('PROVIDER_PLAN_HASH_MISMATCH', 409);
   }
   return payload;
 }
@@ -78,6 +90,7 @@ function createProviderIssuanceExecutor({ attemptStore, adapter }) {
       started = await attemptStore.start({
         attemptId: input.attemptId,
         requestHash: payload.sourceRequestHash,
+        providerPlanHash: payload.providerPlanHash,
       });
     } catch (error) {
       if (error instanceof ProviderIssuanceAttemptError) throw error;

@@ -38,12 +38,13 @@ function reason(value) {
   return value;
 }
 
-function operationKey(tenant, authorizationId, requestHash) {
+function operationKey(tenant, authorizationId, requestHash, providerPlanHash) {
   return 'wave_' + crypto.createHash('sha256')
     .update('facturations-provider-operation-v1\0')
     .update(tenant).update('\0')
     .update(authorizationId).update('\0')
-    .update(requestHash)
+    .update(requestHash).update('\0')
+    .update(providerPlanHash)
     .digest('base64url');
 }
 
@@ -79,10 +80,13 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
 
   async function prepare(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
-        Object.keys(input).join(',') !== 'authorizationId') {
+        Object.keys(input).sort().join(',') !== 'authorizationId,providerPlanHash') {
       throw new ProviderIssuanceAttemptError('INVALID_PREPARE_REQUEST');
     }
     const authorizationId = uuid(input.authorizationId, 'INVALID_AUTHORIZATION_ID');
+    if (typeof input.providerPlanHash !== 'string' || !HASH.test(input.providerPlanHash)) {
+      throw new ProviderIssuanceAttemptError('INVALID_PROVIDER_PLAN_HASH');
+    }
     const client = await pool.connect();
     let transaction = false;
     try {
@@ -112,7 +116,7 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
           authorization.expected_customer_email !== authorization.snapshot.customer.email.toLowerCase()) {
         throw new ProviderIssuanceAttemptError('AUTHORIZATION_DETAILS_MISMATCH', 409);
       }
-      const key = operationKey(tenant, authorization.id, authorization.request_hash);
+      const key = operationKey(tenant, authorization.id, authorization.request_hash, input.providerPlanHash);
       const inserted = await client.query(
         `INSERT INTO facturations_provider_issuance_attempts
            (business_id,authorization_id,draft_id,provider,operation_key,state)
@@ -168,7 +172,7 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
     return asResult(result.rows[0]);
   }
 
-  async function transition(attemptId, allowedStates, nextState, updateSql, params, eventCode, expectedRequestHash = null) {
+  async function transition(attemptId, allowedStates, nextState, updateSql, params, eventCode, expectedRequestHash = null, expectedProviderPlanHash = null) {
     const id = uuid(attemptId, 'INVALID_ATTEMPT_ID');
     const client = await pool.connect();
     let transaction = false;
@@ -187,12 +191,13 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
           : 'INVALID_ATTEMPT_STATE';
         throw new ProviderIssuanceAttemptError(code, 409);
       }
-      if (expectedRequestHash !== null) {
-        if (typeof expectedRequestHash !== 'string' || !HASH.test(expectedRequestHash)) {
+      if (expectedRequestHash !== null || expectedProviderPlanHash !== null) {
+        if (typeof expectedRequestHash !== 'string' || !HASH.test(expectedRequestHash) ||
+            typeof expectedProviderPlanHash !== 'string' || !HASH.test(expectedProviderPlanHash)) {
           throw new ProviderIssuanceAttemptError('INVALID_PROVIDER_PAYLOAD_BINDING');
         }
         const expectedOperationKey = operationKey(
-          tenant, row.authorization_id, expectedRequestHash
+          tenant, row.authorization_id, expectedRequestHash, expectedProviderPlanHash
         );
         if (row.operation_key !== expectedOperationKey) {
           throw new ProviderIssuanceAttemptError(
@@ -223,17 +228,18 @@ function createProviderIssuanceAttemptStore({ pool, businessId }) {
 
   function start(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
-        Object.keys(input).sort().join(',') !== 'attemptId,requestHash') {
+        Object.keys(input).sort().join(',') !== 'attemptId,providerPlanHash,requestHash') {
       throw new ProviderIssuanceAttemptError('INVALID_START_REQUEST');
     }
-    if (typeof input.requestHash !== 'string' || !HASH.test(input.requestHash)) {
+    if (typeof input.requestHash !== 'string' || !HASH.test(input.requestHash) ||
+        typeof input.providerPlanHash !== 'string' || !HASH.test(input.providerPlanHash)) {
       throw new ProviderIssuanceAttemptError('INVALID_PROVIDER_PAYLOAD_BINDING');
     }
     return transition(input.attemptId, ['PREPARED'], 'IN_PROGRESS',
       `UPDATE facturations_provider_issuance_attempts
           SET state='IN_PROGRESS',started_at=now()
         WHERE business_id=$1 AND id=$2 RETURNING *`,
-      [], 'ADAPTER_STARTED', input.requestHash);
+      [], 'ADAPTER_STARTED', input.requestHash, input.providerPlanHash);
   }
 
   function markAmbiguous(input) {

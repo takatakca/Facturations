@@ -107,6 +107,7 @@ test('local issued registry materializes only confirmed provider results and rem
     });
     const prepared = await attempts.prepare({
       authorizationId: confirmedFixture.authorization.id,
+      providerPlanHash: confirmedFixture.payload.providerPlanHash,
     });
     const executor = createProviderIssuanceExecutor({
       attemptStore: attempts,
@@ -147,7 +148,10 @@ test('local issued registry materializes only confirmed provider results and rem
     const pendingFixture = await authorizedDraft({
       drafts, approvals, authorizations, owner, session, suffix: 'pending',
     });
-    const pending = await attempts.prepare({ authorizationId: pendingFixture.authorization.id });
+    const pending = await attempts.prepare({
+      authorizationId: pendingFixture.authorization.id,
+      providerPlanHash: pendingFixture.payload.providerPlanHash,
+    });
     await assert.rejects(
       registry.materialize({ attemptId: pending.id }),
       error => error instanceof IssuedInvoiceRegistryError &&

@@ -45,14 +45,18 @@ function occurredAt(value){
   return new Date(ms).toISOString();
 }
 function normalizeEvent(value){
-  if(!value || typeof value!=='object' || Array.isArray(value) ||
-     Object.keys(value).sort().join(',')!==
-       'amountCents,currency,eventId,eventType,occurredAt,providerKey,providerTransactionId'){
+  if(!value || typeof value!=='object' || Array.isArray(value)){
     throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT');
   }
   const type=value.eventType;
   if(typeof type!=='string' || !EVENT_TYPES.has(type)){
     throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT_TYPE');
+  }
+  const expectedKeys=type==='REFUND_ISSUED'
+    ? 'amountCents,currency,eventId,eventType,occurredAt,providerKey,providerTransactionId,relatedProviderTransactionId'
+    : 'amountCents,currency,eventId,eventType,occurredAt,providerKey,providerTransactionId';
+  if(Object.keys(value).sort().join(',')!==expectedKeys){
+    throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT');
   }
   if(value.currency!=='CAD') throw new PaymentEvidenceError('INVALID_PAYMENT_CURRENCY');
   return Object.freeze({
@@ -61,6 +65,12 @@ function normalizeEvent(value){
     providerTransactionId:boundedText(
       value.providerTransactionId,'INVALID_PAYMENT_TRANSACTION_ID'
     ),
+    relatedProviderTransactionId:type==='REFUND_ISSUED'
+      ? boundedText(
+          value.relatedProviderTransactionId,
+          'INVALID_RELATED_PAYMENT_TRANSACTION_ID'
+        )
+      : null,
     eventType:type,
     amountCents:amount(value.amountCents),
     currency:'CAD',
@@ -73,6 +83,7 @@ function canonical({issuedInvoiceId,event,sourceMode}){
     providerKey:event.providerKey,
     providerEventId:event.eventId,
     providerTransactionId:event.providerTransactionId,
+    relatedProviderTransactionId:event.relatedProviderTransactionId,
     eventType:event.eventType,
     amountCents:event.amountCents,
     currency:event.currency,
@@ -93,6 +104,7 @@ function resultOf(row){
     providerKey:row.provider_key,
     providerEventId:row.provider_event_id,
     providerTransactionId:row.provider_transaction_id,
+    relatedPaymentEvidenceId:row.related_payment_evidence_id||null,
     eventType:row.event_type,
     amountCents:Number(row.amount_cents),
     currency:row.currency,
@@ -160,18 +172,34 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
         throw new PaymentEvidenceError('PAYMENT_EVIDENCE_SOURCE_NOT_READY',409);
       }
 
+      let relatedPaymentEvidenceId=null;
+      if(event.eventType==='REFUND_ISSUED'){
+        const related=await client.query(
+          `SELECT id
+             FROM facturations_payment_evidence
+            WHERE business_id=$1 AND issued_invoice_id=$2 AND provider_key=$3
+              AND provider_transaction_id=$4 AND event_type='PAYMENT_RECEIVED'
+            FOR SHARE`,
+          [tenant,issuedInvoiceId,event.providerKey,event.relatedProviderTransactionId]
+        );
+        if(related.rows.length!==1){
+          throw new PaymentEvidenceError('REFUND_PAYMENT_EVIDENCE_REQUIRED',409);
+        }
+        relatedPaymentEvidenceId=related.rows[0].id;
+      }
+
       const fields={issuedInvoiceId,event,sourceMode:'SYNTHETIC_TEST'};
       const hash=evidenceHash(fields);
       const inserted=await client.query(
         `INSERT INTO facturations_payment_evidence
            (business_id,issued_invoice_id,provider_key,provider_event_id,
-            provider_transaction_id,event_type,amount_cents,currency,occurred_at,
-            source_mode,evidence_hash)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'CAD',$8,'SYNTHETIC_TEST',$9)
+            provider_transaction_id,related_payment_evidence_id,event_type,
+            amount_cents,currency,occurred_at,source_mode,evidence_hash)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CAD',$9,'SYNTHETIC_TEST',$10)
          ON CONFLICT DO NOTHING
          RETURNING *`,
         [tenant,issuedInvoiceId,event.providerKey,event.eventId,event.providerTransactionId,
-         event.eventType,event.amountCents,event.occurredAt,hash]
+         relatedPaymentEvidenceId,event.eventType,event.amountCents,event.occurredAt,hash]
       );
       let saved=inserted.rows[0];
       if(!saved){
@@ -184,6 +212,7 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
         if(saved){
           if(saved.issued_invoice_id!==issuedInvoiceId ||
              saved.provider_transaction_id!==event.providerTransactionId ||
+             (saved.related_payment_evidence_id||null)!==relatedPaymentEvidenceId ||
              saved.event_type!==event.eventType ||
              Number(saved.amount_cents)!==event.amountCents ||
              saved.currency!=='CAD' ||

@@ -136,6 +136,27 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
            (business_id,issued_invoice_id,provider_key,provider_event_id,
             provider_transaction_id,event_type,amount_cents,currency,occurred_at,
             source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,'PAYMENT_RECEIVED',123,'CAD',$5,
+                 'SYNTHETIC_TEST',$6)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-forged-hash-' + crypto.randomUUID(),
+          'txn-direct-forged-hash-' + crypto.randomUUID(),
+          '2026-09-26T15:58:00.000Z',
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error=>error && error.code==='23514',
+      'direct payment evidence insert with forged evidence_hash must fail in PostgreSQL'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,event_type,amount_cents,currency,occurred_at,
+            source_mode,evidence_hash)
          VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,'PAYMENT_RECEIVED',1,'CAD',$5,
                  'VERIFIED_PROVIDER_WEBHOOK',$6)`,
         [

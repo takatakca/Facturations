@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 29,
+  "lockedThrough": 30,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -147,6 +147,11 @@
       "file": "029_payment_provider_verification_gate.sql",
       "gitBlobSha1": "94188c6f98af6abdbde2b32d26e0e292b5e6309f",
       "bytes": 621
+    },
+    {
+      "file": "030_payment_transaction_reuse_guard.sql",
+      "gitBlobSha1": "b94752c837005c04c8436c76322e5ce490c8cf06",
+      "bytes": 463
     }
   ]
 }

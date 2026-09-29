@@ -83,7 +83,7 @@ function createClientPortalReadStore({pool,businessId,authStore}={}){
     'FROM facturations_client_portal_publications p '+
     'JOIN facturations_issued_invoices i ON i.business_id=p.business_id AND i.id=p.issued_invoice_id '+
     'JOIN invoice_drafts d ON d.business_id=i.business_id AND d.id=i.draft_id '+
-    'JOIN facturations_qualified_invoice_documents q ON q.business_id=p.business_id AND q.id=p.qualified_document_id '+
+    'JOIN facturations_qualified_invoice_documents q ON q.business_id=p.business_id AND q.id=p.qualified_document_id AND q.issued_invoice_id=p.issued_invoice_id '+
     'JOIN facturations_payment_evidence_summary s ON s.business_id=i.business_id AND s.issued_invoice_id=i.id '+
     'LEFT JOIN facturations_client_portal_publication_revocations r ON r.business_id=p.business_id AND r.publication_id=p.id ';
 

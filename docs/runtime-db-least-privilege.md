@@ -41,7 +41,7 @@ Le script de vérification refuse toute cible autre que la base jetable locale `
 
 ## Ordre de déploiement
 
-1. le migrateur applique 001–027;
+1. le migrateur applique la liste verrouillée 001–036;
 2. le migrateur applique `ops/runtime-db-grants.sql`;
 3. l’application démarre avec l’URL du **rôle runtime**, jamais avec l’URL du propriétaire/migrateur;
 4. `/ready` vérifie la connectivité runtime;

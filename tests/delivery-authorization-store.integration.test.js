@@ -462,6 +462,33 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(signedSummary.syntheticOnly, false);
     assert.equal(signedSummary.hasSignedWebhook, true);
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_receipts
+           (business_id,attempt_id,authorization_id,issued_invoice_id,qualified_document_id,
+            qualified_document_sha256,expected_recipient_email,recipient_snapshot_hash,
+            provider,provider_message_id,operation_key,receipt_hash,provider_confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          businessId,
+          delivered.id,
+          authorized.id,
+          issued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          authorized.recipientSnapshotHash,
+          'SIMULATED_EMAIL',
+          delivered.providerMessageId,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+          crypto.randomBytes(32).toString('hex'),
+          delivered.finishedAt,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct delivery receipt must bind to the exact confirmed attempt operation key'
+    );
+
     const receipt = await deliveryReceipts.materialize({ attemptId: delivered.id });
     assert.equal(receipt.attemptId, delivered.id);
     assert.equal(receipt.authorizationId, authorized.id);

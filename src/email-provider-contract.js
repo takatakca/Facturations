@@ -3,6 +3,7 @@
 const crypto=require('node:crypto');
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const HASH = /^[a-f0-9]{64}$/;
 const OPERATION_KEY = /^[A-Za-z0-9_-]{24,120}$/;
 const PROVIDER_KEY = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -89,7 +90,10 @@ function validateEmailSubmission(input){
 
   const qualifiedDocumentId=text(
     input.qualifiedDocumentId,64,'INVALID_QUALIFIED_DOCUMENT_ID'
-  );
+  ).toLowerCase();
+  if(!UUID.test(qualifiedDocumentId)){
+    throw new EmailProviderContractError('INVALID_QUALIFIED_DOCUMENT_ID');
+  }
   const subject=text(input.subject,200,'INVALID_EMAIL_SUBJECT');
   const filename=text(input.filename,160,'INVALID_EMAIL_FILENAME');
   if(!/^[^/\\]+\.pdf$/iu.test(filename)){

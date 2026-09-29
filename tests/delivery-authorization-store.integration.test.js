@@ -401,6 +401,31 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
         error.statusCode === 409
     );
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_email_provider_evidence
+           (business_id,qualified_document_id,qualified_document_sha256,operation_key,
+            provider_key,provider_message_id,provider_event_id,event_type,occurred_at,
+            recipient_email,source_mode,evidence_hash,webhook_body_sha256,verification_scheme)
+         VALUES ($1,$2,$3,$4,'SIMULATED_EMAIL',$5,$6,'DELIVERED',$7,$8,
+                 'SIGNED_WEBHOOK',$9,$10,'TEST_HMAC_SHA256')`,
+        [
+          businessId,
+          qualified.id,
+          qualified.contentSha256,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+          delivered.providerMessageId,
+          'direct-signed-mismatch-' + crypto.randomUUID(),
+          '2026-09-26T16:39:00.000Z',
+          recipient,
+          crypto.randomBytes(32).toString('hex'),
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct signed webhook evidence must bind to the exact confirmed delivery attempt'
+    );
+
     const signedOperationKey = delivered.operationKey;
     const signedEvidence = await signedProviderEvidence.ingestVerifiedWebhook({
       qualifiedDocumentId: qualified.id,

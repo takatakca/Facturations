@@ -16,6 +16,43 @@ class WaveIssuancePreflightError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+function computeWaveProviderPlanHash(plan) {
+  const canonical = {
+    status: plan.status,
+    operation: plan.operation,
+    sourceRequestHash: plan.sourceRequestHash,
+    businessId: plan.businessId,
+    customerId: plan.customerId,
+    currency: plan.currency,
+    invoiceDate: plan.invoiceDate,
+    dueDate: plan.dueDate,
+    memo: plan.memo,
+    items: plan.items.map(item => ({
+      productId: item.productId,
+      description: item.description,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+      taxable: item.taxable,
+      salesTaxIds: [...item.salesTaxIds],
+    })),
+    expected: {
+      customerEmail: plan.expected.customerEmail,
+      subtotalCents: plan.expected.subtotalCents,
+      taxTotalCents: plan.expected.taxTotalCents,
+      totalCents: plan.expected.totalCents,
+    },
+    externalActionsPerformed: {
+      createInvoice: plan.externalActionsPerformed.createInvoice,
+      approveInvoice: plan.externalActionsPerformed.approveInvoice,
+      sendInvoice: plan.externalActionsPerformed.sendInvoice,
+    },
+  };
+  return crypto.createHash('sha256')
+    .update('facturations-wave-provider-plan-v1\0')
+    .update(JSON.stringify(canonical))
+    .digest('hex');
+}
 function id(value, code) {
   if (typeof value !== 'string' || value.trim().length < 1 || value.trim().length > 512 ||
       /[\u0000-\u001f\u007f]/u.test(value)) {
@@ -142,7 +179,7 @@ function buildWaveIssuancePreflight(input) {
     .update(JSON.stringify(snapshot))
     .digest('hex');
 
-  return Object.freeze({
+  const plan = Object.freeze({
     status: 'READY_FOR_WAVE_ADAPTER',
     sourceRequestHash,
     operation: 'CREATE_DRAFT_THEN_APPROVE_SEPARATELY',
@@ -165,6 +202,10 @@ function buildWaveIssuancePreflight(input) {
       sendInvoice: false,
     }),
   });
+  return Object.freeze({
+    ...plan,
+    providerPlanHash: computeWaveProviderPlanHash(plan),
+  });
 }
 
-module.exports = { buildWaveIssuancePreflight, WaveIssuancePreflightError };
+module.exports = { buildWaveIssuancePreflight, computeWaveProviderPlanHash, WaveIssuancePreflightError };

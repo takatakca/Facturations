@@ -93,6 +93,15 @@ test('submission validator rejects non-PDF bytes and content hash shape errors',
   );
 });
 
+test('submission validator rejects non-UUID qualified document provenance',()=>{
+  const invalid={...submission(),qualifiedDocumentId:'not-a-qualified-document'};
+  assert.throws(
+    ()=>validateEmailProviderSubmission(invalid),
+    error=>error instanceof EmailProviderContractError &&
+      error.code==='INVALID_QUALIFIED_DOCUMENT_ID'
+  );
+});
+
 test('submission validator rejects provenance hash that does not match the PDF bytes',()=>{
   const mismatched={...submission(),qualifiedDocumentSha256:'a'.repeat(64)};
   assert.throws(

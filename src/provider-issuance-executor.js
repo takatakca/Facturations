@@ -34,7 +34,7 @@ function validatePreparedPayload(payload) {
       typeof payload.customerId !== 'string' || !payload.customerId ||
       typeof payload.invoiceDate !== 'string' ||
       typeof payload.dueDate !== 'string' ||
-      typeof payload.memo !== 'string' ||
+      (payload.memo !== null && typeof payload.memo !== 'string') ||
       !Array.isArray(payload.items) || payload.items.length < 1 ||
       !exactKeys(payload.expected, [
         'customerEmail','subtotalCents','taxTotalCents','totalCents',

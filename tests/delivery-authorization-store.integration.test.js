@@ -151,7 +151,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     });
     const confirmed = await executor.execute({ attemptId: prepared.id, payload });
     const issued = await registry.materialize({ attemptId: confirmed.id });
-    await documents.materialize({ issuedInvoiceId: issued.id });
+    const sourceDocument = await documents.materialize({ issuedInvoiceId: issued.id });
 
     const profile = await profiles.createVerified({
       confirmation: 'VERIFY_ISSUER_PROFILE',
@@ -339,6 +339,71 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       payload: crossPayload,
     });
     const crossIssued = await registry.materialize({ attemptId: crossConfirmed.id });
+
+    const wrongProfileHash =
+      (profile.profileHash[0] === 'a' ? 'b' : 'a') + profile.profileHash.slice(1);
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_invoice_issuer_bindings
+           (business_id,issued_invoice_id,issuer_profile_id,issuer_profile_hash,
+            issuer_profile_version,bound_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,'BIND_VERIFIED_ISSUER_TO_INVOICE')`,
+        [
+          businessId,
+          crossIssued.id,
+          profile.id,
+          wrongProfileHash,
+          profile.version,
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23503',
+      'issuer binding cannot claim profile provenance that does not match the profile row'
+    );
+
+    const crossBinding = await bindings.bind({
+      confirmation: 'BIND_VERIFIED_ISSUER_TO_INVOICE',
+      issuedInvoiceId: crossIssued.id,
+      issuerProfileId: profile.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+
+    const foreignSourcePdf = Buffer.concat([
+      Buffer.from('%PDF-1.4\n', 'ascii'),
+      Buffer.alloc(128, 66),
+      Buffer.from('\n%%EOF\n', 'ascii'),
+    ]);
+    const foreignSourcePdfHash = crypto
+      .createHash('sha256')
+      .update(foreignSourcePdf)
+      .digest('hex');
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_qualified_invoice_documents
+           (business_id,binding_id,issued_invoice_id,source_document_id,
+            source_document_sha256,issuer_profile_id,issuer_profile_hash,
+            issuer_profile_version,render_version,content_sha256,byte_length,pdf_bytes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          businessId,
+          crossBinding.id,
+          crossIssued.id,
+          sourceDocument.id,
+          sourceDocument.contentSha256,
+          profile.id,
+          profile.profileHash,
+          profile.version,
+          'synthetic-cross-provenance-v1',
+          foreignSourcePdfHash,
+          foreignSourcePdf.length,
+          foreignSourcePdf,
+        ]
+      ),
+      error => error && error.code === '23503',
+      'qualified PDF cannot reuse a source document from another issued invoice'
+    );
 
     await assert.rejects(
       pool.query(

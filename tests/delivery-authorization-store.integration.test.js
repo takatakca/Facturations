@@ -202,6 +202,30 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
         error.statusCode === 409
     );
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_email_provider_evidence
+           (business_id,qualified_document_id,qualified_document_sha256,operation_key,
+            provider_key,provider_message_id,provider_event_id,event_type,occurred_at,
+            recipient_email,source_mode,evidence_hash)
+         VALUES ($1,$2,$3,$4,'STAGING_EMAIL',$5,$6,'DELIVERED',$7,$8,
+                 'SYNTHETIC_TEST',$9)`,
+        [
+          businessId,
+          qualified.id,
+          qualified.contentSha256,
+          stagingOperationKey,
+          providerMessageId,
+          'direct-forged-email-hash-' + crypto.randomUUID(),
+          deliveredEvent.occurredAt,
+          recipient,
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct email evidence insert with forged evidence_hash must fail in PostgreSQL'
+    );
+
     const deliveredEvidence = await providerEvidence.ingestSynthetic({
       qualifiedDocumentId: qualified.id,
       operationKey: stagingOperationKey,
@@ -493,6 +517,26 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
         error.statusCode === 409
     );
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_authorizations
+           (business_id,issued_invoice_id,qualified_document_id,qualified_document_sha256,
+            expected_recipient_email,recipient_snapshot_hash,authorized_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'AUTHORIZE_QUALIFIED_PDF_DELIVERY')`,
+        [
+          businessId,
+          issued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          crypto.randomBytes(32).toString('hex'),
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct delivery authorization with forged recipient_snapshot_hash must fail in PostgreSQL'
+    );
+
     const input = {
       confirmation: 'AUTHORIZE_QUALIFIED_PDF_DELIVERY',
       qualifiedDocumentId: qualified.id,
@@ -585,6 +629,32 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(delivered.state, 'CONFIRMED');
     assert.ok(delivered.providerMessageId.startsWith('simulated-message-'));
     assert.equal(delivered.emailed, true);
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_receipts
+           (business_id,attempt_id,authorization_id,issued_invoice_id,qualified_document_id,
+            qualified_document_sha256,expected_recipient_email,recipient_snapshot_hash,
+            provider,provider_message_id,operation_key,receipt_hash,provider_confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SIMULATED_EMAIL',$9,$10,$11,$12)`,
+        [
+          businessId,
+          delivered.id,
+          authorized.id,
+          issued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          authorized.recipientSnapshotHash,
+          delivered.providerMessageId,
+          delivered.operationKey,
+          crypto.randomBytes(32).toString('hex'),
+          delivered.finishedAt,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct delivery receipt with forged receipt_hash must fail in PostgreSQL'
+    );
 
     const signedProviderEvidence = createEmailProviderEvidenceStore({
       pool,

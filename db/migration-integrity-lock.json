@@ -205,8 +205,8 @@
     },
     {
       "file": "041_issued_invoice_provenance_guard.sql",
-      "gitBlobSha1": "8a1a690998f41fca2f789d1ff39b1d9201d3d283",
-      "bytes": 4133
+      "gitBlobSha1": "12bcf5b7b36eec40daf8314662fc93c166f0334b",
+      "bytes": 4886
     }
   ]
 }

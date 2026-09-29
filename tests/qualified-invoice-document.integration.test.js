@@ -200,6 +200,36 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
     const bindingRetry = await bindings.bind(bindingInput);
     assert.equal(bindingRetry.id, binding.id);
 
+    const forgedQualifiedBytes = Buffer.concat([
+      Buffer.from('%PDF-1.4\n', 'ascii'),
+      Buffer.alloc(192, 67),
+      Buffer.from('\n%%EOF\n', 'ascii'),
+    ]);
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_qualified_invoice_documents
+           (business_id,binding_id,issued_invoice_id,source_document_id,
+            source_document_sha256,issuer_profile_id,issuer_profile_hash,
+            issuer_profile_version,render_version,content_sha256,byte_length,pdf_bytes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'invoice-pdf-v2-issuer-winansi',$9,$10,$11)`,
+        [
+          businessId,
+          binding.id,
+          fixture.issued.id,
+          fixture.baseDocument.id,
+          fixture.baseDocument.contentSha256,
+          profile.id,
+          profile.profileHash,
+          profile.version,
+          crypto.randomBytes(32).toString('hex'),
+          forgedQualifiedBytes.length,
+          forgedQualifiedBytes,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct qualified PDF insert with forged content_sha256 must fail in PostgreSQL'
+    );
+
     const qualified = await qualifiedDocuments.materialize({ bindingId: binding.id });
     assert.equal(qualified.bindingId, binding.id);
     assert.equal(qualified.issuedInvoiceId, fixture.issued.id);

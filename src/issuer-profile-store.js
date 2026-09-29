@@ -305,4 +305,5 @@ module.exports = {
   createIssuerProfileStore,
   IssuerProfileError,
   normalizeIssuerProfile: normalizeInput,
+  computeIssuerProfileHash: profileHash,
 };

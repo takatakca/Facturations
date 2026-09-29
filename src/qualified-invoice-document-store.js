@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { renderIssuedInvoicePdf } = require('./official-invoice-pdf');
+const { computeIssuerProfileHash } = require('./issuer-profile-store');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const RENDER_VERSION = 'invoice-pdf-v2-issuer-winansi';
@@ -179,6 +180,10 @@ function createQualifiedInvoiceDocumentStore({
           Number(row.binding_profile_version) !== Number(row.profile_version)) {
         throw new QualifiedInvoiceDocumentError('ISSUER_PROFILE_PROVENANCE_MISMATCH', 409);
       }
+      const issuerProfile = profileOf(row);
+      if (computeIssuerProfileHash(issuerProfile) !== row.profile_hash) {
+        throw new QualifiedInvoiceDocumentError('ISSUER_PROFILE_STORAGE_INVALID', 503);
+      }
       if (row.source_content_type !== 'application/pdf' ||
           !Buffer.isBuffer(row.source_pdf_bytes) ||
           Number(row.source_byte_length) !== row.source_pdf_bytes.length ||
@@ -195,7 +200,7 @@ function createQualifiedInvoiceDocumentStore({
 
       let pdf;
       try {
-        pdf = validatePdf(await renderer(invoiceOf(row), profileOf(row)));
+        pdf = validatePdf(await renderer(invoiceOf(row), issuerProfile));
       } catch (error) {
         if (error instanceof QualifiedInvoiceDocumentError) throw error;
         if (error && typeof error.code === 'string') {

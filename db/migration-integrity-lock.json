@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 35,
+  "lockedThrough": 36,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -177,6 +177,11 @@
       "file": "035_delivery_receipt_lineage_guard.sql",
       "gitBlobSha1": "d020b0e82512a14865d2be7f7eb9e7718713e0f0",
       "bytes": 3687
+    },
+    {
+      "file": "036_delivery_authorization_document_binding.sql",
+      "gitBlobSha1": "22145d0445d541ef55cc51a66e9054a0f6ecc9ab",
+      "bytes": 830
     }
   ]
 }

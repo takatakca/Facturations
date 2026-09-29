@@ -1,7 +1,7 @@
 'use strict';
 
-const crypto = require('node:crypto');
 const { previewDraft } = require('./draft-preview');
+const { computeDraftPreviewHash } = require('./draft-snapshot-integrity');
 
 class StoreError extends Error {
   constructor(code, statusCode = 503) {
@@ -26,7 +26,7 @@ function createDraftStore({ pool, businessId }) {
       throw new StoreError('INVALID_IDEMPOTENCY_KEY', 422);
     }
     const preview = previewDraft(payload); // Recalculate server-side; never trust submitted totals.
-    const hash = crypto.createHash('sha256').update(JSON.stringify(preview)).digest('hex');
+    const hash = computeDraftPreviewHash(preview);
     const client = await pool.connect();
     let inTransaction = false;
     try {

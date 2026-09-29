@@ -299,6 +299,34 @@ test('verified issuer binding produces one immutable qualified PDF with full pro
       sessionToken: session.token,
     });
     const otherQualified = await qualifiedDocuments.materialize({ bindingId: otherBinding.id });
+
+    const mismatchPortalFixture = await createIssuedFixture({
+      drafts, approvals, authorizations, attempts, registry, documents,
+      owner, session, suffix: 'portal-mismatch', taxable: false,
+    });
+    const mismatchCustomer = await pool.query(
+      'SELECT customer_id FROM invoice_drafts WHERE business_id=$1 AND id=$2',
+      [businessId, mismatchPortalFixture.draft.id]
+    );
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_client_portal_publications
+           (business_id,issued_invoice_id,qualified_document_id,customer_id,
+            qualified_document_sha256,authorized_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,'AUTHORIZE_CLIENT_PORTAL_PUBLICATION')`,
+        [
+          businessId,
+          mismatchPortalFixture.issued.id,
+          otherQualified.id,
+          mismatchCustomer.rows[0].customer_id,
+          otherQualified.contentSha256,
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23503',
+      'portal mismatch guard must reject invoice A + qualified PDF B'
+    );
+
     await publications.authorize({
       confirmation: 'AUTHORIZE_CLIENT_PORTAL_PUBLICATION',
       qualifiedDocumentId: otherQualified.id,

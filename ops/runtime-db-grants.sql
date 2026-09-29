@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Provision only AFTER migrations 001-039, using the migration/owner role.
+-- Provision only AFTER migrations 001-040, using the migration/owner role.
 -- Required psql variables:
 --   -v runtime_role=facturations_app
 --   -v database_name=facturations

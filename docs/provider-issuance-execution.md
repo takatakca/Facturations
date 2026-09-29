@@ -20,9 +20,11 @@ Une exception de l'adapter ou une réponse invalide devient `AMBIGUOUS`. Une sec
 
 ## Liaison payload ↔ autorisation
 
-Le plan fournisseur transporte `sourceRequestHash`, calculé sur le même preview serveur déterministe que le `request_hash` du brouillon immuable.
+Le plan fournisseur transporte `sourceRequestHash`, calculé sur le même preview serveur déterministe que le `request_hash` du brouillon immuable, ainsi qu'un `providerPlanHash` calculé sur le plan Wave canonique complet : business, client, produits, taxes, dates, montants et actions externes attendues.
 
-Avant de passer une tentative de `PREPARED` à `IN_PROGRESS`, le store recalcule l'`operation_key` attendue avec ce hash et l'autorisation persistée. Un payload préparé pour un autre brouillon est rejeté avec `PROVIDER_PAYLOAD_BINDING_MISMATCH` avant tout appel adapter.
+La préparation engage ces deux hashes dans l'`operation_key`. Repréparer la même autorisation avec d'autres mappings fournisseur déclenche `PREPARE_CONFLICT`.
+
+Avant de passer une tentative de `PREPARED` à `IN_PROGRESS`, l'executor recalcule `providerPlanHash`, puis le store recalcule l'`operation_key` attendue avec l'autorisation persistée. Une modification du plan sans rehash déclenche `PROVIDER_PLAN_HASH_MISMATCH`; un plan correctement rehashé mais différent de celui figé à la préparation déclenche `PROVIDER_PAYLOAD_BINDING_MISMATCH`. Dans les deux cas, aucun appel adapter n'est effectué.
 
 ## Compatibilité du document officiel
 

@@ -104,7 +104,10 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
       snapshot: draft.preview,
     });
 
-    const prepared = await attempts.prepare({ authorizationId: authorization.id });
+    const prepared = await attempts.prepare({
+      authorizationId: authorization.id,
+      providerPlanHash: payload.providerPlanHash,
+    });
     const executor = createProviderIssuanceExecutor({
       attemptStore: attempts,
       adapter: {

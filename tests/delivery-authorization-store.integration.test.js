@@ -272,6 +272,94 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(summaries[0].lastComplaintAt, null);
 
 
+    const crossDraft = await drafts.createDraft({
+      currency: 'CAD',
+      customer: {
+        name: 'Synthetic Cross-Invoice Customer',
+        email: recipient,
+        address: '456 Example Street',
+      },
+      invoiceDate: '2026-09-26',
+      dueDate: '2026-10-26',
+      notes: 'Synthetic cross-invoice delivery provenance test',
+      lines: [{
+        description: 'Synthetic cross-invoice service',
+        quantity: 1,
+        unitPriceCents: 2600,
+        discountCents: 0,
+        taxable: false,
+      }],
+      taxes: [],
+    }, 'delivery_cross_' + crypto.randomBytes(16).toString('hex'));
+
+    await approvals.approveDraft({
+      confirmation: 'APPROVE_DRAFT_ONLY',
+      draftId: crossDraft.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+      expectedTotalCents: 2600,
+      expectedCustomerEmail: recipient,
+    });
+
+    const crossIssuanceAuthorization = await authorizations.authorize({
+      confirmation: 'AUTHORIZE_ISSUANCE_PENDING_PROVIDER',
+      draftId: crossDraft.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+      expectedTotalCents: 2600,
+      expectedCustomerEmail: recipient,
+      provider: 'WAVE',
+    });
+
+    const crossPayload = buildWaveIssuancePreflight({
+      businessId: 'wave-business-example',
+      customerId: 'wave-customer-delivery-cross',
+      productIds: ['wave-product-delivery-cross'],
+      salesTaxes: {},
+      snapshot: crossDraft.preview,
+    });
+    const crossPrepared = await attempts.prepare({
+      authorizationId: crossIssuanceAuthorization.id,
+      providerPlanHash: crossPayload.providerPlanHash,
+    });
+    const crossExecutor = createProviderIssuanceExecutor({
+      attemptStore: attempts,
+      adapter: {
+        async createInvoice() {
+          return {
+            status: 'CONFIRMED',
+            providerInvoiceId: 'wave-delivery-cross-' + crypto.randomUUID(),
+            providerInvoiceNumber: 'DELIVERY-CROSS-' + crypto.randomUUID().slice(0, 8),
+          };
+        },
+      },
+    });
+    const crossConfirmed = await crossExecutor.execute({
+      attemptId: crossPrepared.id,
+      payload: crossPayload,
+    });
+    const crossIssued = await registry.materialize({ attemptId: crossConfirmed.id });
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_authorizations
+           (business_id,issued_invoice_id,qualified_document_id,qualified_document_sha256,
+            expected_recipient_email,recipient_snapshot_hash,authorized_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'AUTHORIZE_QUALIFIED_PDF_DELIVERY')`,
+        [
+          businessId,
+          crossIssued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          crypto.randomBytes(32).toString('hex'),
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23503',
+      'delivery authorization cannot bind a qualified PDF to another issued invoice'
+    );
+
     await assert.rejects(
       delivery.authorize({
         confirmation: 'AUTHORIZE_QUALIFIED_PDF_DELIVERY',

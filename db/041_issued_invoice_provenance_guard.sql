@@ -74,6 +74,35 @@ BEGIN
       USING ERRCODE='23514';
   END IF;
 
+  IF source_state<>'CONFIRMED' OR
+     source_finished_at IS NULL OR
+     source_provider_invoice_id IS NULL OR
+     source_provider_invoice_number IS NULL THEN
+    RAISE EXCEPTION 'confirmed provider attempt required for issued invoice'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF authorization_state<>'AUTHORIZED_PENDING_PROVIDER' OR
+     draft_status<>'DRAFT' OR
+     source_provider<>authorization_provider OR
+     authorization_request_hash<>draft_request_hash THEN
+    RAISE EXCEPTION 'issued invoice authorization or draft provenance mismatch'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF jsonb_typeof(draft_snapshot->'totalCents')<>'number' OR
+     jsonb_typeof(draft_snapshot->'customer')<>'object' OR
+     jsonb_typeof(draft_snapshot#>'{customer,email}')<>'string' THEN
+    RAISE EXCEPTION 'issued invoice draft snapshot shape mismatch'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF authorization_expected_total<>(draft_snapshot->>'totalCents')::bigint OR
+     authorization_expected_email<>lower(draft_snapshot#>>'{customer,email}') THEN
+    RAISE EXCEPTION 'issued invoice authorization details mismatch'
+      USING ERRCODE='23514';
+  END IF;
+
   SELECT to_state,reason_code
     INTO latest_event_to_state,latest_event_reason
     FROM facturations_provider_issuance_events
@@ -82,35 +111,28 @@ BEGIN
    ORDER BY id DESC
    LIMIT 1;
 
-  IF source_state<>'CONFIRMED' OR
-     source_finished_at IS NULL OR
-     source_provider_invoice_id IS NULL OR
-     source_provider_invoice_number IS NULL OR
-     authorization_state<>'AUTHORIZED_PENDING_PROVIDER' OR
-     draft_status<>'DRAFT' OR
-     source_provider<>authorization_provider OR
-     authorization_request_hash<>draft_request_hash OR
-     authorization_expected_total <>
-       CASE
-         WHEN jsonb_typeof(draft_snapshot->'totalCents')='number'
-           THEN (draft_snapshot->>'totalCents')::bigint
-         ELSE -1
-       END OR
-     authorization_expected_email <>
-       lower(COALESCE(draft_snapshot#>>'{customer,email}','')) OR
+  IF NOT FOUND OR
      latest_event_to_state<>'CONFIRMED' OR
-     latest_event_reason<>'PROVIDER_CONFIRMED' OR
-     NEW.authorization_id<>source_authorization_id OR
+     latest_event_reason<>'PROVIDER_CONFIRMED' THEN
+    RAISE EXCEPTION 'issued invoice confirmed provider ledger required'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF NEW.authorization_id<>source_authorization_id OR
      NEW.draft_id<>source_draft_id OR
      NEW.provider<>source_provider OR
      NEW.provider_invoice_id<>source_provider_invoice_id OR
      NEW.official_invoice_number<>source_provider_invoice_number OR
      NEW.request_hash<>draft_request_hash OR
-     NEW.issued_snapshot IS DISTINCT FROM draft_snapshot OR
-     date_trunc('milliseconds',NEW.provider_confirmed_at) <>
+     NEW.issued_snapshot IS DISTINCT FROM draft_snapshot THEN
+    RAISE EXCEPTION 'issued invoice materialized fields mismatch'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF date_trunc('milliseconds',NEW.provider_confirmed_at) <>
        date_trunc('milliseconds',source_finished_at) OR
      NEW.materialized_at<source_finished_at THEN
-    RAISE EXCEPTION 'issued invoice provenance mismatch'
+    RAISE EXCEPTION 'issued invoice confirmation timestamp mismatch'
       USING ERRCODE='23514';
   END IF;
 

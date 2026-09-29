@@ -98,7 +98,10 @@ async function createIssuedFixture({
     snapshot: draft.preview,
   });
 
-  const prepared = await attempts.prepare({ authorizationId: authorization.id });
+  const prepared = await attempts.prepare({
+    authorizationId: authorization.id,
+    providerPlanHash: payload.providerPlanHash,
+  });
   const executor = createProviderIssuanceExecutor({
     attemptStore: attempts,
     adapter: {

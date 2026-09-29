@@ -47,6 +47,7 @@ test('builds a no-network provider plan only when every mapping is exact',()=>{
   const plan=buildWaveIssuancePreflight({snapshot:draft,...mappings()});
   assert.equal(plan.status,'READY_FOR_WAVE_ADAPTER');
   assert.match(plan.sourceRequestHash,/^[a-f0-9]{64}$/);
+  assert.match(plan.providerPlanHash,/^[a-f0-9]{64}$/);
   assert.equal(plan.operation,'CREATE_DRAFT_THEN_APPROVE_SEPARATELY');
   assert.equal(plan.currency,'CAD');
   assert.equal(plan.expected.customerEmail,'customer@example.test');
@@ -58,6 +59,19 @@ test('builds a no-network provider plan only when every mapping is exact',()=>{
   assert.deepEqual(plan.items[1].salesTaxIds,[]);
   assert.equal(plan.items[0].unitPriceCents,1500);
   assert.equal(plan.items[0].quantity,2);
+});
+
+test('same immutable draft produces a different provider-plan hash when Wave mappings change',()=>{
+  const draft=snapshot();
+  const base=mappings();
+  const first=buildWaveIssuancePreflight({snapshot:draft,...base});
+  const remapped=buildWaveIssuancePreflight({
+    snapshot:draft,
+    ...base,
+    customerId:'wave-customer-remapped',
+  });
+  assert.equal(remapped.sourceRequestHash,first.sourceRequestHash);
+  assert.notEqual(remapped.providerPlanHash,first.providerPlanHash);
 });
 
 test('refuses missing customer, product and exact sales-tax mappings',()=>{

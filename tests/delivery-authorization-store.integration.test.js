@@ -133,7 +133,10 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       snapshot: draft.preview,
     });
 
-    const prepared = await attempts.prepare({ authorizationId: issuanceAuthorization.id });
+    const prepared = await attempts.prepare({
+      authorizationId: issuanceAuthorization.id,
+      providerPlanHash: payload.providerPlanHash,
+    });
     const executor = createProviderIssuanceExecutor({
       attemptStore: attempts,
       adapter: {

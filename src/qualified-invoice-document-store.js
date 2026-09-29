@@ -151,7 +151,8 @@ function createQualifiedInvoiceDocumentStore({
             p.postal_code,p.country_code,p.contact_email,p.contact_phone,p.tax_registrations,
             p.profile_hash,p.state AS profile_state,
             d.id AS source_document_id,d.content_sha256 AS source_document_sha256,
-            d.delivery_state AS source_delivery_state
+            d.content_type AS source_content_type,d.byte_length AS source_byte_length,
+            d.pdf_bytes AS source_pdf_bytes,d.delivery_state AS source_delivery_state
            FROM facturations_invoice_issuer_bindings AS b
            JOIN facturations_issued_invoices AS i
              ON i.business_id=b.business_id AND i.id=b.issued_invoice_id
@@ -177,6 +178,15 @@ function createQualifiedInvoiceDocumentStore({
       if (row.binding_profile_hash !== row.profile_hash ||
           Number(row.binding_profile_version) !== Number(row.profile_version)) {
         throw new QualifiedInvoiceDocumentError('ISSUER_PROFILE_PROVENANCE_MISMATCH', 409);
+      }
+      if (row.source_content_type !== 'application/pdf' ||
+          !Buffer.isBuffer(row.source_pdf_bytes) ||
+          Number(row.source_byte_length) !== row.source_pdf_bytes.length ||
+          typeof row.source_document_sha256 !== 'string' ||
+          !/^[a-f0-9]{64}$/u.test(row.source_document_sha256) ||
+          crypto.createHash('sha256').update(row.source_pdf_bytes).digest('hex') !==
+            row.source_document_sha256) {
+        throw new QualifiedInvoiceDocumentError('SOURCE_DOCUMENT_STORAGE_INVALID', 503);
       }
       if (Number(row.issued_snapshot?.taxTotalCents) > 0 &&
           (!Array.isArray(row.tax_registrations) || row.tax_registrations.length < 1)) {

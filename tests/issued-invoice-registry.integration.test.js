@@ -165,26 +165,20 @@ test('local issued registry materializes only confirmed provider results and rem
     const mismatchB = await authorizedDraft({
       drafts, approvals, authorizations, owner, session, suffix: 'mismatch-b',
     });
-    const inconsistent = await pool.query(
-      `INSERT INTO facturations_provider_issuance_attempts
-         (business_id,authorization_id,draft_id,provider,operation_key,state,
-          provider_invoice_id,provider_invoice_number,started_at,finished_at)
-       VALUES ($1,$2,$3,'WAVE',$4,'CONFIRMED',$5,$6,now(),now())
-       RETURNING id`,
-      [
-        businessId,
-        mismatchA.authorization.id,
-        mismatchB.draft.id,
-        'wave_' + crypto.randomBytes(32).toString('base64url'),
-        'wave-mismatch-' + crypto.randomUUID(),
-        'SYNTHETIC-MISMATCH-' + crypto.randomUUID().slice(0, 8),
-      ]
-    );
     await assert.rejects(
-      registry.materialize({ attemptId: inconsistent.rows[0].id }),
-      error => error instanceof IssuedInvoiceRegistryError &&
-        error.code === 'ISSUANCE_CHAIN_MISMATCH' &&
-        error.statusCode === 409
+      pool.query(
+        `INSERT INTO facturations_provider_issuance_attempts
+           (business_id,authorization_id,draft_id,provider,operation_key,state)
+         VALUES ($1,$2,$3,'WAVE',$4,'PREPARED')`,
+        [
+          businessId,
+          mismatchA.authorization.id,
+          mismatchB.draft.id,
+          'wave_' + crypto.randomBytes(32).toString('base64url'),
+        ]
+      ),
+      error => error && error.code === '23503',
+      'provider attempt cannot cross-bind an authorization and another draft'
     );
 
     const foreign = createIssuedInvoiceRegistry({

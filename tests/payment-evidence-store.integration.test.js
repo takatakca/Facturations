@@ -175,6 +175,24 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     await assert.rejects(
       store.ingestSynthetic({
         issuedInvoiceId:issued.id,
+        event:{
+          ...event,
+          eventId:'evt-'+crypto.randomUUID(),
+        },
+      }),
+      error=>error instanceof PaymentEvidenceError &&
+        error.code==='PAYMENT_TRANSACTION_REUSE_CONFLICT' &&
+        error.statusCode===409
+    );
+    const afterTransactionReuse=await summaryStore.getByIssuedInvoice({
+      issuedInvoiceId:issued.id,
+    });
+    assert.equal(afterTransactionReuse.paidCents,4000);
+    assert.equal(afterTransactionReuse.evidenceCount,1);
+
+    await assert.rejects(
+      store.ingestSynthetic({
+        issuedInvoiceId:issued.id,
         event:{...event,amountCents:5000},
       }),
       error=>error instanceof PaymentEvidenceError &&

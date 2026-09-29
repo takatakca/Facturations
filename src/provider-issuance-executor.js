@@ -12,8 +12,17 @@ class ProviderIssuanceExecutorError extends Error {
   }
 }
 
+function exactKeys(input, expected) {
+  return input && typeof input === 'object' && !Array.isArray(input) &&
+    Object.keys(input).sort().join(',') === [...expected].sort().join(',');
+}
+
 function validatePreparedPayload(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+  const topKeys = [
+    'status','operation','sourceRequestHash','providerPlanHash','businessId','customerId',
+    'currency','invoiceDate','dueDate','memo','items','expected','externalActionsPerformed',
+  ];
+  if (!exactKeys(payload, topKeys) ||
       payload.status !== 'READY_FOR_WAVE_ADAPTER' ||
       payload.operation !== 'CREATE_DRAFT_THEN_APPROVE_SEPARATELY' ||
       payload.currency !== 'CAD' ||
@@ -21,24 +30,90 @@ function validatePreparedPayload(payload) {
       !/^[a-f0-9]{64}$/.test(payload.sourceRequestHash) ||
       typeof payload.providerPlanHash !== 'string' ||
       !/^[a-f0-9]{64}$/.test(payload.providerPlanHash) ||
-      !Array.isArray(payload.items) ||
-      !payload.expected || typeof payload.expected !== 'object' ||
-      !payload.externalActionsPerformed ||
+      typeof payload.businessId !== 'string' || !payload.businessId ||
+      typeof payload.customerId !== 'string' || !payload.customerId ||
+      typeof payload.invoiceDate !== 'string' ||
+      typeof payload.dueDate !== 'string' ||
+      typeof payload.memo !== 'string' ||
+      !Array.isArray(payload.items) || payload.items.length < 1 ||
+      !exactKeys(payload.expected, [
+        'customerEmail','subtotalCents','taxTotalCents','totalCents',
+      ]) ||
+      !exactKeys(payload.externalActionsPerformed, [
+        'createInvoice','approveInvoice','sendInvoice',
+      ]) ||
       payload.externalActionsPerformed.createInvoice !== false ||
       payload.externalActionsPerformed.approveInvoice !== false ||
       payload.externalActionsPerformed.sendInvoice !== false) {
     throw new ProviderIssuanceExecutorError('INVALID_PROVIDER_PAYLOAD');
   }
+
+  const items = [];
+  for (const item of payload.items) {
+    if (!exactKeys(item, [
+      'productId','description','quantity','unitPriceCents','taxable','salesTaxIds',
+    ]) ||
+        typeof item.productId !== 'string' || !item.productId ||
+        typeof item.description !== 'string' || !item.description ||
+        !Number.isSafeInteger(item.quantity) || item.quantity < 1 ||
+        !Number.isSafeInteger(item.unitPriceCents) || item.unitPriceCents < 0 ||
+        typeof item.taxable !== 'boolean' ||
+        !Array.isArray(item.salesTaxIds) ||
+        item.salesTaxIds.some(id => typeof id !== 'string' || !id)) {
+      throw new ProviderIssuanceExecutorError('INVALID_PROVIDER_PAYLOAD');
+    }
+    items.push(Object.freeze({
+      productId: item.productId,
+      description: item.description,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+      taxable: item.taxable,
+      salesTaxIds: Object.freeze([...item.salesTaxIds]),
+    }));
+  }
+
+  if (typeof payload.expected.customerEmail !== 'string' ||
+      !Number.isSafeInteger(payload.expected.subtotalCents) ||
+      !Number.isSafeInteger(payload.expected.taxTotalCents) ||
+      !Number.isSafeInteger(payload.expected.totalCents)) {
+    throw new ProviderIssuanceExecutorError('INVALID_PROVIDER_PAYLOAD');
+  }
+
+  const normalized = Object.freeze({
+    status: payload.status,
+    operation: payload.operation,
+    sourceRequestHash: payload.sourceRequestHash,
+    providerPlanHash: payload.providerPlanHash,
+    businessId: payload.businessId,
+    customerId: payload.customerId,
+    currency: payload.currency,
+    invoiceDate: payload.invoiceDate,
+    dueDate: payload.dueDate,
+    memo: payload.memo,
+    items: Object.freeze(items),
+    expected: Object.freeze({
+      customerEmail: payload.expected.customerEmail,
+      subtotalCents: payload.expected.subtotalCents,
+      taxTotalCents: payload.expected.taxTotalCents,
+      totalCents: payload.expected.totalCents,
+    }),
+    externalActionsPerformed: Object.freeze({
+      createInvoice: false,
+      approveInvoice: false,
+      sendInvoice: false,
+    }),
+  });
+
   let actualPlanHash;
   try {
-    actualPlanHash = computeWaveProviderPlanHash(payload);
+    actualPlanHash = computeWaveProviderPlanHash(normalized);
   } catch {
     throw new ProviderIssuanceExecutorError('INVALID_PROVIDER_PAYLOAD');
   }
-  if (actualPlanHash !== payload.providerPlanHash) {
+  if (actualPlanHash !== normalized.providerPlanHash) {
     throw new ProviderIssuanceExecutorError('PROVIDER_PLAN_HASH_MISMATCH', 409);
   }
-  return payload;
+  return normalized;
 }
 
 function normalizeOutcome(result) {

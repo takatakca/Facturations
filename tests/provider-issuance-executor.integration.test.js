@@ -132,6 +132,11 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
       attemptStore: attempts,
       adapter: {
         async createInvoice(request) {
+          assert.notStrictEqual(request.payload, confirmedFixture.payload);
+          assert.equal(Object.isFrozen(request.payload), true);
+          assert.equal(Object.isFrozen(request.payload.items), true);
+          assert.equal(Object.isFrozen(request.payload.items[0]), true);
+          assert.equal(Object.isFrozen(request.payload.items[0].salesTaxIds), true);
           adapterCalls.push(request);
           return {
             status: 'CONFIRMED',
@@ -141,6 +146,29 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
         },
       },
     });
+    await assert.rejects(
+      confirmedExecutor.execute({
+        attemptId: prepared.id,
+        payload: { ...confirmedFixture.payload, unexpectedOverride: 'forbidden' },
+      }),
+      error => error instanceof ProviderIssuanceExecutorError &&
+        error.code === 'INVALID_PROVIDER_PAYLOAD'
+    );
+    await assert.rejects(
+      confirmedExecutor.execute({
+        attemptId: prepared.id,
+        payload: {
+          ...confirmedFixture.payload,
+          items: [
+            { ...confirmedFixture.payload.items[0], unexpectedOverride: 'forbidden' },
+          ],
+        },
+      }),
+      error => error instanceof ProviderIssuanceExecutorError &&
+        error.code === 'INVALID_PROVIDER_PAYLOAD'
+    );
+    assert.equal(adapterCalls.length, 0, 'unknown provider-plan fields must fail before adapter');
+
     const remappedPayload = buildWaveIssuancePreflight({
       businessId: 'wave-business-remapped',
       customerId: 'wave-customer-remapped',

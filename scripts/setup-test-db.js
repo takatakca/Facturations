@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
-const { verifyMigrationIntegrity } = require('./verify-migration-integrity');
+const { loadLock, verifyMigrationIntegrity } = require('./verify-migration-integrity');
 
 async function main() {
   const raw = process.env.FACTURATIONS_TEST_DATABASE_URL;
@@ -15,40 +15,10 @@ async function main() {
     throw new Error('Refusing migration outside localhost/facturations_test');
   }
   verifyMigrationIntegrity();
+  const migrations=loadLock().migrations.map(item=>item.file);
   const pool = new Pool({ connectionString: raw, connectionTimeoutMillis: 5000 });
   try {
-    for (const migration of [
-      '001_draft_storage.sql',
-      '002_immutable_drafts_audit.sql',
-      '003_staff_identity_sessions.sql',
-      '004_staff_invitations.sql',
-      '005_internal_draft_approvals.sql',
-      '006_login_attempt_limits.sql',
-      '007_staff_totp.sql',
-      '008_draft_workspaces.sql',
-      '009_workspace_submissions.sql',
-      '010_customer_contact_changes.sql',
-      '011_issuance_authorizations.sql',
-      '012_provider_issuance_attempts.sql',
-      '013_issued_invoice_registry.sql',
-      '014_issued_invoice_documents.sql',
-      '015_verified_issuer_profiles.sql',
-      '016_invoice_issuer_binding_and_qualified_pdf.sql',
-      '017_delivery_authorizations.sql',
-      '018_delivery_attempts.sql',
-      '019_delivery_receipts.sql',
-      '020_email_provider_evidence.sql',
-      '021_email_evidence_summary_view.sql',
-      '022_signed_webhook_evidence_provenance.sql',
-      '023_payment_evidence.sql',
-      '024_payment_evidence_summary.sql',
-      '025_client_portal_auth.sql',
-      '026_client_portal_publications.sql',
-      '027_mfa_recovery.sql',
-      '028_integration_token_replay_guard.sql',
-      '029_payment_provider_verification_gate.sql',
-      '030_payment_transaction_reuse_guard.sql',
-    ]) {
+    for (const migration of migrations) {
       const sql = fs.readFileSync(path.join(__dirname, '..', 'db', migration), 'utf8');
       await pool.query(sql);
     }

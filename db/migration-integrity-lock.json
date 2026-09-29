@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 42,
+  "lockedThrough": 43,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -212,6 +212,11 @@
       "file": "042_issued_invoice_document_integrity.sql",
       "gitBlobSha1": "148ab39ffd937dea57949be4a36219fafaa265ac",
       "bytes": 2061
+    },
+    {
+      "file": "043_issuer_and_qualified_pdf_integrity.sql",
+      "gitBlobSha1": "69a3e60b9fe373678baa58d4a031a819d7dcdbe0",
+      "bytes": 7941
     }
   ]
 }

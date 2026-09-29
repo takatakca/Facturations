@@ -31,8 +31,8 @@ function fixture(){
 
 test('repository migrations match the immutable integrity lock',()=>{
   const result=verifyMigrationIntegrity();
-  assert.equal(result.lockedThrough,33);
-  assert.equal(result.migrationCount,33);
+  assert.equal(result.lockedThrough,34);
+  assert.equal(result.migrationCount,34);
   assert.match(result.proofSha256,/^[a-f0-9]{64}$/);
 });
 
@@ -56,7 +56,7 @@ test('editing a locked historical migration fails closed',()=>{
 test('adding an unregistered migration fails closed',()=>{
   const f=fixture();
   try{
-    fs.writeFileSync(path.join(f.db,'034_unreviewed.sql'),'SELECT 1;\n');
+    fs.writeFileSync(path.join(f.db,'035_unreviewed.sql'),'SELECT 1;\n');
     assert.throws(
       ()=>verifyMigrationIntegrity({dbDir:f.db,lockPath:f.lockPath}),
       error=>error instanceof MigrationIntegrityError &&

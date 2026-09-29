@@ -168,29 +168,41 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
             provider_transaction_id,event_type,amount_cents,currency,occurred_at,
             source_mode,evidence_hash)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'CAD',$8,'SYNTHETIC_TEST',$9)
-         ON CONFLICT (business_id,provider_key,provider_event_id) DO NOTHING
+         ON CONFLICT DO NOTHING
          RETURNING *`,
         [tenant,issuedInvoiceId,event.providerKey,event.eventId,event.providerTransactionId,
          event.eventType,event.amountCents,event.occurredAt,hash]
       );
       let saved=inserted.rows[0];
       if(!saved){
-        const prior=await client.query(
+        const priorEvent=await client.query(
           `SELECT * FROM facturations_payment_evidence
             WHERE business_id=$1 AND provider_key=$2 AND provider_event_id=$3`,
           [tenant,event.providerKey,event.eventId]
         );
-        saved=prior.rows[0];
-        if(!saved ||
-           saved.issued_invoice_id!==issuedInvoiceId ||
-           saved.provider_transaction_id!==event.providerTransactionId ||
-           saved.event_type!==event.eventType ||
-           Number(saved.amount_cents)!==event.amountCents ||
-           saved.currency!=='CAD' ||
-           new Date(saved.occurred_at).toISOString()!==event.occurredAt ||
-           saved.source_mode!=='SYNTHETIC_TEST' ||
-           saved.evidence_hash!==hash){
-          throw new PaymentEvidenceError('PAYMENT_EVIDENCE_EVENT_CONFLICT',409);
+        saved=priorEvent.rows[0];
+        if(saved){
+          if(saved.issued_invoice_id!==issuedInvoiceId ||
+             saved.provider_transaction_id!==event.providerTransactionId ||
+             saved.event_type!==event.eventType ||
+             Number(saved.amount_cents)!==event.amountCents ||
+             saved.currency!=='CAD' ||
+             new Date(saved.occurred_at).toISOString()!==event.occurredAt ||
+             saved.source_mode!=='SYNTHETIC_TEST' ||
+             saved.evidence_hash!==hash){
+            throw new PaymentEvidenceError('PAYMENT_EVIDENCE_EVENT_CONFLICT',409);
+          }
+        }else{
+          const priorTransaction=await client.query(
+            `SELECT * FROM facturations_payment_evidence
+              WHERE business_id=$1 AND provider_key=$2
+                AND provider_transaction_id=$3 AND event_type=$4`,
+            [tenant,event.providerKey,event.providerTransactionId,event.eventType]
+          );
+          if(priorTransaction.rows.length){
+            throw new PaymentEvidenceError('PAYMENT_TRANSACTION_REUSE_CONFLICT',409);
+          }
+          throw new PaymentEvidenceError('PAYMENT_EVIDENCE_CONFLICT',409);
         }
       }
 

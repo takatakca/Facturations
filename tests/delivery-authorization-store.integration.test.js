@@ -425,6 +425,61 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       'delivery authorization cannot bind a qualified PDF to another issued invoice'
     );
 
+    const crossSourceDocument = await documents.materialize({
+      issuedInvoiceId: crossIssued.id,
+    });
+    assert.equal(crossSourceDocument.issuedInvoiceId, crossIssued.id);
+
+    const crossQualified = await qualifiedDocuments.materialize({
+      bindingId: crossBinding.id,
+    });
+    assert.equal(crossQualified.issuedInvoiceId, crossIssued.id);
+
+    const crossDeliveryAuthorized = await delivery.authorize({
+      confirmation: 'AUTHORIZE_QUALIFIED_PDF_DELIVERY',
+      qualifiedDocumentId: crossQualified.id,
+      expectedRecipientEmail: recipient,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_attempts
+           (business_id,authorization_id,issued_invoice_id,qualified_document_id,
+            provider,operation_key,state,started_at,finished_at,provider_message_id)
+         VALUES ($1,$2,$3,$4,'SIMULATED_EMAIL',$5,'CONFIRMED',now(),now(),$6)`,
+        [
+          businessId,
+          crossDeliveryAuthorized.id,
+          crossIssued.id,
+          crossQualified.id,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+          'direct-confirmed-' + crypto.randomUUID(),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'delivery attempt cannot be inserted directly as CONFIRMED'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_attempts
+           (business_id,authorization_id,issued_invoice_id,qualified_document_id,
+            provider,operation_key,state)
+         VALUES ($1,$2,$3,$4,'SIMULATED_EMAIL',$5,'PREPARED')`,
+        [
+          businessId,
+          crossDeliveryAuthorized.id,
+          crossIssued.id,
+          crossQualified.id,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct PREPARED attempt without its append-only ledger event must fail at commit'
+    );
+
     await assert.rejects(
       delivery.authorize({
         confirmation: 'AUTHORIZE_QUALIFIED_PDF_DELIVERY',
@@ -467,6 +522,42 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(deliveryAttempt.state, 'PREPARED');
     assert.equal(deliveryAttempt.provider, 'SIMULATED_EMAIL');
     assert.equal(deliveryAttempt.emailed, false);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_attempts
+            SET state='CONFIRMED',
+                started_at=now(),
+                finished_at=now(),
+                provider_message_id=$3
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, deliveryAttempt.id, 'forged-message-' + crypto.randomUUID()]
+      ),
+      error => error && error.code === '23514',
+      'direct PREPARED to CONFIRMED transition must fail in PostgreSQL'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_attempts
+            SET state='IN_PROGRESS',started_at=now()
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, deliveryAttempt.id]
+      ),
+      error => error && error.code === '23514',
+      'state transition without matching append-only event must fail at commit'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_events
+           (business_id,attempt_id,from_state,to_state,reason_code)
+         VALUES ($1,$2,'PREPARED','CONFIRMED','PROVIDER_CONFIRMED')`,
+        [businessId, deliveryAttempt.id]
+      ),
+      error => error && error.code === '23514',
+      'delivery event cannot claim a state transition that did not occur'
+    );
 
     await assert.rejects(
       deliveryReceipts.materialize({ attemptId: deliveryAttempt.id }),

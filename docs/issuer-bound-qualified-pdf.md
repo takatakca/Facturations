@@ -33,6 +33,8 @@ Le PDF qualifié exige la chaîne complète :
 4. profil `VERIFIED`;
 5. correspondance exacte ID/version/hash.
 
+Avant tout nouveau rendu qualifié, le store relit aussi les octets du PDF source, vérifie son type, sa longueur et recalcule SHA-256. Une divergence avec le hash de provenance enregistré bloque la qualification avec `SOURCE_DOCUMENT_STORAGE_INVALID` avant le renderer.
+
 Le PDF qualifié archive aussi :
 
 - l’ID et le SHA-256 du PDF source;

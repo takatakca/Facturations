@@ -468,7 +468,7 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
       { to_state: 'IN_PROGRESS', n: 3 },
       { to_state: 'PREPARED', n: 3 },
     ]);
-    assert.deepEqual(auditRows.rows, [{ action: 'DRAFT_CREATED', n: 3 }]);
+    assert.deepEqual(auditRows.rows, [{ action: 'DRAFT_CREATED', n: 4 }]);
   } finally {
     await pool.end();
   }

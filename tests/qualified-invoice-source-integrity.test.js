@@ -9,11 +9,39 @@ const {
   QualifiedInvoiceDocumentError,
 }=require('../src/qualified-invoice-document-store');
 const {computeIssuerProfileHash}=require('../src/issuer-profile-store');
+const {previewDraft}=require('../src/draft-preview');
+const {computeDraftPreviewHash}=require('../src/draft-snapshot-integrity');
 
 const ID='11111111-1111-4111-8111-111111111111';
 const ISSUED='22222222-2222-4222-8222-222222222222';
 const PROFILE='33333333-3333-4333-8333-333333333333';
 const SOURCE='44444444-4444-4444-8444-444444444444';
+
+function storedInvoiceSnapshot(){
+  const preview=previewDraft({
+    currency:'CAD',
+    customer:{
+      name:'Synthetic Invoice Customer',
+      email:'invoice@example.test',
+      address:'123 Example Street',
+    },
+    invoiceDate:'2026-09-28',
+    dueDate:'2026-10-28',
+    notes:'Synthetic qualified integrity',
+    lines:[{
+      description:'Synthetic service',
+      quantity:1,
+      unitPriceCents:1000,
+      discountCents:0,
+      taxable:false,
+    }],
+    taxes:[],
+  });
+  return {
+    requestHash:computeDraftPreviewHash(preview),
+    snapshot:{...preview,status:'DRAFT',persisted:true},
+  };
+}
 
 test('qualified PDF creation fails closed when source archive bytes no longer match provenance hash',async()=>{
   const expected=Buffer.concat([
@@ -43,6 +71,7 @@ test('qualified PDF creation fails closed when source archive bytes no longer ma
     taxRegistrations:[],
   };
   const profileHash=computeIssuerProfileHash(originalProfile);
+  const draftIntegrity=storedInvoiceSnapshot();
 
   let rendererCalled=false;
   let released=false;
@@ -59,7 +88,8 @@ test('qualified PDF creation fails closed when source archive bytes no longer ma
     provider:'WAVE',
     provider_invoice_id:'wave-synthetic',
     official_invoice_number:'SYNTHETIC-001',
-    issued_snapshot:{taxTotalCents:0},
+    request_hash:draftIntegrity.requestHash,
+    issued_snapshot:draftIntegrity.snapshot,
     invoice_status:'ISSUED_CONFIRMED',
     invoice_delivery_state:'NOT_AUTHORIZED',
     provider_confirmed_at:new Date('2026-09-28T12:00:00.000Z'),
@@ -142,6 +172,7 @@ test('qualified PDF creation fails closed when issuer profile fields no longer m
     taxRegistrations:[],
   };
   const profileHash=computeIssuerProfileHash(originalProfile);
+  const draftIntegrity=storedInvoiceSnapshot();
 
   let rendererCalled=false;
   let rolledBack=false;
@@ -158,7 +189,8 @@ test('qualified PDF creation fails closed when issuer profile fields no longer m
     provider:'WAVE',
     provider_invoice_id:'wave-synthetic',
     official_invoice_number:'SYNTHETIC-001',
-    issued_snapshot:{taxTotalCents:0},
+    request_hash:draftIntegrity.requestHash,
+    issued_snapshot:draftIntegrity.snapshot,
     invoice_status:'ISSUED_CONFIRMED',
     invoice_delivery_state:'NOT_AUTHORIZED',
     provider_confirmed_at:new Date('2026-09-28T12:00:00.000Z'),

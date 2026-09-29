@@ -165,6 +165,7 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     assert.equal(payment.amountCents,4000);
     assert.equal(payment.currency,'CAD');
     assert.equal(payment.sourceMode,'SYNTHETIC_TEST');
+    assert.equal(payment.relatedPaymentEvidenceId,null);
     assert.equal(payment.externallyVerified,false);
     assert.match(payment.evidenceHash,/^[a-f0-9]{64}$/);
 
@@ -204,11 +205,31 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
       providerKey:'SYNTHETIC_PROCESSOR',
       eventId:'evt-'+crypto.randomUUID(),
       providerTransactionId:'refund-'+crypto.randomUUID(),
+      relatedProviderTransactionId:event.providerTransactionId,
       eventType:'REFUND_ISSUED',
       amountCents:1000,
       currency:'CAD',
       occurredAt:'2026-09-26T16:05:00.000Z',
     };
+    await assert.rejects(
+      store.ingestSynthetic({
+        issuedInvoiceId:issued.id,
+        event:{
+          providerKey:'SYNTHETIC_PROCESSOR',
+          eventId:'evt-'+crypto.randomUUID(),
+          providerTransactionId:'refund-'+crypto.randomUUID(),
+          relatedProviderTransactionId:'txn-missing-'+crypto.randomUUID(),
+          eventType:'REFUND_ISSUED',
+          amountCents:1000,
+          currency:'CAD',
+          occurredAt:'2026-09-26T16:04:00.000Z',
+        },
+      }),
+      error=>error instanceof PaymentEvidenceError &&
+        error.code==='REFUND_PAYMENT_EVIDENCE_REQUIRED' &&
+        error.statusCode===409
+    );
+
     const afterPayment=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
     assert.equal(afterPayment.paidCents,4000);
     assert.equal(afterPayment.refundedCents,0);
@@ -219,6 +240,7 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
 
     const refund=await store.ingestSynthetic({issuedInvoiceId:issued.id,event:refundEvent});
     assert.equal(refund.eventType,'REFUND_ISSUED');
+    assert.equal(refund.relatedPaymentEvidenceId,payment.id);
 
     const afterRefund=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
     assert.equal(afterRefund.paidCents,4000);
@@ -270,6 +292,7 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
         providerKey:'SYNTHETIC_PROCESSOR',
         eventId:'evt-'+crypto.randomUUID(),
         providerTransactionId:'refund-'+crypto.randomUUID(),
+        relatedProviderTransactionId:event.providerTransactionId,
         eventType:'REFUND_ISSUED',
         amountCents:10002,
         currency:'CAD',
@@ -284,6 +307,27 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     assert.deepEqual(listed.map(item=>item.eventType),[
       'PAYMENT_RECEIVED','REFUND_ISSUED','PAYMENT_RECEIVED','PAYMENT_RECEIVED','REFUND_ISSUED',
     ]);
+
+    const secondIssued=await createIssuedInvoice({pool,businessId});
+    await assert.rejects(
+      store.ingestSynthetic({
+        issuedInvoiceId:secondIssued.id,
+        event:{
+          providerKey:'SYNTHETIC_PROCESSOR',
+          eventId:'evt-'+crypto.randomUUID(),
+          providerTransactionId:'refund-cross-'+crypto.randomUUID(),
+          relatedProviderTransactionId:event.providerTransactionId,
+          eventType:'REFUND_ISSUED',
+          amountCents:100,
+          currency:'CAD',
+          occurredAt:'2026-09-26T16:13:00.000Z',
+        },
+      }),
+      error=>error instanceof PaymentEvidenceError &&
+        error.code==='REFUND_PAYMENT_EVIDENCE_REQUIRED' &&
+        error.statusCode===409,
+      'cross-invoice refund lineage must fail closed'
+    );
 
     const foreign=createPaymentEvidenceStore({
       pool,businessId:'payment-other-'+crypto.randomUUID(),providerKey:'SYNTHETIC_PROCESSOR',

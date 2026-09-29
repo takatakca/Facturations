@@ -12,7 +12,7 @@ GO only if:
 - at least one independent review is required;
 - unresolved conversations block merge;
 - the exact release SHA has green Node 20/22, Chrome FR/EN and Chrome MFA/PostgreSQL runs;
-- migration integrity lock 001–041 is green;
+- migration integrity lock 001–042 is green;
 - runtime DB least-privilege matrix and target-environment preflight are green;
 - supply-chain workflow pins are unchanged or explicitly reviewed.
 
@@ -38,7 +38,7 @@ Otherwise: **NO-GO**.
 
 GO only if:
 
-- migrations 001–041 are reviewed and applied in sequence;
+- migrations 001–042 are reviewed and applied in sequence;
 - migration integrity lock passes;
 - migrations are executed with a separate admin/migration identity;
 - runtime application identity passes `npm run check:runtime-db`;

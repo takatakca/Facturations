@@ -104,3 +104,102 @@ test('qualified PDF creation fails closed when source archive bytes no longer ma
   assert.equal(rolledBack,true);
   assert.equal(released,true);
 });
+
+
+test('qualified PDF creation fails closed when issuer profile fields no longer match stored hash',async()=>{
+  const sourceBytes=Buffer.concat([
+    Buffer.from('%PDF-1.4\n','ascii'),
+    Buffer.alloc(128,65),
+    Buffer.from('\n%%EOF\n','ascii'),
+  ]);
+  const sourceHash=crypto.createHash('sha256').update(sourceBytes).digest('hex');
+
+  const originalProfile={
+    legalName:'Original Synthetic Issuer',
+    displayName:'Synthetic',
+    addressLines:['123 Example'],
+    city:'Montreal',
+    region:'QC',
+    postalCode:'H0H0H0',
+    countryCode:'CA',
+    contactEmail:'issuer@example.test',
+    contactPhone:null,
+    taxRegistrations:[],
+  };
+  const profileHash=computeIssuerProfileHash(originalProfile);
+
+  let rendererCalled=false;
+  let rolledBack=false;
+  let released=false;
+  const row={
+    binding_id:ID,
+    issued_invoice_id:ISSUED,
+    issuer_profile_id:PROFILE,
+    binding_profile_hash:profileHash,
+    binding_profile_version:1,
+    authorization_id:'55555555-5555-4555-8555-555555555555',
+    draft_id:'66666666-6666-4666-8666-666666666666',
+    attempt_id:'77777777-7777-4777-8777-777777777777',
+    provider:'WAVE',
+    provider_invoice_id:'wave-synthetic',
+    official_invoice_number:'SYNTHETIC-001',
+    issued_snapshot:{taxTotalCents:0},
+    invoice_status:'ISSUED_CONFIRMED',
+    invoice_delivery_state:'NOT_AUTHORIZED',
+    provider_confirmed_at:new Date('2026-09-28T12:00:00.000Z'),
+    invoice_materialized_at:new Date('2026-09-28T12:01:00.000Z'),
+    profile_version:1,
+    legal_name:'Tampered Synthetic Issuer',
+    display_name:originalProfile.displayName,
+    address_lines:originalProfile.addressLines,
+    city:originalProfile.city,
+    region:originalProfile.region,
+    postal_code:originalProfile.postalCode,
+    country_code:originalProfile.countryCode,
+    contact_email:originalProfile.contactEmail,
+    contact_phone:originalProfile.contactPhone,
+    tax_registrations:originalProfile.taxRegistrations,
+    profile_hash:profileHash,
+    profile_state:'VERIFIED',
+    source_document_id:SOURCE,
+    source_document_sha256:sourceHash,
+    source_content_type:'application/pdf',
+    source_byte_length:sourceBytes.length,
+    source_pdf_bytes:sourceBytes,
+    source_delivery_state:'NOT_AUTHORIZED',
+  };
+
+  const client={
+    async query(sql){
+      if(sql==='BEGIN') return {rows:[]};
+      if(sql==='ROLLBACK'){rolledBack=true;return {rows:[]};}
+      if(sql.includes('FROM facturations_invoice_issuer_bindings AS b')){
+        return {rows:[row]};
+      }
+      throw new Error('unexpected query after issuer profile integrity failure');
+    },
+    release(){released=true;},
+  };
+  const pool={
+    async connect(){return client;},
+    async query(){throw new Error('unexpected pool query');},
+  };
+  const store=createQualifiedInvoiceDocumentStore({
+    pool,
+    businessId:'synthetic-profile-integrity',
+    renderer:async()=>{
+      rendererCalled=true;
+      throw new Error('renderer must not run');
+    },
+  });
+
+  await assert.rejects(
+    store.materialize({bindingId:ID}),
+    error=>error instanceof QualifiedInvoiceDocumentError &&
+      error.code==='ISSUER_PROFILE_STORAGE_INVALID' &&
+      error.statusCode===503
+  );
+  assert.equal(rendererCalled,false);
+  assert.equal(rolledBack,true);
+  assert.equal(released,true);
+});

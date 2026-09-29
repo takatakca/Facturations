@@ -108,6 +108,7 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
     });
     const prepared = await attempts.prepare({
       authorizationId: confirmedFixture.authorization.id,
+      providerPlanHash: confirmedFixture.payload.providerPlanHash,
     });
     assert.equal(prepared.state, 'PREPARED');
     assert.match(prepared.operationKey, /^wave_[A-Za-z0-9_-]{43}$/);
@@ -117,6 +118,7 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
 
     const preparedRetry = await attempts.prepare({
       authorizationId: confirmedFixture.authorization.id,
+      providerPlanHash: confirmedFixture.payload.providerPlanHash,
     });
     assert.equal(preparedRetry.id, prepared.id);
     assert.equal(preparedRetry.operationKey, prepared.operationKey);
@@ -139,6 +141,37 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
         },
       },
     });
+    const remappedPayload = buildWaveIssuancePreflight({
+      businessId: 'wave-business-remapped',
+      customerId: 'wave-customer-remapped',
+      productIds: ['wave-product-remapped'],
+      salesTaxes: {},
+      snapshot: confirmedFixture.draft.preview,
+    });
+    assert.equal(remappedPayload.sourceRequestHash, confirmedFixture.payload.sourceRequestHash);
+    assert.notEqual(remappedPayload.providerPlanHash, confirmedFixture.payload.providerPlanHash);
+
+    await assert.rejects(
+      attempts.prepare({
+        authorizationId: confirmedFixture.authorization.id,
+        providerPlanHash: remappedPayload.providerPlanHash,
+      }),
+      error => error instanceof ProviderIssuanceAttemptError &&
+        error.code === 'PREPARE_CONFLICT' &&
+        error.statusCode === 409
+    );
+
+    await assert.rejects(
+      confirmedExecutor.execute({
+        attemptId: prepared.id,
+        payload: remappedPayload,
+      }),
+      error => error instanceof ProviderIssuanceAttemptError &&
+        error.code === 'PROVIDER_PAYLOAD_BINDING_MISMATCH' &&
+        error.statusCode === 409
+    );
+    assert.equal(adapterCalls.length, 0, 'remapped provider plan must not reach adapter');
+
     await assert.rejects(
       confirmedExecutor.execute({
         attemptId: prepared.id,
@@ -151,6 +184,21 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
     assert.equal(adapterCalls.length, 0, 'mismatched draft payload must not reach adapter');
     const stillPrepared = await attempts.get({ attemptId: prepared.id });
     assert.equal(stillPrepared.state, 'PREPARED');
+
+    const tamperedPayload = {
+      ...confirmedFixture.payload,
+      customerId: 'wave-customer-tampered-without-rehash',
+    };
+    await assert.rejects(
+      confirmedExecutor.execute({
+        attemptId: prepared.id,
+        payload: tamperedPayload,
+      }),
+      error => error instanceof ProviderIssuanceExecutorError &&
+        error.code === 'PROVIDER_PLAN_HASH_MISMATCH' &&
+        error.statusCode === 409
+    );
+    assert.equal(adapterCalls.length, 0, 'tampered plan hash must fail before adapter');
 
     const confirmed = await confirmedExecutor.execute({
       attemptId: prepared.id,
@@ -175,6 +223,7 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
 
     const ambiguousPrepared = await attempts.prepare({
       authorizationId: ambiguousFixture.authorization.id,
+      providerPlanHash: ambiguousFixture.payload.providerPlanHash,
     });
     let ambiguousCalls = 0;
     const ambiguousExecutor = createProviderIssuanceExecutor({
@@ -227,6 +276,7 @@ test('persistent provider engine confirms, blocks ambiguous retry, and reconcile
     });
     const failedPrepared = await attempts.prepare({
       authorizationId: failedFixture.authorization.id,
+      providerPlanHash: failedFixture.payload.providerPlanHash,
     });
     const failedExecutor = createProviderIssuanceExecutor({
       attemptStore: attempts,

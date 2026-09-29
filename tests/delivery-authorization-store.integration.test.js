@@ -401,7 +401,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
           foreignSourcePdf,
         ]
       ),
-      error => error && error.code === '23503',
+      error => error && error.code === '23514',
       'qualified PDF cannot reuse a source document from another issued invoice'
     );
 

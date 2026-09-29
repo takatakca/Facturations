@@ -329,6 +329,64 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
       'cross-invoice refund lineage must fail closed'
     );
 
+    const secondPaymentEvent={
+      providerKey:'SYNTHETIC_PROCESSOR',
+      eventId:'evt-'+crypto.randomUUID(),
+      providerTransactionId:'txn-'+crypto.randomUUID(),
+      eventType:'PAYMENT_RECEIVED',
+      amountCents:500,
+      currency:'CAD',
+      occurredAt:'2026-09-26T16:14:00.000Z',
+    };
+    const secondPayment=await store.ingestSynthetic({
+      issuedInvoiceId:secondIssued.id,
+      event:secondPaymentEvent,
+    });
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,related_payment_evidence_id,event_type,
+            amount_cents,currency,occurred_at,source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,$5,'REFUND_ISSUED',
+                 100,'CAD',$6,'SYNTHETIC_TEST',$7)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-cross-invoice-'+crypto.randomUUID(),
+          'refund-direct-cross-invoice-'+crypto.randomUUID(),
+          secondPayment.id,
+          '2026-09-26T16:15:00.000Z',
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error=>error && error.code==='23514',
+      'direct cross-invoice refund lineage must fail closed in PostgreSQL'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,related_payment_evidence_id,event_type,
+            amount_cents,currency,occurred_at,source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,$5,'REFUND_ISSUED',
+                 100,'CAD',$6,'SYNTHETIC_TEST',$7)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-refund-parent-'+crypto.randomUUID(),
+          'refund-direct-refund-parent-'+crypto.randomUUID(),
+          refund.id,
+          '2026-09-26T16:16:00.000Z',
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error=>error && error.code==='23514',
+      'refund-to-refund lineage must fail closed in PostgreSQL'
+    );
+
     const foreign=createPaymentEvidenceStore({
       pool,businessId:'payment-other-'+crypto.randomUUID(),providerKey:'SYNTHETIC_PROCESSOR',
     });

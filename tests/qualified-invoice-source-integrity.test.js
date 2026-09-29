@@ -8,6 +8,7 @@ const {
   createQualifiedInvoiceDocumentStore,
   QualifiedInvoiceDocumentError,
 }=require('../src/qualified-invoice-document-store');
+const {computeIssuerProfileHash}=require('../src/issuer-profile-store');
 
 const ID='11111111-1111-4111-8111-111111111111';
 const ISSUED='22222222-2222-4222-8222-222222222222';
@@ -29,6 +30,20 @@ test('qualified PDF creation fails closed when source archive bytes no longer ma
     expectedHash
   );
 
+  const originalProfile={
+    legalName:'Synthetic Issuer',
+    displayName:null,
+    addressLines:['123 Example'],
+    city:originalProfile.city,
+    region:originalProfile.region,
+    postalCode:'H0H0H0',
+    countryCode:'CA',
+    contactEmail:null,
+    contactPhone:null,
+    taxRegistrations:[],
+  };
+  const profileHash=computeIssuerProfileHash(originalProfile);
+
   let rendererCalled=false;
   let released=false;
   let rolledBack=false;
@@ -36,7 +51,7 @@ test('qualified PDF creation fails closed when source archive bytes no longer ma
     binding_id:ID,
     issued_invoice_id:ISSUED,
     issuer_profile_id:PROFILE,
-    binding_profile_hash:'a'.repeat(64),
+    binding_profile_hash:profileHash,
     binding_profile_version:1,
     authorization_id:'55555555-5555-4555-8555-555555555555',
     draft_id:'66666666-6666-4666-8666-666666666666',
@@ -50,17 +65,17 @@ test('qualified PDF creation fails closed when source archive bytes no longer ma
     provider_confirmed_at:new Date('2026-09-28T12:00:00.000Z'),
     invoice_materialized_at:new Date('2026-09-28T12:01:00.000Z'),
     profile_version:1,
-    legal_name:'Synthetic Issuer',
-    display_name:null,
-    address_lines:['123 Example'],
+    legal_name:originalProfile.legalName,
+    display_name:originalProfile.displayName,
+    address_lines:originalProfile.addressLines,
     city:'Montreal',
     region:'QC',
-    postal_code:'H0H0H0',
-    country_code:'CA',
-    contact_email:null,
-    contact_phone:null,
-    tax_registrations:[],
-    profile_hash:'a'.repeat(64),
+    postal_code:originalProfile.postalCode,
+    country_code:originalProfile.countryCode,
+    contact_email:originalProfile.contactEmail,
+    contact_phone:originalProfile.contactPhone,
+    tax_registrations:originalProfile.taxRegistrations,
+    profile_hash:profileHash,
     profile_state:'VERIFIED',
     source_document_id:SOURCE,
     source_document_sha256:expectedHash,

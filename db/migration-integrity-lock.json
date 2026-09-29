@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 32,
+  "lockedThrough": 33,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -162,6 +162,11 @@
       "file": "032_portal_document_invoice_binding.sql",
       "gitBlobSha1": "8d6f3f19bc417ec7ce15656a3f4b1fce2867b5fb",
       "bytes": 669
+    },
+    {
+      "file": "033_refund_lineage_guard.sql",
+      "gitBlobSha1": "6871e64b4a67cca290219d10d6dc5357024c24e5",
+      "bytes": 1756
     }
   ]
 }

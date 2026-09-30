@@ -29,7 +29,7 @@ function submission(){
     contentType:'application/pdf',
     pdfBytes:pdf(),
     qualifiedDocumentId:'11111111-1111-4111-8111-111111111111',
-    qualifiedDocumentSha256:'a'.repeat(64),
+    qualifiedDocumentSha256:crypto.createHash('sha256').update(pdf()).digest('hex'),
   };
 }
 
@@ -50,7 +50,10 @@ test('staging provider submission preserves exact idempotency and immutable docu
   assert.equal(result.providerMessageId,'staging-message-001');
   assert.ok(seen.operationKey.startsWith('mail_'));
   assert.equal(seen.recipientEmail,'client@example.test');
-  assert.equal(seen.qualifiedDocumentSha256,'a'.repeat(64));
+  assert.equal(
+    seen.qualifiedDocumentSha256,
+    crypto.createHash('sha256').update(submission().pdfBytes).digest('hex')
+  );
   assert.ok(Buffer.isBuffer(seen.pdfBytes));
 });
 
@@ -87,6 +90,25 @@ test('submission validator rejects non-PDF bytes and content hash shape errors',
     ()=>validateEmailProviderSubmission(badHash),
     error=>error instanceof EmailProviderContractError &&
       error.code==='INVALID_QUALIFIED_DOCUMENT_SHA256'
+  );
+});
+
+test('submission validator rejects non-UUID qualified document provenance',()=>{
+  const invalid={...submission(),qualifiedDocumentId:'not-a-qualified-document'};
+  assert.throws(
+    ()=>validateEmailProviderSubmission(invalid),
+    error=>error instanceof EmailProviderContractError &&
+      error.code==='INVALID_QUALIFIED_DOCUMENT_ID'
+  );
+});
+
+test('submission validator rejects provenance hash that does not match the PDF bytes',()=>{
+  const mismatched={...submission(),qualifiedDocumentSha256:'a'.repeat(64)};
+  assert.throws(
+    ()=>validateEmailProviderSubmission(mismatched),
+    error=>error instanceof EmailProviderContractError &&
+      error.code==='EMAIL_PROVIDER_PDF_HASH_MISMATCH' &&
+      error.statusCode===409
   );
 });
 

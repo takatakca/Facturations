@@ -31,6 +31,12 @@ function routeGroup(rawUrl) {
     ['/api/dashboard/summary', 'API_DASHBOARD'],
     ['/api/customers', 'API_CUSTOMERS'],
     ['/api/approvals', 'API_APPROVALS'],
+    ['/integration/v1/capabilities', 'INTEGRATION_CAPABILITIES'],
+    ['/integration/v1/dashboard', 'INTEGRATION_DASHBOARD'],
+    ['/integration/v1/drafts', 'INTEGRATION_DRAFTS'],
+    ['/integration/v1/customers', 'INTEGRATION_CUSTOMERS'],
+    ['/integration/v1/approvals', 'INTEGRATION_APPROVALS'],
+    ['/integration/v1/handoffs/owner-review', 'INTEGRATION_OWNER_REVIEW_HANDOFF'],
   ]);
   if (exact.has(pathname)) return exact.get(pathname);
 
@@ -44,6 +50,9 @@ function routeGroup(rawUrl) {
     [/^\/portal\/invoices\/[^/]+$/u, 'PORTAL_INVOICE'],
     [/^\/portal\/documents\/[^/]+\.pdf$/u, 'PORTAL_PDF'],
     [/^\/api\/drafts\/[^/]+$/u, 'API_DRAFT_ITEM'],
+    [/^\/integration\/v1\/drafts\/[^/]+\/approval$/u, 'INTEGRATION_DRAFT_APPROVAL'],
+    [/^\/integration\/v1\/drafts\/[^/]+\/workflow$/u, 'INTEGRATION_DRAFT_WORKFLOW'],
+    [/^\/integration\/v1\/drafts\/[^/]+$/u, 'INTEGRATION_DRAFT_DETAIL'],
   ];
   for (const [pattern, name] of dynamic) {
     if (pattern.test(pathname)) return name;
@@ -72,6 +81,9 @@ function attachOperationalTelemetry(server, {
     }
 
     const requestId = generated.toLowerCase();
+    // Make only the server-generated correlation ID available to downstream handlers.
+    // Caller-supplied X-Request-ID is intentionally ignored.
+    request.requestId = requestId;
     const method = typeof request.method === 'string' &&
       /^[A-Z]{1,12}$/u.test(request.method) ? request.method : 'OTHER';
     const route = routeGroup(request.url);

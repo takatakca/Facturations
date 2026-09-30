@@ -104,7 +104,10 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
       snapshot: draft.preview,
     });
 
-    const prepared = await attempts.prepare({ authorizationId: authorization.id });
+    const prepared = await attempts.prepare({
+      authorizationId: authorization.id,
+      providerPlanHash: payload.providerPlanHash,
+    });
     const executor = createProviderIssuanceExecutor({
       attemptStore: attempts,
       adapter: {
@@ -119,6 +122,66 @@ test('issued invoice PDF is stored immutably, hashed and never authorizes delive
     });
     const confirmed = await executor.execute({ attemptId: prepared.id, payload });
     const issued = await registry.materialize({ attemptId: confirmed.id });
+
+    const directPdf = Buffer.concat([
+      Buffer.from('%PDF-1.4\n', 'ascii'),
+      Buffer.alloc(160, 65),
+      Buffer.from('\n%%EOF\n', 'ascii'),
+    ]);
+    const directPdfHash = crypto.createHash('sha256').update(directPdf).digest('hex');
+
+    async function insertDirectDocument(overrides = {}) {
+      const bytes = overrides.pdfBytes || directPdf;
+      const hash = overrides.contentSha256 ||
+        crypto.createHash('sha256').update(bytes).digest('hex');
+      const renderVersion = overrides.renderVersion || 'invoice-pdf-v1-winansi';
+      const createdAt = Object.prototype.hasOwnProperty.call(overrides, 'createdAt')
+        ? overrides.createdAt : null;
+      return pool.query(
+        `INSERT INTO facturations_issued_invoice_documents
+           (business_id,issued_invoice_id,render_version,content_sha256,
+            byte_length,pdf_bytes,created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7::timestamptz,now()))`,
+        [
+          businessId,
+          issued.id,
+          renderVersion,
+          hash,
+          bytes.length,
+          bytes,
+          createdAt,
+        ]
+      );
+    }
+
+    await assert.rejects(
+      insertDirectDocument({
+        contentSha256: crypto.randomBytes(32).toString('hex'),
+      }),
+      error => error && error.code === '23514',
+      'issued invoice PDF hash must equal the SHA-256 of its stored bytes'
+    );
+
+    const nonPdfBytes = Buffer.alloc(180, 66);
+    await assert.rejects(
+      insertDirectDocument({ pdfBytes: nonPdfBytes }),
+      error => error && error.code === '23514',
+      'issued invoice document must have canonical PDF framing'
+    );
+
+    await assert.rejects(
+      insertDirectDocument({ renderVersion: 'forged-render-version' }),
+      error => error && error.code === '23514',
+      'issued invoice document must use the canonical renderer version'
+    );
+
+    await assert.rejects(
+      insertDirectDocument({
+        createdAt: new Date(new Date(issued.materializedAt).getTime() - 1000),
+      }),
+      error => error && error.code === '23514',
+      'issued invoice document cannot predate the issued invoice'
+    );
 
     const document = await documents.materialize({ issuedInvoiceId: issued.id });
     assert.equal(document.issuedInvoiceId, issued.id);

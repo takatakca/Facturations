@@ -20,6 +20,12 @@ function object(value, code) {
   return value;
 }
 
+function exactKeys(value, allowed, code) {
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) throw new DraftValidationError(code);
+  }
+}
+
 function text(value, max, code, required = true) {
   if (value == null && !required) return null;
   if (typeof value !== 'string') throw new DraftValidationError(code);
@@ -64,8 +70,10 @@ function toCents(value) {
 
 function previewDraft(payload) {
   const input = object(payload, 'INVALID_DRAFT');
+  exactKeys(input, ['currency', 'customer', 'invoiceDate', 'dueDate', 'notes', 'lines', 'taxes'], 'INVALID_DRAFT');
   if (input.currency !== 'CAD') throw new DraftValidationError('UNSUPPORTED_CURRENCY');
   const customerInput = object(input.customer, 'INVALID_CUSTOMER');
+  exactKeys(customerInput, ['name', 'email', 'address'], 'INVALID_CUSTOMER');
   const customer = {
     name: text(customerInput.name, 160, 'INVALID_CUSTOMER_NAME'),
     email: email(customerInput.email),
@@ -84,6 +92,7 @@ function previewDraft(payload) {
   const taxCodes = new Set();
   const taxes = input.taxes.map((raw) => {
     const item = object(raw, 'INVALID_TAX');
+    exactKeys(item, ['code', 'label', 'rateMilliPercent'], 'INVALID_TAX');
     const code = text(item.code, 20, 'INVALID_TAX_CODE');
     if (!/^[A-Z0-9_-]+$/u.test(code) || taxCodes.has(code)) {
       throw new DraftValidationError('INVALID_TAX_CODE');
@@ -100,6 +109,7 @@ function previewDraft(payload) {
   let taxableSubtotal = 0n;
   const lines = input.lines.map((raw) => {
     const item = object(raw, 'INVALID_LINE');
+    exactKeys(item, ['description', 'quantity', 'unitPriceCents', 'discountCents', 'taxable'], 'INVALID_LINE');
     const description = text(item.description, 250, 'INVALID_DESCRIPTION');
     const quantity = integer(item.quantity, 1, 1000, 'INVALID_QUANTITY');
     const unitPriceCents = integer(item.unitPriceCents, 0, 100_000_000, 'INVALID_UNIT_PRICE');

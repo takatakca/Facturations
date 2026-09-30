@@ -5,6 +5,7 @@ const assert=require('node:assert/strict');
 const http=require('node:http');
 
 const {attachBrowserClientPortal}=require('../src/browser-client-portal');
+const {ClientPortalAuthError}=require('../src/client-portal-auth-store');
 
 const ORIGIN='https://portal.example.test';
 const ACCESS_TOKEN='T'.repeat(43);
@@ -130,6 +131,48 @@ test('client portal browser flow confirms link, uses secure cookie, lists scoped
   }finally{
     await new Promise(resolve=>server.close(resolve));
   }
+});
+
+test('client portal distinguishes invalid magic link from auth-store outage',async()=>{
+  const readStore={
+    async listInvoices(){return [];},
+    async getInvoice(){throw new Error('must not be called');},
+    async getQualifiedPdf(){throw new Error('must not be called');},
+  };
+
+  async function redeemWith(error){
+    const authStore={
+      async redeemAccessLink(){throw error;},
+      async revokeSession(){return false;},
+    };
+    const server=http.createServer((req,res)=>{res.writeHead(404);res.end('fallback');});
+    attachBrowserClientPortal(server,{origin:ORIGIN,authStore,readStore});
+    await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    const port=server.address().port;
+    try{
+      const body='token='+ACCESS_TOKEN;
+      return await request(port,{
+        method:'POST',path:'/portal/access?lang=fr',
+        headers:{
+          Origin:ORIGIN,
+          'Sec-Fetch-Site':'same-origin',
+          'Content-Type':'application/x-www-form-urlencoded',
+          'Content-Length':Buffer.byteLength(body),
+        },body,
+      });
+    }finally{
+      await new Promise(resolve=>server.close(resolve));
+    }
+  }
+
+  const invalid=await redeemWith(new ClientPortalAuthError('INVALID_CLIENT_ACCESS_LINK',401));
+  assert.equal(invalid.status,401);
+  assert.match(invalid.body.toString(),/invalide, expiré ou déjà utilisé/);
+
+  const unavailable=await redeemWith(new Error('synthetic database outage secret-detail'));
+  assert.equal(unavailable.status,503);
+  assert.equal(unavailable.body.toString(),'Portal unavailable');
+  assert.equal(unavailable.body.toString().includes('secret-detail'),false);
 });
 
 test('client portal rejects direct sessionless access and cross-origin redemption',async()=>{

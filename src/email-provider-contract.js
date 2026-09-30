@@ -1,6 +1,9 @@
 'use strict';
 
+const crypto=require('node:crypto');
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const HASH = /^[a-f0-9]{64}$/;
 const OPERATION_KEY = /^[A-Za-z0-9_-]{24,120}$/;
 const PROVIDER_KEY = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -87,7 +90,10 @@ function validateEmailSubmission(input){
 
   const qualifiedDocumentId=text(
     input.qualifiedDocumentId,64,'INVALID_QUALIFIED_DOCUMENT_ID'
-  );
+  ).toLowerCase();
+  if(!UUID.test(qualifiedDocumentId)){
+    throw new EmailProviderContractError('INVALID_QUALIFIED_DOCUMENT_ID');
+  }
   const subject=text(input.subject,200,'INVALID_EMAIL_SUBJECT');
   const filename=text(input.filename,160,'INVALID_EMAIL_FILENAME');
   if(!/^[^/\\]+\.pdf$/iu.test(filename)){
@@ -95,6 +101,13 @@ function validateEmailSubmission(input){
   }
   if(input.contentType!=='application/pdf'){
     throw new EmailProviderContractError('INVALID_EMAIL_CONTENT_TYPE');
+  }
+  const qualifiedDocumentSha256=hash(
+    input.qualifiedDocumentSha256,'INVALID_QUALIFIED_DOCUMENT_SHA256'
+  );
+  const actualPdfSha256=crypto.createHash('sha256').update(pdf).digest('hex');
+  if(actualPdfSha256!==qualifiedDocumentSha256){
+    throw new EmailProviderContractError('EMAIL_PROVIDER_PDF_HASH_MISMATCH',409);
   }
 
   return Object.freeze({
@@ -105,9 +118,7 @@ function validateEmailSubmission(input){
     contentType:'application/pdf',
     pdfBytes:Buffer.from(pdf),
     qualifiedDocumentId,
-    qualifiedDocumentSha256:hash(
-      input.qualifiedDocumentSha256,'INVALID_QUALIFIED_DOCUMENT_SHA256'
-    ),
+    qualifiedDocumentSha256,
   });
 }
 

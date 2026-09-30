@@ -1,6 +1,12 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
 const { previewDraft, DraftValidationError } = require('./draft-preview');
+const {
+  encodePdfWinAnsi,
+  OfficialInvoicePdfError,
+} = require('./official-invoice-pdf');
 
 class WaveIssuancePreflightError extends Error {
   constructor(code, statusCode = 422) {
@@ -10,6 +16,43 @@ class WaveIssuancePreflightError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+function computeWaveProviderPlanHash(plan) {
+  const canonical = {
+    status: plan.status,
+    operation: plan.operation,
+    sourceRequestHash: plan.sourceRequestHash,
+    businessId: plan.businessId,
+    customerId: plan.customerId,
+    currency: plan.currency,
+    invoiceDate: plan.invoiceDate,
+    dueDate: plan.dueDate,
+    memo: plan.memo,
+    items: plan.items.map(item => ({
+      productId: item.productId,
+      description: item.description,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+      taxable: item.taxable,
+      salesTaxIds: [...item.salesTaxIds],
+    })),
+    expected: {
+      customerEmail: plan.expected.customerEmail,
+      subtotalCents: plan.expected.subtotalCents,
+      taxTotalCents: plan.expected.taxTotalCents,
+      totalCents: plan.expected.totalCents,
+    },
+    externalActionsPerformed: {
+      createInvoice: plan.externalActionsPerformed.createInvoice,
+      approveInvoice: plan.externalActionsPerformed.approveInvoice,
+      sendInvoice: plan.externalActionsPerformed.sendInvoice,
+    },
+  };
+  return crypto.createHash('sha256')
+    .update('facturations-wave-provider-plan-v1\0')
+    .update(JSON.stringify(canonical))
+    .digest('hex');
+}
 function id(value, code) {
   if (typeof value !== 'string' || value.trim().length < 1 || value.trim().length > 512 ||
       /[\u0000-\u001f\u007f]/u.test(value)) {
@@ -17,6 +60,27 @@ function id(value, code) {
   }
   return value.trim();
 }
+function assertPdfTextCompatible(snapshot) {
+  const values = [
+    snapshot.customer.name,
+    snapshot.customer.email,
+    snapshot.customer.address,
+    snapshot.notes,
+    ...snapshot.lines.map(line => line.description),
+    ...snapshot.taxes.flatMap(tax => [tax.code, tax.label]),
+  ].filter(value => typeof value === 'string' && value.length > 0);
+
+  try {
+    for (const value of values) encodePdfWinAnsi(value);
+  } catch (error) {
+    if (error instanceof OfficialInvoicePdfError &&
+        error.code === 'UNSUPPORTED_PDF_CHARACTER') {
+      throw new WaveIssuancePreflightError('PDF_TEXT_UNSUPPORTED', 409);
+    }
+    throw error;
+  }
+}
+
 function immutableSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) ||
       snapshot.status !== 'DRAFT' || snapshot.persisted !== true || snapshot.currency !== 'CAD' ||
@@ -59,6 +123,7 @@ function immutableSnapshot(snapshot) {
       snapshot.taxes.length !== recalculated.taxes.length) {
     throw new WaveIssuancePreflightError('IMMUTABLE_DRAFT_INVALID');
   }
+  assertPdfTextCompatible(recalculated);
   return recalculated;
 }
 function buildWaveIssuancePreflight(input) {
@@ -110,8 +175,13 @@ function buildWaveIssuancePreflight(input) {
     salesTaxIds: line.taxable ? [...appliedTaxIds] : [],
   }));
 
-  return Object.freeze({
+  const sourceRequestHash = crypto.createHash('sha256')
+    .update(JSON.stringify(snapshot))
+    .digest('hex');
+
+  const plan = Object.freeze({
     status: 'READY_FOR_WAVE_ADAPTER',
+    sourceRequestHash,
     operation: 'CREATE_DRAFT_THEN_APPROVE_SEPARATELY',
     businessId,
     customerId,
@@ -132,6 +202,10 @@ function buildWaveIssuancePreflight(input) {
       sendInvoice: false,
     }),
   });
+  return Object.freeze({
+    ...plan,
+    providerPlanHash: computeWaveProviderPlanHash(plan),
+  });
 }
 
-module.exports = { buildWaveIssuancePreflight, WaveIssuancePreflightError };
+module.exports = { buildWaveIssuancePreflight, computeWaveProviderPlanHash, WaveIssuancePreflightError };

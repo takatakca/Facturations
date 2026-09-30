@@ -7,6 +7,7 @@ const {
 } = require('./email-provider-contract');
 
 const PROVIDER_KEY=/^[A-Z][A-Z0-9_]{1,63}$/;
+const VERIFICATION_SCHEME=/^[A-Z0-9][A-Z0-9_.:-]{0,119}$/;
 const verifiedEnvelopes=new WeakSet();
 
 class EmailWebhookVerificationError extends Error{
@@ -25,6 +26,13 @@ function providerKey(value){
   return value;
 }
 
+function verificationScheme(value){
+  if(typeof value!=='string' || !VERIFICATION_SCHEME.test(value)){
+    throw new EmailWebhookVerificationError('INVALID_VERIFICATION_SCHEME');
+  }
+  return value;
+}
+
 function normalizeHeaders(value){
   if(!value || typeof value!=='object' || Array.isArray(value)){
     throw new EmailWebhookVerificationError('INVALID_WEBHOOK_HEADERS');
@@ -32,7 +40,7 @@ function normalizeHeaders(value){
   const output={};
   for(const [key,raw] of Object.entries(value)){
     const name=key.toLowerCase();
-    if(!/^[a-z0-9-]{1,80}$/u.test(name)){
+    if(!/^[a-z0-9-]{1,80}$/u.test(name) || Object.hasOwn(output,name)){
       throw new EmailWebhookVerificationError('INVALID_WEBHOOK_HEADERS');
     }
     if(typeof raw==='string'){
@@ -70,8 +78,13 @@ function isVerifiedEmailWebhookEnvelope(value){
   return !!value && typeof value==='object' && verifiedEnvelopes.has(value);
 }
 
-function createEmailWebhookVerifier({providerKey:configuredProviderKey,verifyAndParse}={}){
+function createEmailWebhookVerifier({
+  providerKey:configuredProviderKey,
+  verificationScheme:configuredVerificationScheme,
+  verifyAndParse,
+}={}){
   const key=providerKey(configuredProviderKey);
+  const scheme=verificationScheme(configuredVerificationScheme);
   if(typeof verifyAndParse!=='function'){
     throw new TypeError('Provider-specific webhook verifier required');
   }
@@ -104,6 +117,7 @@ function createEmailWebhookVerifier({providerKey:configuredProviderKey,verifyAnd
 
     const envelope=Object.freeze({
       providerKey:key,
+      verificationScheme:scheme,
       evidence,
       rawBodySha256:crypto.createHash('sha256').update(request.rawBody).digest('hex'),
     });
@@ -111,7 +125,7 @@ function createEmailWebhookVerifier({providerKey:configuredProviderKey,verifyAnd
     return envelope;
   }
 
-  return Object.freeze({providerKey:key,verify});
+  return Object.freeze({providerKey:key,verificationScheme:scheme,verify});
 }
 
 module.exports={

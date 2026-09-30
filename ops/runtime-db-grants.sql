@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Provision only AFTER migrations 001-027, using the migration/owner role.
+-- Provision only AFTER migrations 001-045, using the migration/owner role.
 -- Required psql variables:
 --   -v runtime_role=facturations_app
 --   -v database_name=facturations
@@ -39,6 +39,7 @@ GRANT SELECT ON
   facturations_staff_sessions,
   facturations_staff_invitations,
   facturations_draft_approvals,
+  facturations_integration_token_uses,
   facturations_login_attempt_limits,
   facturations_staff_totp,
   facturations_draft_workspaces,
@@ -76,6 +77,7 @@ GRANT INSERT ON
   facturations_staff_sessions,
   facturations_staff_invitations,
   facturations_draft_approvals,
+  facturations_integration_token_uses,
   facturations_login_attempt_limits,
   facturations_draft_workspaces,
   facturations_draft_workspace_revisions,

@@ -107,6 +107,7 @@ test('local issued registry materializes only confirmed provider results and rem
     });
     const prepared = await attempts.prepare({
       authorizationId: confirmedFixture.authorization.id,
+      providerPlanHash: confirmedFixture.payload.providerPlanHash,
     });
     const executor = createProviderIssuanceExecutor({
       attemptStore: attempts,
@@ -144,10 +145,123 @@ test('local issued registry materializes only confirmed provider results and rem
     const found = await registry.getByAttempt({ attemptId: confirmed.id });
     assert.equal(found.id, issued.id);
 
+    const guardFixture = await authorizedDraft({
+      drafts, approvals, authorizations, owner, session, suffix: 'provenance-guard',
+    });
+    const guardPrepared = await attempts.prepare({
+      authorizationId: guardFixture.authorization.id,
+      providerPlanHash: guardFixture.payload.providerPlanHash,
+    });
+    const guardExecutor = createProviderIssuanceExecutor({
+      attemptStore: attempts,
+      adapter: {
+        async createInvoice() {
+          return {
+            status: 'CONFIRMED',
+            providerInvoiceId: 'wave-guard-' + crypto.randomUUID(),
+            providerInvoiceNumber: 'GUARD-' + crypto.randomUUID().slice(0, 8),
+          };
+        },
+      },
+    });
+    const guardConfirmed = await guardExecutor.execute({
+      attemptId: guardPrepared.id,
+      payload: guardFixture.payload,
+    });
+
+    const provenanceRows = await pool.query(
+      `SELECT t.authorization_id,t.draft_id,t.id AS attempt_id,t.provider,
+              t.provider_invoice_id,t.provider_invoice_number,t.finished_at,
+              a.request_hash,d.snapshot
+         FROM facturations_provider_issuance_attempts t
+         JOIN facturations_issuance_authorizations a
+           ON a.business_id=t.business_id AND a.id=t.authorization_id
+         JOIN invoice_drafts d
+           ON d.business_id=t.business_id AND d.id=t.draft_id
+        WHERE t.business_id=$1 AND t.id=$2`,
+      [businessId, guardConfirmed.id]
+    );
+    assert.equal(provenanceRows.rows.length, 1);
+    const provenance = provenanceRows.rows[0];
+
+    async function insertDirectIssued(overrides = {}) {
+      const row = { ...provenance, ...overrides };
+      return pool.query(
+        `INSERT INTO facturations_issued_invoices
+           (business_id,authorization_id,draft_id,attempt_id,provider,
+            provider_invoice_id,official_invoice_number,request_hash,
+            issued_snapshot,provider_confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
+        [
+          businessId,
+          row.authorization_id,
+          row.draft_id,
+          row.attempt_id,
+          row.provider,
+          row.provider_invoice_id,
+          row.provider_invoice_number,
+          row.request_hash,
+          JSON.stringify(row.snapshot),
+          row.finished_at,
+        ]
+      );
+    }
+
+    await assert.rejects(
+      insertDirectIssued({
+        authorization_id: confirmedFixture.authorization.id,
+      }),
+      error => error && error.code === '23514',
+      'issued invoice cannot cross-bind another authorization'
+    );
+
+    await assert.rejects(
+      insertDirectIssued({
+        provider_invoice_id: 'forged-provider-' + crypto.randomUUID(),
+      }),
+      error => error && error.code === '23514',
+      'issued invoice provider ID must match the confirmed provider attempt'
+    );
+
+    await assert.rejects(
+      insertDirectIssued({
+        provider_invoice_number: 'FORGED-' + crypto.randomUUID().slice(0, 8),
+      }),
+      error => error && error.code === '23514',
+      'official invoice number must match the confirmed provider attempt'
+    );
+
+    await assert.rejects(
+      insertDirectIssued({
+        request_hash: crypto.randomBytes(32).toString('hex'),
+      }),
+      error => error && error.code === '23514',
+      'issued invoice request hash must match the immutable draft'
+    );
+
+    await assert.rejects(
+      insertDirectIssued({
+        snapshot: { tampered: true },
+      }),
+      error => error && error.code === '23514',
+      'issued invoice snapshot must equal the immutable draft snapshot'
+    );
+
+    await assert.rejects(
+      insertDirectIssued({
+        finished_at: new Date(new Date(provenance.finished_at).getTime() + 1000),
+      }),
+      error => error && error.code === '23514',
+      'issued invoice provider confirmation time must match the confirmed attempt'
+    );
+
     const pendingFixture = await authorizedDraft({
       drafts, approvals, authorizations, owner, session, suffix: 'pending',
     });
-    const pending = await attempts.prepare({ authorizationId: pendingFixture.authorization.id });
+    const pending = await attempts.prepare({
+      authorizationId: pendingFixture.authorization.id,
+      providerPlanHash: pendingFixture.payload.providerPlanHash,
+    });
     await assert.rejects(
       registry.materialize({ attemptId: pending.id }),
       error => error instanceof IssuedInvoiceRegistryError &&
@@ -161,26 +275,20 @@ test('local issued registry materializes only confirmed provider results and rem
     const mismatchB = await authorizedDraft({
       drafts, approvals, authorizations, owner, session, suffix: 'mismatch-b',
     });
-    const inconsistent = await pool.query(
-      `INSERT INTO facturations_provider_issuance_attempts
-         (business_id,authorization_id,draft_id,provider,operation_key,state,
-          provider_invoice_id,provider_invoice_number,started_at,finished_at)
-       VALUES ($1,$2,$3,'WAVE',$4,'CONFIRMED',$5,$6,now(),now())
-       RETURNING id`,
-      [
-        businessId,
-        mismatchA.authorization.id,
-        mismatchB.draft.id,
-        'wave_' + crypto.randomBytes(32).toString('base64url'),
-        'wave-mismatch-' + crypto.randomUUID(),
-        'SYNTHETIC-MISMATCH-' + crypto.randomUUID().slice(0, 8),
-      ]
-    );
     await assert.rejects(
-      registry.materialize({ attemptId: inconsistent.rows[0].id }),
-      error => error instanceof IssuedInvoiceRegistryError &&
-        error.code === 'ISSUANCE_CHAIN_MISMATCH' &&
-        error.statusCode === 409
+      pool.query(
+        `INSERT INTO facturations_provider_issuance_attempts
+           (business_id,authorization_id,draft_id,provider,operation_key,state)
+         VALUES ($1,$2,$3,'WAVE',$4,'PREPARED')`,
+        [
+          businessId,
+          mismatchA.authorization.id,
+          mismatchB.draft.id,
+          'wave_' + crypto.randomBytes(32).toString('base64url'),
+        ]
+      ),
+      error => error && error.code === '23503',
+      'provider attempt cannot cross-bind an authorization and another draft'
     );
 
     const foreign = createIssuedInvoiceRegistry({

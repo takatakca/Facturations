@@ -21,6 +21,8 @@ Aucune donnée légale ou fiscale n’est inventée, déduite d’un domaine, ti
 
 La validation ne prétend pas certifier le format réglementaire d’un numéro fiscal. La vérification humaine reste la source de confiance.
 
+Avant qu’un profil puisse devenir `VERIFIED`, tous les champs qui apparaîtront dans le PDF officiel sont aussi vérifiés contre l’encodage WinAnsi du renderer v1. Un caractère non représentable retourne `ISSUER_PROFILE_PDF_TEXT_UNSUPPORTED` (409). Cela empêche de lier après émission un profil que Facturations serait incapable d’archiver correctement dans son PDF qualifié actuel.
+
 ## Versioning
 
 Chaque entreprise possède des versions 1, 2, 3… protégées par verrou transactionnel tenant-scoped.
@@ -40,13 +42,6 @@ Un trigger PostgreSQL bloque tout `UPDATE` et `DELETE`. Les documents futurs dev
 
 ## Frontière
 
-Cette étape ne modifie pas encore un PDF existant, n’envoie rien au client et ne contacte aucune API externe.
+Le profil vérifié est désormais lié par ID/hash au PDF qualifié et ses données sont rendues dans le document. Un document taxable reste bloqué si la chaîne qualifiée ne contient pas la preuve fiscale exigée par la politique actuelle.
 
-Le prochain lot devra :
-
-1. exiger un profil `VERIFIED`;
-2. figer son ID/hash dans la provenance du PDF;
-3. afficher les données de l’émetteur dans le document;
-4. refuser un document taxable si les registrations nécessaires n’ont pas été explicitement validées selon la politique comptable retenue.
-
-La décision comptable/fiscale finale et les mentions obligatoires restent à faire vérifier avant production.
+Cette brique ne contacte aucune API externe et ne remplace pas la validation comptable/fiscale humaine. Les formats réglementaires, registrations et mentions obligatoires doivent encore être homologués avant production.

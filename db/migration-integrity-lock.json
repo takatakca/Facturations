@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 27,
+  "lockedThrough": 45,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -137,6 +137,96 @@
       "file": "027_mfa_recovery.sql",
       "gitBlobSha1": "c1dcb26e75ba6027f42699c7e87346c6417754a9",
       "bytes": 3199
+    },
+    {
+      "file": "028_integration_token_replay_guard.sql",
+      "gitBlobSha1": "fa2d009d953273f2ede68906c16ae8ede15f731d",
+      "bytes": 701
+    },
+    {
+      "file": "029_payment_provider_verification_gate.sql",
+      "gitBlobSha1": "94188c6f98af6abdbde2b32d26e0e292b5e6309f",
+      "bytes": 621
+    },
+    {
+      "file": "030_payment_transaction_reuse_guard.sql",
+      "gitBlobSha1": "b94752c837005c04c8436c76322e5ce490c8cf06",
+      "bytes": 463
+    },
+    {
+      "file": "031_refund_payment_lineage.sql",
+      "gitBlobSha1": "a35a33bd13af5502ff60f90b3971a0c315e0bfea",
+      "bytes": 1359
+    },
+    {
+      "file": "032_portal_document_invoice_binding.sql",
+      "gitBlobSha1": "8d6f3f19bc417ec7ce15656a3f4b1fce2867b5fb",
+      "bytes": 669
+    },
+    {
+      "file": "033_refund_lineage_guard.sql",
+      "gitBlobSha1": "6871e64b4a67cca290219d10d6dc5357024c24e5",
+      "bytes": 1756
+    },
+    {
+      "file": "034_delivery_email_lineage_guard.sql",
+      "gitBlobSha1": "116768fac0b4781ed95c061c5d1ce9cf53637dab",
+      "bytes": 2177
+    },
+    {
+      "file": "035_delivery_receipt_lineage_guard.sql",
+      "gitBlobSha1": "d020b0e82512a14865d2be7f7eb9e7718713e0f0",
+      "bytes": 3687
+    },
+    {
+      "file": "036_delivery_authorization_document_binding.sql",
+      "gitBlobSha1": "22145d0445d541ef55cc51a66e9054a0f6ecc9ab",
+      "bytes": 830
+    },
+    {
+      "file": "037_qualified_document_provenance_guards.sql",
+      "gitBlobSha1": "fe96ce8562ad417bfe209d60ee3dda99cd962cce",
+      "bytes": 2077
+    },
+    {
+      "file": "038_delivery_receipt_timestamp_precision.sql",
+      "gitBlobSha1": "550a66b7d48e961d82b011cc0eeff6477aa2287f",
+      "bytes": 3452
+    },
+    {
+      "file": "039_delivery_attempt_state_machine.sql",
+      "gitBlobSha1": "7d32e91ec622eb91a9e390fc353353e4f1bf0e4b",
+      "bytes": 6848
+    },
+    {
+      "file": "040_provider_issuance_state_machine.sql",
+      "gitBlobSha1": "73280a4287e309127dacd813da179bd61eba6517",
+      "bytes": 7671
+    },
+    {
+      "file": "041_issued_invoice_provenance_guard.sql",
+      "gitBlobSha1": "12bcf5b7b36eec40daf8314662fc93c166f0334b",
+      "bytes": 4886
+    },
+    {
+      "file": "042_issued_invoice_document_integrity.sql",
+      "gitBlobSha1": "148ab39ffd937dea57949be4a36219fafaa265ac",
+      "bytes": 2061
+    },
+    {
+      "file": "043_issuer_and_qualified_pdf_integrity.sql",
+      "gitBlobSha1": "69a3e60b9fe373678baa58d4a031a819d7dcdbe0",
+      "bytes": 7941
+    },
+    {
+      "file": "044_local_evidence_hash_integrity.sql",
+      "gitBlobSha1": "0a286409ddbe517a5bac6065a68cbecac8a54b2c",
+      "bytes": 11368
+    },
+    {
+      "file": "045_restore_safe_evidence_hashes.sql",
+      "gitBlobSha1": "c3811fd5386786807153f2cc4fc247b8d44e5bf6",
+      "bytes": 5113
     }
   ]
 }

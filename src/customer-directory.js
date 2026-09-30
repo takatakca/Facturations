@@ -21,7 +21,9 @@ function customerListOptions(searchParams) {
   const rawSearch = searchParams.get('q');
   if (rawSearch === null) return Object.freeze({ ...pagination, search: null });
   // Validate BEFORE trimming: leading/trailing control characters must never be normalized away.
-  if (/[\u0000-\u001f\u007f]/u.test(rawSearch)) throw new CustomerDirectoryError('INVALID_SEARCH');
+  if (rawSearch.length > 80 || /[\u0000-\u001f\u007f]/u.test(rawSearch)) {
+    throw new CustomerDirectoryError('INVALID_SEARCH');
+  }
   const search = rawSearch.trim();
   if (search.length < 2 || search.length > 80) throw new CustomerDirectoryError('INVALID_SEARCH');
   // PostgreSQL ESCAPE '!' treats wildcard characters as literal customer input.

@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+coverage
+tests
+docs
+*.log
+.env
+.env.*
+*.pem
+*.key

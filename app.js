@@ -24,6 +24,7 @@ const { createDraftWorkspaceStore } = require('./src/draft-workspace-store');
 const { createDashboardStore } = require('./src/dashboard-store');
 const { createStaffAuthStore } = require('./src/staff-auth-store');
 const { createStaffTotpStore } = require('./src/staff-totp-store');
+const { createIntegrationIssuanceReadStore } = require('./src/integration-issuance-read-store');
 const { createLoginAttemptLimit } = require('./src/login-attempt-limit');
 const { createCustomerDirectory } = require('./src/customer-directory');
 const { createCustomerContactStore } = require('./src/customer-contact-store');
@@ -54,6 +55,7 @@ if (require.main === module) {
   let workspaceStore = null;
   let recentStore = null;
   let integrationReplayGuard = null;
+  let issuanceReadStore = null;
   let pool = null;
   let readinessProbe = null;
   if (config.databaseUrl && config.businessId) {
@@ -81,6 +83,7 @@ if (require.main === module) {
     approvalLedger = createApprovalLedger({ pool, businessId: config.businessId });
     if (config.integrationEnabled) {
       integrationReplayGuard = createIntegrationReplayGuard({ pool, businessId: config.businessId });
+      issuanceReadStore = createIntegrationIssuanceReadStore({ pool, businessId: config.businessId });
     }
     clientPortalAuthStore = createClientPortalAuthStore({ pool, businessId: config.businessId });
     clientPortalReadStore = createClientPortalReadStore({ pool, businessId: config.businessId, authStore: clientPortalAuthStore });
@@ -88,6 +91,7 @@ if (require.main === module) {
   const server = createServer({
     config, draftStore, dashboardStore, staffAuthStore, customerDirectory, approvalLedger,
     integrationReplayGuard,
+    issuanceReadStore,
     readinessCheck: readinessProbe ? readinessProbe.check : null,
   });
   if (config.browserOrigin) {

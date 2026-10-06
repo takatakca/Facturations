@@ -8,7 +8,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-
 const CLIENT = readFileSync(join(__dirname, 'workspace-editor-client.js'), 'utf8');
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 });

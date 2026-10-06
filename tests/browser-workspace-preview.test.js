@@ -91,7 +91,7 @@ test('HTTP preview accepts only a staff session and GET, returns private HTML wi
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     assert.equal(response.headers.get('set-cookie'), null);
     assert.equal(response.headers.get('access-control-allow-origin'), null);
-    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(response.headers.get('referrer-policy'), 'same-origin');
     assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
     assert.match(response.headers.get('content-security-policy'), /form-action 'none'/);
     assert.match(await response.text(), /25,20/);

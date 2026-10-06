@@ -66,6 +66,16 @@ function loadConfig(env = process.env) {
     throw new Error('Facturations integration credentials require FACTURATIONS_INTEGRATION_ENABLED=1');
   }
 
+  const stripeWebhookSecret = (env.FACTURATIONS_STRIPE_WEBHOOK_SECRET || '').trim();
+  if (stripeWebhookSecret) {
+    if (!databaseUrl || !businessId) {
+      throw new Error('FACTURATIONS_STRIPE_WEBHOOK_SECRET requires the dedicated database and business ID');
+    }
+    if (!/^whsec_[A-Za-z0-9+/=_-]{24,}$/.test(stripeWebhookSecret)) {
+      throw new Error('FACTURATIONS_STRIPE_WEBHOOK_SECRET must be a Stripe endpoint secret (whsec_...)');
+    }
+  }
+
   // Browser login is opt-in and fails closed unless its separate encryption key,
   // a dedicated database and exact external HTTPS origin are ALL configured.
   const browserOrigin = (env.FACTURATIONS_PUBLIC_ORIGIN || '').trim();
@@ -122,6 +132,7 @@ function loadConfig(env = process.env) {
     integrationIssuer,
     integrationAudience,
     integrationSecret,
+    stripeWebhookSecret,
   });
 }
 

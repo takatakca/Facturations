@@ -37,6 +37,7 @@ function routeGroup(rawUrl) {
     ['/integration/v1/customers', 'INTEGRATION_CUSTOMERS'],
     ['/integration/v1/approvals', 'INTEGRATION_APPROVALS'],
     ['/integration/v1/handoffs/owner-review', 'INTEGRATION_OWNER_REVIEW_HANDOFF'],
+    ['/webhooks/stripe/payments', 'WEBHOOK_STRIPE_PAYMENTS'],
   ]);
   if (exact.has(pathname)) return exact.get(pathname);
 

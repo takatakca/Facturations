@@ -176,6 +176,19 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
     });
   }
 
+  /** Issued invoice of a recorded PAYMENT_RECEIVED for this provider transaction, or null. */
+  async function findIssuedInvoiceByPaymentTransaction(transactionId){
+    const id=boundedText(transactionId,'INVALID_PAYMENT_TRANSACTION_ID');
+    const result=await pool.query(
+      `SELECT issued_invoice_id
+         FROM facturations_payment_evidence
+        WHERE business_id=$1 AND provider_key=$2
+          AND provider_transaction_id=$3 AND event_type='PAYMENT_RECEIVED'`,
+      [tenant,provider,id]
+    );
+    return result.rows.length===1 ? result.rows[0].issued_invoice_id : null;
+  }
+
   async function ingest({issuedInvoiceId:rawInvoiceId,rawEvent,sourceMode,webhookBodySha256,verificationScheme}){
     const issuedInvoiceId=uuid(rawInvoiceId,'INVALID_ISSUED_INVOICE_ID');
     const event=normalizeEvent(rawEvent);
@@ -285,6 +298,7 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
     providerKey:provider,
     ingestSynthetic,
     ingestVerifiedStripe,
+    findIssuedInvoiceByPaymentTransaction,
     listByIssuedInvoice,
   });
 }

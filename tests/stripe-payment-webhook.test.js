@@ -10,6 +10,7 @@ const {
   StripeWebhookError,
   verifyStripeWebhook,
   stripeEventToPaymentEvidence,
+  stripeEventToRefundEvidence,
 } = require('../src/stripe-payment-webhook');
 const { attachStripePaymentWebhook } = require('../src/stripe-payment-webhook-route');
 const { loadConfig } = require('../src/config');
@@ -51,6 +52,38 @@ function sessionEvent(overrides = {}, session = {}) {
     ...overrides,
   };
 }
+
+function refundEvent(refund = {}, overrides = {}) {
+  return {
+    id: 'evt_' + crypto.randomBytes(12).toString('hex'),
+    object: 'event',
+    type: 'refund.created',
+    created: Math.floor(Date.now() / 1000),
+    data: { object: { object: 'refund', id: 're_testrefund0001', amount: 5000, currency: 'cad', status: 'succeeded',
+      payment_intent: 'pi_knownpayment01', created: 1790000000, ...refund } },
+    ...overrides,
+  };
+}
+
+test('refunds: succeeded Stripe refunds map to stable REFUND_ISSUED evidence', () => {
+  const created = stripeEventToRefundEvidence(refundEvent());
+  const updated = stripeEventToRefundEvidence(refundEvent({}, { type: 'refund.updated' }));
+  assert.equal(created.relevant, true);
+  assert.equal(created.paymentIntent, 'pi_knownpayment01');
+  assert.deepEqual(created.event, {
+    providerKey: 'STRIPE', eventId: 're_testrefund0001', providerTransactionId: 're_testrefund0001',
+    relatedProviderTransactionId: 'pi_knownpayment01', eventType: 'REFUND_ISSUED', amountCents: 5000,
+    currency: 'CAD', occurredAt: new Date(1790000000 * 1000).toISOString(),
+  });
+  assert.deepEqual(updated.event, created.event, 'refund.created and refund.updated are the same evidence');
+  assert.equal(stripeEventToRefundEvidence(refundEvent({ status: 'pending' })).relevant, false);
+  assert.equal(stripeEventToRefundEvidence(refundEvent({ status: 'failed' })).relevant, false);
+  assert.equal(stripeEventToRefundEvidence(refundEvent({ payment_intent: null })).relevant, false);
+  assert.equal(stripeEventToRefundEvidence(refundEvent({}, { type: 'charge.refunded' })).relevant, false);
+  for (const refund of [{ currency: 'usd' }, { amount: 0 }, { id: 'nope' }, { created: null }]) {
+    assert.throws(() => stripeEventToRefundEvidence(refundEvent(refund)), StripeWebhookError);
+  }
+});
 
 test('Stripe signature verification is exact, time-bounded and constant-time', () => {
   const body = JSON.stringify(sessionEvent());
@@ -127,7 +160,7 @@ async function withWebhookServer(evidenceStore, run) {
 
 test('webhook route: verifies before parsing, records relevant events, never echoes provider data', async () => {
   const calls = [];
-  const store = { providerKey: 'STRIPE', async ingestVerifiedStripe(input) { calls.push(input); return { id: 'x' }; } };
+  const store = { providerKey: 'STRIPE', async findIssuedInvoiceByPaymentTransaction(pi) { return pi === 'pi_knownpayment01' ? INVOICE : null; }, async ingestVerifiedStripe(input) { calls.push(input); return { id: 'x' }; } };
   await withWebhookServer(store, async (url) => {
     const event = sessionEvent();
     const body = JSON.stringify(event);
@@ -146,19 +179,31 @@ test('webhook route: verifies before parsing, records relevant events, never ech
     assert.equal((await fetch(url)).status, 405);
     assert.equal((await fetch(url + '?x=1', { method: 'POST', body, headers: { 'Stripe-Signature': sign(body) } })).status, 422);
 
+    const refundBody = JSON.stringify(refundEvent());
+    const refunded = await fetch(url, { method: 'POST', body: refundBody, headers: { 'Stripe-Signature': sign(refundBody) } });
+    assert.deepEqual(await refunded.json(), { received: true, recorded: true });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].issuedInvoiceId, INVOICE);
+    assert.equal(calls[1].event.eventType, 'REFUND_ISSUED');
+    const foreignBody = JSON.stringify(refundEvent({ payment_intent: 'pi_subscription01' }));
+    const foreign = await fetch(url, { method: 'POST', body: foreignBody, headers: { 'Stripe-Signature': sign(foreignBody) } });
+    assert.deepEqual(await foreign.json(), { received: true, recorded: false }, 'refund of a non-Facturations payment is ignored');
+    assert.equal(calls.length, 2);
+    calls.pop();
+
     const ignoredBody = JSON.stringify(sessionEvent({ type: 'customer.created' }));
     const ignored = await fetch(url, { method: 'POST', body: ignoredBody, headers: { 'Stripe-Signature': sign(ignoredBody) } });
     assert.deepEqual(await ignored.json(), { received: true, recorded: false });
     assert.equal(calls.length, 1);
   });
 
-  const failing = { providerKey: 'STRIPE', async ingestVerifiedStripe() { const e = new Error('ISSUED_INVOICE_NOT_FOUND'); e.name = 'PaymentEvidenceError'; e.code = 'ISSUED_INVOICE_NOT_FOUND'; e.statusCode = 404; throw e; } };
+  const failing = { providerKey: 'STRIPE', async findIssuedInvoiceByPaymentTransaction() { return null; }, async ingestVerifiedStripe() { const e = new Error('ISSUED_INVOICE_NOT_FOUND'); e.name = 'PaymentEvidenceError'; e.code = 'ISSUED_INVOICE_NOT_FOUND'; e.statusCode = 404; throw e; } };
   await withWebhookServer(failing, async (url) => {
     const body = JSON.stringify(sessionEvent());
     const response = await fetch(url, { method: 'POST', body, headers: { 'Stripe-Signature': sign(body) } });
     assert.equal(response.status, 404);
   });
-  const broken = { providerKey: 'STRIPE', async ingestVerifiedStripe() { throw new Error('db host detail'); } };
+  const broken = { providerKey: 'STRIPE', async findIssuedInvoiceByPaymentTransaction() { return null; }, async ingestVerifiedStripe() { throw new Error('db host detail'); } };
   await withWebhookServer(broken, async (url) => {
     const body = JSON.stringify(sessionEvent());
     const response = await fetch(url, { method: 'POST', body, headers: { 'Stripe-Signature': sign(body) } });
@@ -166,7 +211,7 @@ test('webhook route: verifies before parsing, records relevant events, never ech
     assert.deepEqual(await response.json(), { error: 'STORAGE_UNAVAILABLE' });
   });
   assert.throws(() => attachStripePaymentWebhook(http.createServer(() => {}), {
-    secret: SECRET, businessId: BUSINESS, evidenceStore: { providerKey: 'SYNTHETIC_PROCESSOR', async ingestVerifiedStripe() {} },
+    secret: SECRET, businessId: BUSINESS, evidenceStore: { providerKey: 'SYNTHETIC_PROCESSOR', async findIssuedInvoiceByPaymentTransaction() { return null; }, async ingestVerifiedStripe() {} },
   }), TypeError);
 });
 
@@ -288,12 +333,29 @@ test('disposable PostgreSQL: Stripe-signed payment becomes VERIFIED evidence end
         metadata: { facturations_business_id: businessId, facturations_issued_invoice_id: crypto.randomUUID() } }));
       assert.equal((await post(missing)).status, 404);
 
+      // Refunds: partial, replay via refund.updated, full, then foreign PI ignored.
+      const partialRefund = JSON.stringify(refundEvent({ id: 're_partial000001', amount: 4000, payment_intent: paymentIntent }));
+      assert.equal((await post(partialRefund)).status, 200);
+      let afterRefund = await summaries.getByIssuedInvoice({ issuedInvoiceId: issued.id });
+      assert.equal(afterRefund.refundedCents, 4000);
+      assert.equal(afterRefund.balanceCents, 4000);
+      assert.notEqual(afterRefund.financialState, 'PAID');
+      assert.equal((await post(JSON.stringify(refundEvent({ id: 're_partial000001', amount: 4000, payment_intent: paymentIntent }, { type: 'refund.updated' })))).status, 200);
+      assert.equal((await summaries.getByIssuedInvoice({ issuedInvoiceId: issued.id })).refundedCents, 4000, 'refund.updated is idempotent');
+      assert.equal((await post(JSON.stringify(refundEvent({ id: 're_rest00000001', amount: 6000, payment_intent: paymentIntent })))).status, 200);
+      afterRefund = await summaries.getByIssuedInvoice({ issuedInvoiceId: issued.id });
+      assert.equal(afterRefund.financialState, 'FULLY_REFUNDED');
+      assert.equal(afterRefund.proofScope, 'VERIFIED_PROVIDER_PRESENT');
+      const foreignRefund = await post(JSON.stringify(refundEvent({ id: 're_foreign00001', payment_intent: 'pi_notfacturations1' })));
+      assert.equal(foreignRefund.status, 200);
+      assert.deepEqual(await foreignRefund.json(), { received: true, recorded: false });
+
       const stored = await pool.query(
         `SELECT source_mode, provider_key, verification_scheme, webhook_body_sha256
            FROM facturations_payment_evidence WHERE business_id=$1`, [businessId]);
       assert.deepEqual(stored.rows.map(r => [r.source_mode, r.provider_key, r.verification_scheme]),
-        [['VERIFIED_PROVIDER_WEBHOOK', 'STRIPE', 'STRIPE_SIGNATURE_V1']]);
-      assert.equal(stored.rows[0].webhook_body_sha256, crypto.createHash('sha256').update(body).digest('hex'));
+        Array(3).fill(['VERIFIED_PROVIDER_WEBHOOK', 'STRIPE', 'STRIPE_SIGNATURE_V1']));
+      assert.ok(stored.rows.some(r => r.webhook_body_sha256 === crypto.createHash('sha256').update(body).digest('hex')));
 
       // Database refuses verified rows without Stripe provenance and synthetic rows with provenance.
       await assert.rejects(pool.query(

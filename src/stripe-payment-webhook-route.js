@@ -9,6 +9,7 @@ const {
   StripeWebhookError,
   verifyStripeWebhook,
   stripeEventToPaymentEvidence,
+  stripeEventToRefundEvidence,
 } = require('./stripe-payment-webhook');
 
 const PATH = '/webhooks/stripe/payments';
@@ -51,6 +52,7 @@ function attachStripePaymentWebhook(server, { secret, businessId, evidenceStore,
   if (!server || typeof server.listeners !== 'function' || server.listeners('request').length !== 1 ||
       typeof businessId !== 'string' || !businessId ||
       !evidenceStore || typeof evidenceStore.ingestVerifiedStripe !== 'function' ||
+      typeof evidenceStore.findIssuedInvoiceByPaymentTransaction !== 'function' ||
       evidenceStore.providerKey !== 'STRIPE') {
     throw new TypeError('Stripe payment webhook requires one handler, business and STRIPE evidence store');
   }
@@ -72,10 +74,21 @@ function attachStripePaymentWebhook(server, { secret, businessId, evidenceStore,
         secret,
         nowMs: now(),
       });
-      const mapped = stripeEventToPaymentEvidence(verified.event, { businessId });
-      if (!mapped.relevant) return reply(response, 200, { received: true, recorded: false });
+      let issuedInvoiceId;
+      let mapped = stripeEventToPaymentEvidence(verified.event, { businessId });
+      if (mapped.relevant) {
+        issuedInvoiceId = mapped.issuedInvoiceId;
+      } else {
+        mapped = stripeEventToRefundEvidence(verified.event);
+        // Refunds of anything that is not a recorded Facturations payment
+        // (e.g. subscriptions on the same Stripe account) are not ours.
+        issuedInvoiceId = mapped.relevant
+          ? await evidenceStore.findIssuedInvoiceByPaymentTransaction(mapped.paymentIntent)
+          : null;
+      }
+      if (!mapped.relevant || !issuedInvoiceId) return reply(response, 200, { received: true, recorded: false });
       await evidenceStore.ingestVerifiedStripe({
-        issuedInvoiceId: mapped.issuedInvoiceId,
+        issuedInvoiceId,
         event: mapped.event,
         rawBodySha256: verified.rawBodySha256,
         verificationScheme: verified.verificationScheme,

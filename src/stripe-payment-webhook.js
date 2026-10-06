@@ -145,10 +145,55 @@ function stripeEventToPaymentEvidence(event, { businessId }) {
   };
 }
 
+const REFUND_EVENT_TYPES = new Set(['refund.created', 'refund.updated']);
+
+/**
+ * Maps a verified Stripe refund event. The refund id is both the evidence
+ * event id and transaction id, and occurredAt is the refund's own creation
+ * time, so refund.created and refund.updated for one refund are the SAME
+ * evidence (idempotent). Only succeeded refunds count. The caller resolves
+ * the issued invoice from the recorded payment (refunds carry no invoice
+ * metadata); unknown PaymentIntents are not Facturations payments.
+ */
+function stripeEventToRefundEvidence(event) {
+  if (!REFUND_EVENT_TYPES.has(event.type)) return { relevant: false, reason: 'EVENT_TYPE_IGNORED' };
+  const refund = event.data && event.data.object;
+  if (!refund || typeof refund !== 'object' || refund.object !== 'refund') {
+    return { relevant: false, reason: 'NOT_A_REFUND' };
+  }
+  if (refund.status !== 'succeeded') return { relevant: false, reason: 'REFUND_NOT_SUCCEEDED' };
+  const paymentIntent = typeof refund.payment_intent === 'string'
+    ? refund.payment_intent
+    : refund.payment_intent && refund.payment_intent.id;
+  if (typeof paymentIntent !== 'string' || !/^pi_[A-Za-z0-9]{6,200}$/u.test(paymentIntent)) {
+    return { relevant: false, reason: 'NOT_A_PAYMENT_INTENT_REFUND' };
+  }
+  if (typeof refund.id !== 'string' || !/^(re|pyr)_[A-Za-z0-9]{6,200}$/u.test(refund.id) ||
+      refund.currency !== 'cad' || !Number.isSafeInteger(refund.amount) || refund.amount < 1 ||
+      !Number.isSafeInteger(refund.created) || refund.created < 1) {
+    throw new StripeWebhookError('STRIPE_REFUND_INVALID', 422);
+  }
+  return {
+    relevant: true,
+    paymentIntent,
+    event: Object.freeze({
+      providerKey: PROVIDER_KEY,
+      eventId: refund.id,
+      providerTransactionId: refund.id,
+      relatedProviderTransactionId: paymentIntent,
+      eventType: 'REFUND_ISSUED',
+      amountCents: refund.amount,
+      currency: 'CAD',
+      occurredAt: new Date(refund.created * 1000).toISOString(),
+    }),
+  };
+}
+
 module.exports = {
   PROVIDER_KEY,
   VERIFICATION_SCHEME,
   StripeWebhookError,
   verifyStripeWebhook,
   stripeEventToPaymentEvidence,
+  stripeEventToRefundEvidence,
 };

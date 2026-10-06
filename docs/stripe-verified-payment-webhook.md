@@ -11,6 +11,11 @@ Cette étape permet au ledger de paiement d’enregistrer une **vraie** preuve d
 - corps brut limité à 1 Mo, aucune query acceptée (422), uniquement `POST` (405);
 - réponses minimales : `{ received, recorded }` ou `{ error: CODE }`; aucune donnée Stripe n’est renvoyée.
 
+## Portée des événements
+
+- Les événements d’un **compte connecté** (`event.account` présent) sont ignorés. Les clients TAKATAK ont leurs propres comptes Stripe Connect sur la même plateforme : ils ne peuvent jamais payer une facture Facturations à eux-mêmes.
+- Les événements du **mode test** (`livemode=false`) sont ignorés, sauf si `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1` (staging uniquement, jamais sur l’endpoint live).
+
 ## Vérification
 
 Implémentée sans SDK dans `src/stripe-payment-webhook.js` :
@@ -31,16 +36,19 @@ Seuls `checkout.session.completed` et `checkout.session.async_payment_succeeded`
 
 L’événement devient `PAYMENT_RECEIVED` avec `provider_key=STRIPE`, `provider_event_id=evt_…` et `provider_transaction_id=pi_…`.
 
-## Remboursements
+## Remboursements, échecs de remboursement et litiges
 
-`refund.created` et `refund.updated`, seulement lorsque `status=succeeded` :
+| Événement Stripe | Preuve |
+| --- | --- |
+| `refund.created` / `refund.updated` avec `status=succeeded` | `REFUND_ISSUED` (id `re_…`) |
+| `refund.failed`, ou `refund.updated` avec `status=failed`/`canceled` après un succès | écriture compensatoire `PAYMENT_RECEIVED` (`re_…:reversed`) |
+| `charge.dispute.funds_withdrawn` | `REFUND_ISSUED` (`dp_…:withdrawn`) |
+| `charge.dispute.funds_reinstated` (litige gagné) | écriture compensatoire `PAYMENT_RECEIVED` (`dp_…:reinstated`) |
 
-- l’id du remboursement (`re_…`) sert d’identifiant d’événement et de transaction, et `occurredAt` est la date de création du remboursement. Les deux événements d’un même remboursement produisent donc **la même preuve** (idempotent);
-- la facture est retrouvée à partir du paiement déjà enregistré pour ce `payment_intent` : un remboursement ne porte pas de métadonnées de facture;
-- le remboursement d’un paiement qui n’est pas un paiement Facturations (par exemple un abonnement TAKATAK sur le même compte Stripe) est ignoré avec un 200;
-- `currency=cad`, montant entier > 0, sinon 422.
-
-La projection passe alors à un solde dû recalculé, puis à `FULLY_REFUNDED` : une facture remboursée n’est jamais affichée comme payée.
+- Les identifiants et `occurredAt` viennent de l’objet remboursement/litige lui-même : tous les événements d’un même remboursement donnent **la même preuve** (idempotent). Le ledger reste append-only, et le solde reste juste.
+- La facture est retrouvée à partir du paiement déjà enregistré pour ce `payment_intent`.
+- **Ordre d’arrivée.** Si le paiement (ou le remboursement qu’un échec annule) n’est pas encore enregistré, la réversion vérifiée est conservée dans `facturations_stripe_pending_reversals` (append-only, migration 046). Elle est appliquée dès que le paiement arrive. Les réversions d’autres produits du même compte Stripe y restent simplement sans correspondance.
+- Une facture remboursée ou contestée n’est jamais affichée comme payée.
 
 ## Provenance persistée
 
@@ -62,9 +70,9 @@ La projection financière passe alors à `proofScope=VERIFIED_PROVIDER_PRESENT`,
 
 ## Mise en service
 
-1. Dans Stripe : Developers → Webhooks → endpoint `https://<facturations>/webhooks/stripe/payments`, événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `refund.created` et `refund.updated`.
+1. Dans Stripe : Developers → Webhooks → endpoint `https://<facturations>/webhooks/stripe/payments`, événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.funds_withdrawn` et `charge.dispute.funds_reinstated`.
 2. Copier le signing secret (`whsec_…`) dans la variable privée `FACTURATIONS_STRIPE_WEBHOOK_SECRET` de l’application Facturations dans Coolify. Ne jamais le coller dans un chat, un dépôt ou un navigateur.
-3. Utiliser d’abord le mode test Stripe sur le staging.
+3. Utiliser d’abord le mode test Stripe sur le staging, avec `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1` sur ce staging uniquement.
 
 ## Tests
 

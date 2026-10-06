@@ -126,6 +126,7 @@ if (require.main === module) {
     // Stripe-signed payment webhooks: Facturations verifies the signature itself.
     attachStripePaymentWebhook(server, {
       secret: config.stripeWebhookSecret,
+      allowTestMode: config.stripeAllowTestMode,
       businessId: config.businessId,
       evidenceStore: createPaymentEvidenceStore({ pool, businessId: config.businessId, providerKey: 'STRIPE' }),
     });

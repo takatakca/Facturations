@@ -189,6 +189,44 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
     return result.rows.length===1 ? result.rows[0].issued_invoice_id : null;
   }
 
+  /** True when evidence of this type exists for this provider transaction. */
+  async function hasEvidenceForTransaction(transactionId,eventType){
+    const id=boundedText(transactionId,'INVALID_PAYMENT_TRANSACTION_ID');
+    if(!EVENT_TYPES.has(eventType)) throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT_TYPE');
+    const result=await pool.query(
+      `SELECT 1 FROM facturations_payment_evidence
+        WHERE business_id=$1 AND provider_key=$2 AND provider_transaction_id=$3 AND event_type=$4`,
+      [tenant,provider,id,eventType]
+    );
+    return result.rows.length>0;
+  }
+
+  /** Keeps a verified Stripe reversal whose payment is not recorded yet. Idempotent. */
+  async function recordPendingStripeReversal({kind,eventId,paymentIntent,amountCents,occurredAt:at,rawBodySha256}){
+    if(provider!=='STRIPE') throw new PaymentEvidenceError('PAYMENT_PROVIDER_KEY_MISMATCH',409);
+    await pool.query(
+      `INSERT INTO facturations_stripe_pending_reversals
+         (business_id,reversal_kind,provider_event_id,payment_intent_id,amount_cents,currency,
+          occurred_at,webhook_body_sha256,verification_scheme)
+       VALUES ($1,$2,$3,$4,$5,'CAD',$6,$7,'STRIPE_SIGNATURE_V1')
+       ON CONFLICT (business_id,provider_event_id) DO NOTHING`,
+      [tenant,kind,eventId,paymentIntent,amount(amountCents),occurredAt(at),rawBodySha256]
+    );
+  }
+
+  /** Pending reversals for one PaymentIntent, oldest first. */
+  async function listPendingStripeReversals(paymentIntent){
+    const id=boundedText(paymentIntent,'INVALID_PAYMENT_TRANSACTION_ID');
+    const result=await pool.query(
+      `SELECT reversal_kind,provider_event_id,payment_intent_id,amount_cents,occurred_at,webhook_body_sha256
+         FROM facturations_stripe_pending_reversals
+        WHERE business_id=$1 AND payment_intent_id=$2
+        ORDER BY occurred_at, recorded_at`,
+      [tenant,id]
+    );
+    return result.rows;
+  }
+
   async function ingest({issuedInvoiceId:rawInvoiceId,rawEvent,sourceMode,webhookBodySha256,verificationScheme}){
     const issuedInvoiceId=uuid(rawInvoiceId,'INVALID_ISSUED_INVOICE_ID');
     const event=normalizeEvent(rawEvent);
@@ -299,6 +337,9 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
     ingestSynthetic,
     ingestVerifiedStripe,
     findIssuedInvoiceByPaymentTransaction,
+    hasEvidenceForTransaction,
+    recordPendingStripeReversal,
+    listPendingStripeReversals,
     listByIssuedInvoice,
   });
 }

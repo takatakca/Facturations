@@ -145,48 +145,108 @@ function stripeEventToPaymentEvidence(event, { businessId }) {
   };
 }
 
-const REFUND_EVENT_TYPES = new Set(['refund.created', 'refund.updated']);
+const REVERSAL_EVENT_TYPES = new Set([
+  'refund.created',
+  'refund.updated',
+  'refund.failed',
+  'charge.dispute.funds_withdrawn',
+  'charge.dispute.funds_reinstated',
+]);
 
-/**
- * Maps a verified Stripe refund event. The refund id is both the evidence
- * event id and transaction id, and occurredAt is the refund's own creation
- * time, so refund.created and refund.updated for one refund are the SAME
- * evidence (idempotent). Only succeeded refunds count. The caller resolves
- * the issued invoice from the recorded payment (refunds carry no invoice
- * metadata); unknown PaymentIntents are not Facturations payments.
- */
-function stripeEventToRefundEvidence(event) {
-  if (!REFUND_EVENT_TYPES.has(event.type)) return { relevant: false, reason: 'EVENT_TYPE_IGNORED' };
-  const refund = event.data && event.data.object;
-  if (!refund || typeof refund !== 'object' || refund.object !== 'refund') {
-    return { relevant: false, reason: 'NOT_A_REFUND' };
-  }
-  if (refund.status !== 'succeeded') return { relevant: false, reason: 'REFUND_NOT_SUCCEEDED' };
-  const paymentIntent = typeof refund.payment_intent === 'string'
-    ? refund.payment_intent
-    : refund.payment_intent && refund.payment_intent.id;
-  if (typeof paymentIntent !== 'string' || !/^pi_[A-Za-z0-9]{6,200}$/u.test(paymentIntent)) {
-    return { relevant: false, reason: 'NOT_A_PAYMENT_INTENT_REFUND' };
-  }
-  if (typeof refund.id !== 'string' || !/^(re|pyr)_[A-Za-z0-9]{6,200}$/u.test(refund.id) ||
-      refund.currency !== 'cad' || !Number.isSafeInteger(refund.amount) || refund.amount < 1 ||
-      !Number.isSafeInteger(refund.created) || refund.created < 1) {
-    throw new StripeWebhookError('STRIPE_REFUND_INVALID', 422);
-  }
+function paymentIntentOf(object) {
+  const value = typeof object.payment_intent === 'string'
+    ? object.payment_intent
+    : object.payment_intent && object.payment_intent.id;
+  return typeof value === 'string' && /^pi_[A-Za-z0-9]{6,200}$/u.test(value) ? value : null;
+}
+
+function reversal({ kind, id, paymentIntent, amount, created }) {
+  // A reversal that takes money back is REFUND_ISSUED against the payment;
+  // a reversal of that reversal (failed refund, won dispute) is an offsetting
+  // PAYMENT_RECEIVED. The ledger stays append-only and the balance correct.
+  const takesMoneyBack = kind === 'REFUND_ISSUED' || kind === 'DISPUTE_WITHDRAWN';
+  const transactionId = kind === 'REFUND_ISSUED' ? id
+    : kind === 'REFUND_REVERSED' ? `${id}:reversed`
+      : kind === 'DISPUTE_WITHDRAWN' ? `${id}:withdrawn`
+        : `${id}:reinstated`;
   return {
     relevant: true,
+    kind,
     paymentIntent,
+    // The base evidence a reversal-of-reversal requires (null otherwise).
+    requiresTransactionId: kind === 'REFUND_REVERSED' ? id
+      : kind === 'DISPUTE_REINSTATED' ? `${id}:withdrawn` : null,
+    requiresEventType: kind === 'REFUND_REVERSED' || kind === 'DISPUTE_REINSTATED' ? 'REFUND_ISSUED' : null,
     event: Object.freeze({
       providerKey: PROVIDER_KEY,
-      eventId: refund.id,
-      providerTransactionId: refund.id,
-      relatedProviderTransactionId: paymentIntent,
-      eventType: 'REFUND_ISSUED',
-      amountCents: refund.amount,
+      eventId: transactionId,
+      providerTransactionId: transactionId,
+      ...(takesMoneyBack ? { relatedProviderTransactionId: paymentIntent } : {}),
+      eventType: takesMoneyBack ? 'REFUND_ISSUED' : 'PAYMENT_RECEIVED',
+      amountCents: amount,
       currency: 'CAD',
-      occurredAt: new Date(refund.created * 1000).toISOString(),
+      occurredAt: new Date(created * 1000).toISOString(),
     }),
   };
+}
+
+/**
+ * Maps a verified Stripe refund or dispute event to a reversal. Identifiers
+ * and occurredAt come from the refund/dispute object itself, so every event
+ * about one refund (created, updated) is the SAME evidence (idempotent).
+ * Refunds count once succeeded; a refund failing after that, and a dispute
+ * won after its funds were withdrawn, are recorded as offsetting entries.
+ * The caller resolves the issued invoice from the recorded payment.
+ */
+function stripeEventToReversal(event) {
+  if (!REVERSAL_EVENT_TYPES.has(event.type)) return { relevant: false, reason: 'EVENT_TYPE_IGNORED' };
+  const object = event.data && event.data.object;
+  const isRefund = event.type.startsWith('refund.');
+  if (!object || typeof object !== 'object' || object.object !== (isRefund ? 'refund' : 'dispute')) {
+    return { relevant: false, reason: 'UNEXPECTED_OBJECT' };
+  }
+  const paymentIntent = paymentIntentOf(object);
+  if (!paymentIntent) return { relevant: false, reason: 'NOT_A_PAYMENT_INTENT_REVERSAL' };
+
+  let kind;
+  if (isRefund) {
+    if (object.status === 'succeeded' && event.type !== 'refund.failed') kind = 'REFUND_ISSUED';
+    else if (object.status === 'failed' || object.status === 'canceled') kind = 'REFUND_REVERSED';
+    else return { relevant: false, reason: 'REFUND_NOT_FINAL' };
+  } else {
+    kind = event.type === 'charge.dispute.funds_withdrawn' ? 'DISPUTE_WITHDRAWN' : 'DISPUTE_REINSTATED';
+  }
+
+  const idPattern = isRefund ? /^(re|pyr)_[A-Za-z0-9]{6,200}$/u : /^dp_[A-Za-z0-9]{6,200}$/u;
+  if (typeof object.id !== 'string' || !idPattern.test(object.id) ||
+      object.currency !== 'cad' || !Number.isSafeInteger(object.amount) || object.amount < 1 ||
+      !Number.isSafeInteger(object.created) || object.created < 1) {
+    throw new StripeWebhookError('STRIPE_REVERSAL_INVALID', 422);
+  }
+  return reversal({ kind, id: object.id, paymentIntent, amount: object.amount, created: object.created });
+}
+
+/** Rebuilds a reversal from a stored pending row (see migration 046). */
+function reversalFromPendingRow(row) {
+  const id = String(row.provider_event_id).replace(/:(reversed|withdrawn|reinstated)$/u, '');
+  return reversal({
+    kind: row.reversal_kind,
+    id,
+    paymentIntent: row.payment_intent_id,
+    amount: Number(row.amount_cents),
+    created: Math.floor(new Date(row.occurred_at).getTime() / 1000),
+  });
+}
+
+/**
+ * Only live-mode events from the platform account itself. Events from
+ * connected accounts (event.account) are never payments to GROUPE TAKATAK,
+ * and test-mode events are accepted only when explicitly allowed (staging).
+ */
+function stripeEventScope(event, { allowTestMode = false } = {}) {
+  if (event.account !== undefined && event.account !== null) return { accepted: false, reason: 'CONNECTED_ACCOUNT_EVENT' };
+  if (event.livemode !== true && !allowTestMode) return { accepted: false, reason: 'TEST_MODE_EVENT' };
+  return { accepted: true };
 }
 
 module.exports = {
@@ -195,5 +255,7 @@ module.exports = {
   StripeWebhookError,
   verifyStripeWebhook,
   stripeEventToPaymentEvidence,
-  stripeEventToRefundEvidence,
+  stripeEventToReversal,
+  reversalFromPendingRow,
+  stripeEventScope,
 };

@@ -9,7 +9,9 @@ const {
   StripeWebhookError,
   verifyStripeWebhook,
   stripeEventToPaymentEvidence,
-  stripeEventToRefundEvidence,
+  stripeEventToReversal,
+  reversalFromPendingRow,
+  stripeEventScope,
 } = require('./stripe-payment-webhook');
 
 const PATH = '/webhooks/stripe/payments';
@@ -48,11 +50,48 @@ function readRawBody(request) {
   });
 }
 
-function attachStripePaymentWebhook(server, { secret, businessId, evidenceStore, now = Date.now }) {
+const REVERSAL_ORDER = ['REFUND_ISSUED', 'DISPUTE_WITHDRAWN', 'REFUND_REVERSED', 'DISPUTE_REINSTATED'];
+
+async function canApply(evidenceStore, reversal) {
+  return !reversal.requiresTransactionId ||
+    evidenceStore.hasEvidenceForTransaction(reversal.requiresTransactionId, reversal.requiresEventType);
+}
+
+/**
+ * Applies the stored reversals of one PaymentIntent once its payment is
+ * recorded. Idempotent: evidence ids are stable, so re-applying is a no-op.
+ */
+async function applyPendingReversals(evidenceStore, paymentIntent, issuedInvoiceId) {
+  const rows = await evidenceStore.listPendingStripeReversals(paymentIntent);
+  const ordered = [...rows].sort((a, b) =>
+    new Date(a.occurred_at) - new Date(b.occurred_at) ||
+    REVERSAL_ORDER.indexOf(a.reversal_kind) - REVERSAL_ORDER.indexOf(b.reversal_kind));
+  for (const row of ordered) {
+    const reversal = reversalFromPendingRow(row);
+    if (!(await canApply(evidenceStore, reversal))) continue;
+    try {
+      await evidenceStore.ingestVerifiedStripe({
+        issuedInvoiceId,
+        event: reversal.event,
+        rawBodySha256: row.webhook_body_sha256,
+        verificationScheme: 'STRIPE_SIGNATURE_V1',
+      });
+    } catch (error) {
+      if (!error || error.name !== 'PaymentEvidenceError') throw error;
+      // A reversal the ledger refuses (e.g. it would exceed the payment)
+      // stays pending for an operator; it never blocks the payment itself.
+    }
+  }
+}
+
+function attachStripePaymentWebhook(server, { secret, businessId, evidenceStore, allowTestMode = false, now = Date.now }) {
   if (!server || typeof server.listeners !== 'function' || server.listeners('request').length !== 1 ||
       typeof businessId !== 'string' || !businessId ||
       !evidenceStore || typeof evidenceStore.ingestVerifiedStripe !== 'function' ||
       typeof evidenceStore.findIssuedInvoiceByPaymentTransaction !== 'function' ||
+      typeof evidenceStore.hasEvidenceForTransaction !== 'function' ||
+      typeof evidenceStore.recordPendingStripeReversal !== 'function' ||
+      typeof evidenceStore.listPendingStripeReversals !== 'function' ||
       evidenceStore.providerKey !== 'STRIPE') {
     throw new TypeError('Stripe payment webhook requires one handler, business and STRIPE evidence store');
   }
@@ -74,25 +113,37 @@ function attachStripePaymentWebhook(server, { secret, businessId, evidenceStore,
         secret,
         nowMs: now(),
       });
-      let issuedInvoiceId;
-      let mapped = stripeEventToPaymentEvidence(verified.event, { businessId });
-      if (mapped.relevant) {
-        issuedInvoiceId = mapped.issuedInvoiceId;
-      } else {
-        mapped = stripeEventToRefundEvidence(verified.event);
-        // Refunds of anything that is not a recorded Facturations payment
-        // (e.g. subscriptions on the same Stripe account) are not ours.
-        issuedInvoiceId = mapped.relevant
-          ? await evidenceStore.findIssuedInvoiceByPaymentTransaction(mapped.paymentIntent)
-          : null;
+      const ignored = () => reply(response, 200, { received: true, recorded: false });
+      if (!stripeEventScope(verified.event, { allowTestMode }).accepted) return ignored();
+      const provenance = { rawBodySha256: verified.rawBodySha256, verificationScheme: verified.verificationScheme };
+
+      const payment = stripeEventToPaymentEvidence(verified.event, { businessId });
+      if (payment.relevant) {
+        await evidenceStore.ingestVerifiedStripe({ issuedInvoiceId: payment.issuedInvoiceId, event: payment.event, ...provenance });
+        await applyPendingReversals(evidenceStore, payment.event.providerTransactionId, payment.issuedInvoiceId);
+        return reply(response, 200, { received: true, recorded: true });
       }
-      if (!mapped.relevant || !issuedInvoiceId) return reply(response, 200, { received: true, recorded: false });
-      await evidenceStore.ingestVerifiedStripe({
-        issuedInvoiceId,
-        event: mapped.event,
-        rawBodySha256: verified.rawBodySha256,
-        verificationScheme: verified.verificationScheme,
-      });
+
+      const reversal = stripeEventToReversal(verified.event);
+      if (!reversal.relevant) return ignored();
+      // Reversals carry no invoice metadata: the invoice is the one whose
+      // payment used this PaymentIntent. When that payment (or the reversal
+      // this one undoes) is not recorded yet, keep it until it is. Reversals
+      // of other products on the same Stripe account just stay unmatched.
+      const issuedInvoiceId = await evidenceStore.findIssuedInvoiceByPaymentTransaction(reversal.paymentIntent);
+      if (!issuedInvoiceId || !(await canApply(evidenceStore, reversal))) {
+        await evidenceStore.recordPendingStripeReversal({
+          kind: reversal.kind,
+          eventId: reversal.event.eventId,
+          paymentIntent: reversal.paymentIntent,
+          amountCents: reversal.event.amountCents,
+          occurredAt: reversal.event.occurredAt,
+          rawBodySha256: verified.rawBodySha256,
+        });
+        return reply(response, 200, { received: true, recorded: false, pending: true });
+      }
+      await evidenceStore.ingestVerifiedStripe({ issuedInvoiceId, event: reversal.event, ...provenance });
+      await applyPendingReversals(evidenceStore, reversal.paymentIntent, issuedInvoiceId);
       return reply(response, 200, { received: true, recorded: true });
     } catch (error) {
       if (error instanceof StripeWebhookError) {

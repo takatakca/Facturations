@@ -9,7 +9,7 @@ test('defaults to port 3000 and leaves all credentials and database absent', () 
   assert.deepEqual(loadConfig({}), { nodeEnv: 'development', productionMode: false, trustProxy: false,
     port: 3000, adminKey: '', waveToken: '', databaseUrl: '', businessId: '',
     browserOrigin: '', totpEncryptionKeyHex: '', integrationEnabled: false,
-    integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '', stripeWebhookSecret: '' });
+    integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '', stripeWebhookSecret: '', stripeAllowTestMode: false });
 });
 
 test('accepts port zero, trims token and dedicated database settings', () => {
@@ -21,7 +21,7 @@ test('accepts port zero, trims token and dedicated database settings', () => {
     databaseUrl: 'postgresql://localhost/facturations', businessId: 'business-one',
     browserOrigin: '', totpEncryptionKeyHex: '', integrationEnabled: false,
     integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '',
-    stripeWebhookSecret: '',
+    stripeWebhookSecret: '', stripeAllowTestMode: false,
   });
 });
 

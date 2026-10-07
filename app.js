@@ -35,6 +35,8 @@ const { createReadinessProbe } = require('./src/readiness-probe');
 const { installGracefulShutdown } = require('./src/graceful-shutdown');
 const { attachOperationalTelemetry } = require('./src/operational-telemetry');
 const { attachProductionEdgeGuard } = require('./src/production-edge-guard');
+const { attachStripePaymentWebhook } = require('./src/stripe-payment-webhook-route');
+const { createPaymentEvidenceStore } = require('./src/payment-evidence-store');
 const { createIntegrationReplayGuard } = require('./src/integration-replay-guard');
 
 if (require.main === module) {
@@ -119,6 +121,15 @@ if (require.main === module) {
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, contactStore: customerContactStore });
     attachBrowserClientPortal(server, { origin: config.browserOrigin,
       authStore: clientPortalAuthStore, readStore: clientPortalReadStore });
+  }
+  if (config.stripeWebhookSecret && pool) {
+    // Stripe-signed payment webhooks: Facturations verifies the signature itself.
+    attachStripePaymentWebhook(server, {
+      secret: config.stripeWebhookSecret,
+      allowTestMode: config.stripeAllowTestMode,
+      businessId: config.businessId,
+      evidenceStore: createPaymentEvidenceStore({ pool, businessId: config.businessId, providerKey: 'STRIPE' }),
+    });
   }
   attachReadOnlyDashboardCookie(server);
   attachOperationalTelemetry(server);

@@ -10,7 +10,7 @@ const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer',
+  'Referrer-Policy': 'same-origin',
   'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
 });
 

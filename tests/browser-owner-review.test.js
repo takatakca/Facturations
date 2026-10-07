@@ -129,7 +129,7 @@ test('owner sees escaped immutable snapshot and deliberate unchecked internal-on
     const response = await fetch(base + PATH, { headers: getHeaders() });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
-    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(response.headers.get('referrer-policy'), 'same-origin');
     assert.match(response.headers.get('content-security-policy'), /form-action 'self'/);
     assert.equal(response.headers.get('set-cookie'), null);
     const html = await response.text();

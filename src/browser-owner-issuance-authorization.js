@@ -18,7 +18,7 @@ const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer',
+  'Referrer-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",

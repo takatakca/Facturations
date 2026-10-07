@@ -21,7 +21,7 @@ function attachProductionEdgeGuard(server,{origin,enforceProxy=false}={}){
     if(!response.headersSent){
       response.setHeader('Strict-Transport-Security',STRICT_TRANSPORT_SECURITY);
       response.setHeader('X-Content-Type-Options','nosniff');
-      response.setHeader('Referrer-Policy','no-referrer');
+      response.setHeader('Referrer-Policy','same-origin');
     }
 
     if(enforceProxy){
@@ -33,7 +33,7 @@ function attachProductionEdgeGuard(server,{origin,enforceProxy=false}={}){
             'Cache-Control':'no-store',
             'Strict-Transport-Security':STRICT_TRANSPORT_SECURITY,
             'X-Content-Type-Options':'nosniff',
-            'Referrer-Policy':'no-referrer',
+            'Referrer-Policy':'same-origin',
           });
           response.end(JSON.stringify({error:'SECURE_PROXY_REQUIRED'}));
         }

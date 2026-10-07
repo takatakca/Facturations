@@ -71,7 +71,7 @@ test('search route validates same-origin form, bounds body, denies credentials a
     const ok = await postForm(base, 'q=' + encodeURIComponent('Fictional & <client>'));
     assert.equal(ok.status, 200);
     assert.equal(ok.headers['cache-control'], 'private, no-store');
-    assert.equal(ok.headers['referrer-policy'], 'no-referrer');
+    assert.equal(ok.headers['referrer-policy'], 'same-origin');
     assert.match(ok.headers['content-security-policy'], /form-action 'self'/);
     assert.equal(ok.headers['access-control-allow-origin'], undefined);
     assert.match(ok.body, /value="Fictional &amp; &lt;client&gt;"/);

@@ -41,7 +41,7 @@ L’interface ne transforme jamais une preuve synthétique en paiement réel.
 
 Un scanner de courriel qui fait seulement un GET ne consomme pas le lien. La consommation exige une confirmation POST same-origin.
 
-Le token n’est jamais stocké dans localStorage ou JavaScript client. Les réponses sont `no-store` et `Referrer-Policy: no-referrer`.
+Le token n’est jamais stocké dans localStorage ou JavaScript client. Les réponses sont `no-store` et `Referrer-Policy: same-origin`.
 
 Un lien réellement invalide/expiré/utilisé retourne 401. Une panne inattendue du store/DB pendant la consommation retourne 503 générique et n’est jamais présentée comme une erreur d’authentification ni accompagnée d’un détail SQL.
 

@@ -8,7 +8,7 @@ const { previewDraft } = require('./draft-preview');
 const PATH = /^\/internal\/review\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\/print$/i;
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'",

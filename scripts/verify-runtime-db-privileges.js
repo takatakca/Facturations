@@ -34,6 +34,7 @@ const EXPECTED_TABLES = Object.freeze([
   'facturations_staff_sessions',
   'facturations_staff_totp',
   'facturations_staff_users',
+  'facturations_stripe_pending_reversals',
   'facturations_workspace_submissions',
   'invoice_audit_events',
   'invoice_customers',

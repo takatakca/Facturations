@@ -24,9 +24,7 @@ Chaque événement conserve :
 
 ## Portée actuelle
 
-Le store public actuel n’accepte que `SYNTHETIC_TEST`.
-
-`VERIFIED_PROVIDER_WEBHOOK` est réservé au schéma pour une intégration future qui devra être précédée d’une vérification cryptographique/provider-specific séparée.
+Le store accepte `SYNTHETIC_TEST` et, depuis la migration 046, `VERIFIED_PROVIDER_WEBHOOK` uniquement pour un webhook Stripe dont la signature a été vérifiée par Facturations (`ingestVerifiedStripe()`, provenance SHA-256 + `STRIPE_SIGNATURE_V1` imposée par PostgreSQL). Voir [`stripe-verified-payment-webhook.md`](stripe-verified-payment-webhook.md).
 
 Il n’existe volontairement aucune méthode permettant de déclarer arbitrairement une preuve réelle.
 

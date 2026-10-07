@@ -31,8 +31,8 @@ function fixture(){
 
 test('repository migrations match the immutable integrity lock',()=>{
   const result=verifyMigrationIntegrity();
-  assert.equal(result.lockedThrough,45);
-  assert.equal(result.migrationCount,45);
+  assert.equal(result.lockedThrough,46);
+  assert.equal(result.migrationCount,46);
   assert.match(result.proofSha256,/^[a-f0-9]{64}$/);
 });
 

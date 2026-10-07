@@ -1,7 +1,7 @@
 {
   "version": 1,
   "algorithm": "git-blob-sha1",
-  "lockedThrough": 45,
+  "lockedThrough": 46,
   "migrations": [
     {
       "file": "001_draft_storage.sql",
@@ -227,6 +227,11 @@
       "file": "045_restore_safe_evidence_hashes.sql",
       "gitBlobSha1": "c3811fd5386786807153f2cc4fc247b8d44e5bf6",
       "bytes": 5113
+    },
+    {
+      "file": "046_verified_stripe_payment_evidence.sql",
+      "gitBlobSha1": "c8fa9fc824fc39e2c918b21b7981baf2ff7e6160",
+      "bytes": 3493
     }
   ]
 }

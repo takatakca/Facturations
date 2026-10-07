@@ -646,6 +646,173 @@
         }
       }
     },
+    "/integration/v1/drafts/{draftId}/issuance": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Read OWNER-only issuance and payment status of a draft",
+        "description": "Returns the issued invoice materialized from this draft, if any, with its derived financial state. Read-only: it never issues, delivers, records payments or exposes customer contact data, provider payloads, hashes or snapshots. financialState and proofScope come from the append-only payment evidence projection; SYNTHETIC_ONLY evidence is never real money.",
+        "operationId": "getIntegrationDraftIssuance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DraftId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only issuance status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "requestId",
+                    "businessId",
+                    "data"
+                  ],
+                  "properties": {
+                    "version": {
+                      "const": 1
+                    },
+                    "requestId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "businessId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "draftId",
+                        "issued",
+                        "invoice",
+                        "nativeActions"
+                      ],
+                      "properties": {
+                        "draftId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "issued": {
+                          "type": "boolean"
+                        },
+                        "invoice": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "id",
+                                "officialInvoiceNumber",
+                                "issuedAt",
+                                "currency",
+                                "totalCents",
+                                "balanceCents",
+                                "financialState",
+                                "proofScope"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "officialInvoiceNumber": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 160
+                                },
+                                "issuedAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "currency": {
+                                  "const": "CAD"
+                                },
+                                "totalCents": {
+                                  "$ref": "#/components/schemas/UnsignedIntegerString"
+                                },
+                                "balanceCents": {
+                                  "$ref": "#/components/schemas/UnsignedIntegerString"
+                                },
+                                "financialState": {
+                                  "enum": [
+                                    "NO_EVIDENCE",
+                                    "UNPAID",
+                                    "PARTIALLY_PAID",
+                                    "PAID",
+                                    "OVERPAID",
+                                    "FULLY_REFUNDED",
+                                    "REFUND_EXCEEDS_PAYMENTS"
+                                  ]
+                                },
+                                "proofScope": {
+                                  "enum": [
+                                    "NONE",
+                                    "SYNTHETIC_ONLY",
+                                    "VERIFIED_PROVIDER_PRESENT"
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "nativeActions": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "issue",
+                            "deliver",
+                            "recordPayment"
+                          ],
+                          "properties": {
+                            "issue": {
+                              "const": false
+                            },
+                            "deliver": {
+                              "const": false
+                            },
+                            "recordPayment": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OwnerRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidQuery"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/integration/v1/handoffs/owner-review": {
       "get": {
         "tags": [
@@ -924,7 +1091,8 @@
                       "issuanceAuthorizationWrite",
                       "deliveryAuthorizationWrite",
                       "portalPublicationWrite",
-                      "ownerReviewHandoffRead"
+                      "ownerReviewHandoffRead",
+                      "issuanceStatusRead"
                     ],
                     "properties": {
                       "capabilitiesRead": {
@@ -971,6 +1139,9 @@
                         "type": "boolean"
                       },
                       "ownerReviewHandoffRead": {
+                        "type": "boolean"
+                      },
+                      "issuanceStatusRead": {
                         "type": "boolean"
                       }
                     }

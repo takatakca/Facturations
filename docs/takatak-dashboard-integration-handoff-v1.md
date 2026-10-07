@@ -218,6 +218,35 @@ Before internal approval:
 
 After internal approval, `nextStep` becomes `STANDALONE_ISSUANCE_AUTHORIZATION`. This is navigation guidance only; it is not authorization to issue or send an invoice.
 
+### GET /integration/v1/drafts/:id/issuance
+
+OWNER only. Read-only issuance and payment status of the invoice materialized from this draft. TAKATAK uses it to show a client the invoices issued for the requests it fed, linked explicitly by draft id, never by email.
+
+```json
+{
+  "data": {
+    "draftId": "<draft-uuid>",
+    "issued": true,
+    "invoice": {
+      "id": "<issued-invoice-uuid>",
+      "officialInvoiceNumber": "<provider number>",
+      "issuedAt": "2026-10-06T12:00:00.000Z",
+      "currency": "CAD",
+      "totalCents": "11498",
+      "balanceCents": "11498",
+      "financialState": "NO_EVIDENCE",
+      "proofScope": "NONE"
+    },
+    "nativeActions": { "issue": false, "deliver": false, "recordPayment": false }
+  }
+}
+```
+
+- Before issuance, `issued` is false and `invoice` is null.
+- `financialState` and `proofScope` come from the append-only payment evidence projection.
+- `SYNTHETIC_ONLY` evidence is test data, never real money, and must not be presented as a real payment.
+- No customer contact data, provider payload, snapshot or hash is exposed.
+
 ### GET /integration/v1/customers?page=1&pageSize=20&q=Example
 
 OWNER only. Minimum search text is 2 characters and maximum is 80. Response fields are minimized:

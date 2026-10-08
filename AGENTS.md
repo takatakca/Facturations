@@ -1,5 +1,15 @@
 # GROUPE TAKATAK — Facturations: instructions for coding agents
 
+## Git: main belongs to the owner (owner's order, 2026-10-08)
+Nobody but the owner touches `main`. Not even a docs-only commit.
+- **Never:** commit on local `main`; `git push origin main` or `HEAD:main`; merge into `main`; rebase, reset or rewrite `main`; force-push.
+- **Work flow:** `git fetch origin`, then `git switch -c <type>/<name> origin/main` (type: `feature`, `fix`, `refactor`, `docs` or `agent`). Push only that branch: `git push -u origin <type>/<name>`.
+- **Before "done":** you are not on `main`, the checks ran, the work is committed, the branch is pushed, the working tree is clean.
+- **Report:** branch, SHA, what changed, checks and results, env / migration / deploy notes, and "ready for owner review/merge". The owner merges and deploys.
+- **Never discard uncommitted work you did not create** (`reset --hard`, `clean -fd`, `checkout -- .`, `restore .`). Report it to the owner instead.
+- The owner works in the main checkout, on `main`. Never commit there: use a git worktree (`git worktree add <dir> -b <type>/<name> origin/main`).
+- A local `pre-push` hook refuses any push to `main` when the environment variable `CLAUDECODE` is set. It never blocks the owner. Do not work around it.
+
 ## Mission
 Build a secure, independent, bilingual (FR/EN), mobile-first invoicing application for `facturations.bolon.ca`. Owner dictates a customer/invoice request in natural language; system creates a **draft** for review, owner explicitly approves issuance and separately approves delivery. Customers eventually receive authenticated access to **their own** issued invoices, payment status and PDF downloads. Support invoice amendments, partial payments, refunds and accounting reconciliation after provider verification. Work in small, reviewable increments; never claim the product is finished without end-to-end staging evidence.
 
@@ -13,7 +23,7 @@ Build a secure, independent, bilingual (FR/EN), mobile-first invoicing applicati
 1. Check existing open PRs and GitHub Actions; fix red CI or regressions before starting features. Read relevant existing implementation and open issues; select ONE bounded improvement instead of duplicating work.
 2. Write acceptance criteria and negative/security cases; implement minimal, maintainable changes in a new branch. Avoid speculative dependency additions, features and API assumptions.
 3. Run `npm run check`, `npm test` (including isolated PostgreSQL integration tests where applicable), and evaluate failure paths. Mock Wave/SMTP/AI services unless an explicitly authorized isolated test environment is provided. Never run migrations on production.
-4. Open a PR with summary, tests, residual risks and next step. Merge only if CI is green and changes do not require product, monetary, credential, live-account or deployment approval; otherwise request review. Avoid opening repeat PRs when no actionable change exists.
+4. Open a PR with summary, tests, residual risks and next step. Do not merge it: the owner reviews and merges (see "Git: main belongs to the owner"). Avoid opening repeat PRs when no actionable change exists.
 5. Document what is **implemented**, **tested**, **not tested**, and **blocked** without conflating these. Never report 100% correctness or 24/7 operation without real monitoring evidence.
 
 ## Security invariants

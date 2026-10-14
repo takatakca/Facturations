@@ -2,6 +2,8 @@
 
 const NAME='__Host-facturations_client_session';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
+// Match the staff-session cookie policy: oversized headers are not trusted.
+const MAX_COOKIE_HEADER=4096;
 
 function createClientSessionCookie(token){
   if(typeof token!=='string' || !TOKEN.test(token)) throw new TypeError('Valid client session token required');
@@ -11,7 +13,7 @@ function clearClientSessionCookie(){
   return NAME+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
 }
 function readClientSessionCookie(header){
-  if(typeof header!=='string' || !header) return null;
+  if(typeof header!=='string' || header.length===0 || header.length>MAX_COOKIE_HEADER) return null;
   const parts=header.split(';');
   let found=null;
   for(const part of parts){

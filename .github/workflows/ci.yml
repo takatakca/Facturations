@@ -41,6 +41,8 @@ jobs:
         run: npm run check:migrations
       - run: node scripts/setup-test-db.js
       - run: npm run check
+      - name: Verify project status and agent handoff documentation
+        run: npm run check:project-docs
       - run: npm test
       - name: Prove isolated PostgreSQL backup and restore
         run: npm run test:backup-restore

@@ -6,6 +6,7 @@ Dernière vérification de GitHub : **2026-10-14**. Source de vérité : [`AGENT
 
 - Dépôt : `takatakca/Facturations`, branche principale protégée `main`.
 - SHA `main` vérifié au début de cette reprise : `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`.
+- Correctif JSON indépendant : [PR #165](https://github.com/takatakca/Facturations/pull/165), SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10` (lectures de corps JSON avortées et taille bornée; CI à vérifier, non fusionné).
 - Correctif indépendant déjà poussé : [PR #163](https://github.com/takatakca/Facturations/pull/163), SHA `347564627b5e4755d9d3de95de6c730056e7ec4c` (10 contrôles GitHub Actions réussis, fusion bloquée en attente de revue).
 - Les PR #158, #159, #160 et #162 sont **ouvertes mais non fusionnées** au dernier contrôle; ne pas attribuer leurs fonctions à `main`.
 - La chaîne de PR IA #122–#147 est également en attente; certaines branches sont empilées, inspecter les bases avant toute fusion.

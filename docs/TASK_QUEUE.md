@@ -4,6 +4,7 @@ Date de triage : 2026-10-14. Statuts : `DONE_PR` = code poussé mais pas nécess
 
 | Priorité | Tâche | État vérifié | Prochaine action |
 | --- | --- | --- | --- |
+| P0 | Refuser les cookies de portail client surdimensionnés | [#167](https://github.com/takatakca/Facturations/pull/167) : code/tests poussés, revue et CI en cours au dernier suivi | Vérifier CI du SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3`, puis revue indépendante |
 | P0 | Réparer les formulaires et la connexion Chromium | [#158](https://github.com/takatakca/Facturations/pull/158) : code et test proposés, non fusionnés | Revue indépendante du SHA exact, CI puis fusion autorisée |
 | P0 | Durcir l'ingestion Stripe (taille du corps, requête avortée) | [#163](https://github.com/takatakca/Facturations/pull/163) : `DONE_PR`, 10 checks verts, revue demandée | Intégrer les remarques de revue, fusionner selon protection |
 | P0 | Éviter les lectures JSON bloquées sur uploads interrompus | [#165](https://github.com/takatakca/Facturations/pull/165) : `DONE_PR`, 10/10 checks verts, revue en attente | Revue indépendante, fusion selon règles GitHub |

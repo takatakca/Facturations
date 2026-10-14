@@ -1,0 +1,34 @@
+# Facturations — État vérifié du projet
+
+Dernière vérification de GitHub : **2026-10-14**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
+
+## Références Git
+
+- Dépôt : `takatakca/Facturations`, branche principale protégée `main`.
+- SHA `main` vérifié au début de cette reprise : `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`.
+- Correctif JSON indépendant : [PR #165](https://github.com/takatakca/Facturations/pull/165), SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10` (lectures de corps JSON avortées et taille bornée; CI à vérifier, non fusionné).
+- Correctif indépendant déjà poussé : [PR #163](https://github.com/takatakca/Facturations/pull/163), SHA `347564627b5e4755d9d3de95de6c730056e7ec4c` (10 contrôles GitHub Actions réussis, fusion bloquée en attente de revue).
+- Les PR #158, #159, #160 et #162 sont **ouvertes mais non fusionnées** au dernier contrôle; ne pas attribuer leurs fonctions à `main`.
+- La chaîne de PR IA #122–#147 est également en attente; certaines branches sont empilées, inspecter les bases avant toute fusion.
+
+## Livré dans le code de main (non homologué en production)
+
+Le dépôt contient l'authentification staff avec MFA, la gestion privée de brouillons et de clients, l'approbation interne, l'autorisation séparée d'émission, les registres immuables, les PDF qualifiés, la preuve de paiement Stripe signée, le portail client en lecture et des suites de tests sur PostgreSQL jetable. Le code de `main` ne constitue **pas** la preuve d'un parcours réel de facturation ou de mise en ligne.
+
+Les états `SYNTHETIC_TEST` / `SIMULATED_EMAIL` ne sont pas des confirmations de versement ou de remise. Aucune preuve disponible dans ce dossier ne permet de déclarer une émission Wave réelle, une livraison email réelle, une homologation fiscale ou un site de production en santé.
+
+## Validation observée
+
+La PR #163 a exécuté avec succès les workflows de tests Node 20/22, Chromium MFA/PostgreSQL, navigateur et contrôle des privilèges DB. Ces résultats portent uniquement sur le SHA de la PR, **pas** sur un staging public ou un `main` fusionné.
+
+## État opérationnel
+
+- **Production : NON HOMOLOGUÉE / NON DÉPLOYÉE selon la documentation vérifiée.**
+- **Staging isolé : aucune installation vérifiée**. [PR #159](https://github.com/takatakca/Facturations/pull/159) propose un kit Coolify/Contabo mais n'est pas fusionnée.
+- `facturations.bolon.ca` : HTTPS public, proxy, base dédiée et santé non prouvés.
+- Fournisseurs Wave/email/paiements réels : gates séparés non levés.
+- Protection de `main` constatée; les paramètres exacts de la règle de protection ne sont pas lisibles par ce connecteur (403), et aucune revue humaine indépendante n'a été observée sur #158, #159, #160 et #163.
+
+## Où continuer
+
+Consulter [`TASK_QUEUE.md`](TASK_QUEUE.md), puis [`AGENT_HANDOFF.md`](AGENT_HANDOFF.md). Toute affirmation de réussite doit citer le SHA, les checks et une preuve réelle correspondant à son périmètre.

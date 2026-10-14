@@ -10,6 +10,10 @@ Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des 
 
 [PR #165](https://github.com/takatakca/Facturations/pull/165), SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10` : lecteur JSON de brouillon avec limites et traitement d'abandon, nouveaux tests; revue indépendante demandée. Vérifier les jobs GitHub Actions du SHA exact, encore en cours lors de la mise à jour.
 
+## Nouvelle tâche terminée en branche indépendante
+
+[PR #167](https://github.com/takatakca/Facturations/pull/167), branche `fix/client-cookie-header-bound-20261014`, commit `16be6d2f7b716dc6ab44975ee8818665ba695ab3` : refuse les en-têtes `Cookie` du portail client dépassant 4096 caractères (même borne que les cookies du personnel). Les tests couvrent le seuil 4096/4097, les doublons, et le rejet HTTP 401 sur liste/détails/PDF sans lecture du store; un cookie valide reste autorisé. Fichiers : `src/client-session-cookie.js`, `tests/client-session-cookie.test.js`, `tests/browser-client-portal.test.js`. CI GitHub Actions et revue `takatakmtl` demandées; toujours **non fusionnée**. Lire le verdict du SHA exact avant de déclarer l'amélioration validée.
+
 ## Tâche en cours
 
 Finaliser le correctif de validation UTF-8 des documents de relève sur `fix/project-docs-strict-utf8-20261014`, [PR #166](https://github.com/takatakca/Facturations/pull/166) empilée sur [PR #164](https://github.com/takatakca/Facturations/pull/164). La lecture du handoff avec `TextDecoder('utf-8', { fatal: true })` bloque désormais les octets invalides au lieu de les remplacer silencieusement. Le test de régression couvre aussi des caractères FR, ES et chinois valides. Le contrôle rejette désormais les fichiers et répertoires `docs` symboliquement liés, empêchant CI de suivre des chemins extérieurs au checkout.
@@ -51,7 +55,8 @@ Finaliser le correctif de validation UTF-8 des documents de relève sur `fix/pro
 
 ## Prochaine action exacte
 
-1. Vérifier les GitHub Actions du HEAD courant de la PR #166, incluant `npm run check:project-docs`, `npm run check` et `npm test`; corriger les erreurs avec un nouveau SHA.
-2. Obtenir une revue indépendante de #164 puis la fusion autorisée sur `main`; retargeter ensuite #166 vers `main` et réexécuter les vérifications exactes.
-3. Lire les PR #158 (login réel), #159 (kit staging isolé), #160 (statut d'émission), #163 (Stripe) et #165 (HTTP); ne pas écraser ni dupliquer ces changements. La CI verte ne remplace pas leurs revues.
-4. Ne tenter aucun déploiement ou fournisseur réel sans les gates TLS, staging dédié, fiscalité, revues, privilèges et GO/NO-GO validés.
+1. Vérifier les GitHub Actions du SHA exact de #167, corriger tout échec, vérifier revue; consulter les jobs de #166 après actualisation de cette relève.
+2. Vérifier les GitHub Actions du HEAD courant de la PR #166, incluant `npm run check:project-docs`, `npm run check` et `npm test`; corriger les erreurs avec un nouveau SHA.
+3. Obtenir une revue indépendante de #164 puis la fusion autorisée sur `main`; retargeter ensuite #166 vers `main` et réexécuter les vérifications exactes.
+4. Lire les PR #158 (login réel), #159 (kit staging isolé), #160 (statut d'émission), #163 (Stripe) et #165 (HTTP); ne pas écraser ni dupliquer ces changements. La CI verte ne remplace pas leurs revues.
+5. Ne tenter aucun déploiement ou fournisseur réel sans les gates TLS, staging dédié, fiscalité, revues, privilèges et GO/NO-GO validés.

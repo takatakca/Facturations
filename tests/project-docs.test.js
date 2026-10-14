@@ -77,3 +77,24 @@ test('project handoff: valid multilingual UTF-8 content remains accepted', () =>
     assert.deepEqual(checkProjectDocs(root), []);
   });
 });
+
+test('project handoff: symbolic-link files and directories are rejected', { skip: process.platform === 'win32' }, () => {
+  withFixture(root => {
+    const filename = path.join(root, 'docs/PROJECT_STATUS.md');
+    const outside = path.join(root, 'copied-content.md');
+    fs.writeFileSync(outside, REQUIRED['docs/PROJECT_STATUS.md'].join('\n') + '\n', 'utf8');
+    fs.unlinkSync(filename);
+    fs.symlinkSync(outside, filename);
+    assert.ok(checkProjectDocs(root).some(error =>
+      error.includes('docs/PROJECT_STATUS.md: symbolic links')));
+    fs.unlinkSync(filename);
+    fs.writeFileSync(filename, REQUIRED['docs/PROJECT_STATUS.md'].join('\n') + '\n', 'utf8');
+
+    const folder = path.join(root, 'docs');
+    const original = path.join(root, 'real-docs');
+    fs.renameSync(folder, original);
+    fs.symlinkSync(original, folder, 'dir');
+    assert.ok(checkProjectDocs(root).some(error =>
+      error.includes('docs/PROJECT_STATUS.md: symbolic links')));
+  });
+});

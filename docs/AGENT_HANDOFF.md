@@ -6,6 +6,10 @@
 
 Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des uploads interrompus et tests unitaires/HTTP. Travail poussé dans [PR #163](https://github.com/takatakca/Facturations/pull/163), SHA **`347564627b5e4755d9d3de95de6c730056e7ec4c`**. Ses **10 checks GitHub Actions** ont conclu `success`. La PR n'était **pas fusionnée**; revue de `takatakmtl` demandée.
 
+## Travail applicatif supplémentaire poussé
+
+[PR #165](https://github.com/takatakca/Facturations/pull/165), SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10` : lecteur JSON de brouillon avec limites et traitement d'abandon, nouveaux tests; revue indépendante demandée. Vérifier les jobs GitHub Actions du SHA exact, encore en cours lors de la mise à jour.
+
 ## Tâche en cours
 
 Installer les documents de relève `PROJECT_STATUS.md`, `TASK_QUEUE.md`, `AGENT_HANDOFF.md`, `DEPLOYMENT.md`, `DECISIONS.md` et un contrôle CI de leur présence/structure sur la branche `docs/agent-handoff-ci-20261014`. Cette étape ne modifie ni le comportement financier ni la base de données.
@@ -41,4 +45,5 @@ Installer les documents de relève `PROJECT_STATUS.md`, `TASK_QUEUE.md`, `AGENT_
 1. Ouvrir la nouvelle PR de relève et attendre le résultat du job `npm run check:project-docs` et du `npm test` complet.
 2. Corriger toute erreur CI de la branche, pousser un commit additionnel puis actualiser les preuves.
 3. Demander une revue indépendante, et fusionner uniquement si les règles et les autorisations le permettent.
-4. Ensuite reprendre la PR #158 (bug de login en navigateur), avant de valider l'installation isolée #159 et l'intégration #160.
+4. Lire aussi le verdict CI et la revue de #165; corriger en cas d'échec.
+5. Ensuite reprendre la PR #158 (bug de login en navigateur), avant de valider l'installation isolée #159 et l'intégration #160.

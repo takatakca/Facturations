@@ -4,6 +4,7 @@
 // No network access, secrets, timestamps or mutable deployment state.
 const fs = require('node:fs');
 const path = require('node:path');
+const { TextDecoder } = require('node:util');
 
 const REQUIRED = Object.freeze({
   'docs/PROJECT_STATUS.md': ['# Facturations', '## Références Git', '## État opérationnel'],
@@ -33,9 +34,11 @@ function checkProjectDocs(root = path.resolve(__dirname, '..')) {
         failures.push(relative + ': expected UTF-8 Markdown file up to 64 KiB');
         continue;
       }
-      content = fs.readFileSync(filename, 'utf8');
-    } catch {
-      failures.push(relative + ': missing or unreadable');
+      // A regular UTF-8 read silently substitutes malformed bytes with U+FFFD.
+      // Fail closed so the handoff cannot be corrupted while CI still passes.
+      content = new TextDecoder('utf-8', { fatal: true }).decode(fs.readFileSync(filename));
+    } catch (error) {
+      failures.push(relative + (error instanceof TypeError ? ': invalid UTF-8' : ': missing or unreadable'));
       continue;
     }
     if (!content.trim() || content.includes('\u0000') || !content.endsWith('\n')) {

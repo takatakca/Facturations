@@ -6,6 +6,7 @@ Date de triage : 2026-10-14. Statuts : `DONE_PR` = code poussé mais pas nécess
 | --- | --- | --- | --- |
 | P0 | Réparer les formulaires et la connexion Chromium | [#158](https://github.com/takatakca/Facturations/pull/158) : code et test proposés, non fusionnés | Revue indépendante du SHA exact, CI puis fusion autorisée |
 | P0 | Durcir l'ingestion Stripe (taille du corps, requête avortée) | [#163](https://github.com/takatakca/Facturations/pull/163) : `DONE_PR`, 10 checks verts, revue demandée | Intégrer les remarques de revue, fusionner selon protection |
+| P0 | Éviter les lectures JSON bloquées sur uploads interrompus | [#165](https://github.com/takatakca/Facturations/pull/165) : `DONE_PR`, CI/revue en attente | Inspecter les checks du SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10`, corriger si nécessaire |
 | P0 | Consolider les outils de relève et vérifier leur présence en CI | Cette PR de documentation | Terminer les checks de cette PR et demander une revue |
 | P1 | Préparer staging dédié et création du premier OWNER | [#159](https://github.com/takatakca/Facturations/pull/159) : kit Coolify proposé, non fusionné | Revue, puis construire un environnement isolé autorisé et vérifier HTTPS/DB/MFA |
 | P1 | Exposer les statuts d'émission/solde à TAKATAK sans données étrangères | [#160](https://github.com/takatakca/Facturations/pull/160) : implémentation proposée, non fusionnée | Revue, CI, test interentreprises, fusion |

@@ -25,7 +25,7 @@ Implémentée sans SDK dans `src/stripe-payment-webhook.js` :
 1. en-tête `Stripe-Signature` parsé strictement (`t=` + un ou plusieurs `v1=` hex de 64 caractères);
 2. tolérance d’horloge de 300 s dans les deux sens;
 3. HMAC-SHA256 de `"<t>.<body brut>"` avec le secret d’endpoint, comparé en temps constant;
-4. le JSON n’est parsé **qu’après** une signature valide.
+4. le JSON n’est parsé **qu’après** une signature valide. Les octets signés sont décodés en UTF-8 strict (`TextDecoder` en mode fatal); un corps signé malformé est rejeté sans remplacement silencieux de caractères.
 
 ## Événements retenus
 

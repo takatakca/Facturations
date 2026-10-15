@@ -14,6 +14,8 @@
 
 Le futur job de vérification de relève ajoute `npm run check:project-docs`. **Aucun workflow de production autorisé n'est confirmé.** Ne pas ajouter une étape d'émission, d'email ou une migration réelle à un simple `push` sans isolation et gates.
 
+**Protection des événements de paiement :** `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1` est réservé au développement/staging isolé. [PR #169](https://github.com/takatakca/Facturations/pull/169) fait échouer le démarrage en `NODE_ENV=production` si le drapeau est activé; n'activer aucun traitement Stripe réel sans contrat et vérification du fournisseur.
+
 ## Déploiement staging seulement après préparation autorisée
 
 1. Revoir et fusionner le kit de déploiement #159 ou un équivalent vérifié.

@@ -81,7 +81,10 @@ function verifyStripeWebhook({
 
   let event;
   try {
-    event = JSON.parse(rawBody.toString('utf8'));
+    // The HMAC authenticates bytes, not replacement characters: refuse
+    // malformed UTF-8 rather than letting Buffer.toString silently coerce it.
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(rawBody);
+    event = JSON.parse(json);
   } catch {
     throw new StripeWebhookError('INVALID_WEBHOOK_JSON');
   }

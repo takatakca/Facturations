@@ -137,3 +137,32 @@ test('TAKATAK integration is explicit, paired and fail-closed', () => {
     FACTURATIONS_INTEGRATION_HMAC_SECRET: 'z'.repeat(48),
   }), /dedicated database and business ID/);
 });
+
+
+test('Stripe test-mode payments cannot be enabled on a production instance', () => {
+  const endpointSecret = 'whsec_' + 'a'.repeat(32);
+  const configured = {
+    FACTURATIONS_DATABASE_URL: 'postgresql://db.example.test/facturations',
+    WAVE_BUSINESS_ID: 'business-one',
+    FACTURATIONS_STRIPE_WEBHOOK_SECRET: endpointSecret,
+    FACTURATIONS_STRIPE_ALLOW_TEST_MODE: '1',
+  };
+  assert.equal(loadConfig({ ...configured, NODE_ENV: 'test' }).stripeAllowTestMode, true);
+  assert.equal(loadConfig({ ...configured, NODE_ENV: 'development' }).stripeAllowTestMode, true);
+  const production = {
+    ...configured,
+    NODE_ENV: 'production',
+    PORT: '3000',
+    FACTURATIONS_PUBLIC_ORIGIN: 'https://facturations.example.test',
+    FACTURATIONS_TOTP_ENCRYPTION_KEY: 'ab'.repeat(32),
+    FACTURATIONS_TRUST_PROXY: '1',
+  };
+  assert.throws(
+    () => loadConfig(production),
+    /Production forbids FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1/
+  );
+  assert.equal(
+    loadConfig({ ...production, FACTURATIONS_STRIPE_ALLOW_TEST_MODE: '' }).stripeAllowTestMode,
+    false
+  );
+});

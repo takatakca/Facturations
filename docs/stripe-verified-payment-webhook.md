@@ -15,6 +15,8 @@ Cette étape permet au ledger de paiement d’enregistrer une **vraie** preuve d
 
 - Les événements d’un **compte connecté** (`event.account` présent) sont ignorés. Les clients TAKATAK ont leurs propres comptes Stripe Connect sur la même plateforme : ils ne peuvent jamais payer une facture Facturations à eux-mêmes.
 - Les événements du **mode test** (`livemode=false`) sont ignorés, sauf si `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1` (staging uniquement, jamais sur l’endpoint live).
+- En `NODE_ENV=production`, l'application **refuse de démarrer** si `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1`, y compris si un secret Stripe d'endpoint a été configuré par erreur. L'option demeure strictement réservée au développement et au staging isolé.
+- Même quand l'option de test est autorisée, seuls les événements ayant `livemode: false` (booléen explicite) passent en mode test; une valeur absente, chaîne ou malformée est ignorée. Le champ `account` d'un compte Stripe Connect reste systématiquement refusé.
 
 ## Vérification
 
@@ -23,7 +25,7 @@ Implémentée sans SDK dans `src/stripe-payment-webhook.js` :
 1. en-tête `Stripe-Signature` parsé strictement (`t=` + un ou plusieurs `v1=` hex de 64 caractères);
 2. tolérance d’horloge de 300 s dans les deux sens;
 3. HMAC-SHA256 de `"<t>.<body brut>"` avec le secret d’endpoint, comparé en temps constant;
-4. le JSON n’est parsé **qu’après** une signature valide.
+4. le JSON n’est parsé **qu’après** une signature valide. Les octets signés sont décodés en UTF-8 strict (`TextDecoder` en mode fatal); un corps signé malformé est rejeté sans remplacement silencieux de caractères.
 
 ## Événements retenus
 

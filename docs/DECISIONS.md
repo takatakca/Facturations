@@ -13,6 +13,8 @@ Historique de décisions techniques observées, arrêté au **2026-10-14**. Ce d
 | D-007 | Aucun écrasement de `main`, aucun force-push destructif; changements via branches et PR compatibles avec la protection constatée. | `AGENTS.md`; GitHub `main` protected | Obligatoire |
 | D-008 | Ajouter cinq documents de relève et une vérification CI sans activer de fonctionnalités financières. | Demande de reprise du 2026-10-14 | En PR |
 
+| D-009 | Les événements Stripe de test ne doivent jamais alimenter les preuves de paiement en production; l'option test ne peut être activée qu'en staging isolé. | `docs/stripe-verified-payment-webhook.md`, [PR #169](https://github.com/takatakca/Facturations/pull/169) | Invariant documenté, verrou technique en PR non fusionnée |
+
 ## À ne pas considérer comme décidé
 
 - **Plateforme du staging/production :** MochaHost et la proposition Coolify/Contabo #159 coexistent dans les documents; aucun déploiement constaté.

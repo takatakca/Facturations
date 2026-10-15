@@ -4,7 +4,9 @@
 
 ## Dernière tâche terminée
 
-Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des uploads interrompus et tests unitaires/HTTP. Travail poussé dans [PR #163](https://github.com/takatakca/Facturations/pull/163), SHA **`347564627b5e4755d9d3de95de6c730056e7ec4c`**. Ses **10 checks GitHub Actions** ont conclu `success`. La PR n'était **pas fusionnée**; revue de `takatakmtl` demandée.
+Correctif de sécurité Stripe sur [PR #169](https://github.com/takatakca/Facturations/pull/169), SHA **`731faefc5a2ae833d9ab51a3145e282d5a1d6086`**, **10/10 contrôles GitHub Actions `success`**. `NODE_ENV=production` interdit désormais `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1`; seuls les événements avec `livemode` booléen explicite sont acceptés dans la portée autorisée; le JSON signé à UTF-8 malformé est rejeté. Code/tests/docs **poussés mais non fusionnés**, revue de `takatakmtl` demandée. Aucun fournisseur réel appelé.
+
+L'ancienne tâche #163 (lecture Stripe bornée et robuste aux déconnexions), SHA `347564627b5e4755d9d3de95de6c730056e7ec4c`, avait aussi 10/10 jobs réussis et reste en attente de revue indépendante.
 
 ## Travail applicatif supplémentaire poussé
 
@@ -34,7 +36,7 @@ Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des 
 
 ## Tâche en cours
 
-Finaliser le correctif de validation UTF-8 des documents de relève sur `fix/project-docs-strict-utf8-20261014`, [PR #166](https://github.com/takatakca/Facturations/pull/166) empilée sur [PR #164](https://github.com/takatakca/Facturations/pull/164). La lecture du handoff avec `TextDecoder('utf-8', { fatal: true })` bloque désormais les octets invalides au lieu de les remplacer silencieusement. Le test de régression couvre aussi des caractères FR, ES et chinois valides. Le contrôle rejette désormais les fichiers et répertoires `docs` symboliquement liés, empêchant CI de suivre des chemins extérieurs au checkout.
+Faire homologuer les PR #164 et #166 et réintégrer les correctifs Stripe #169 et HTTP #167 sous revue humaine; aucune fusion ni production avant gates. La partie technique du correctif de validation UTF-8 des documents de relève est terminée : sur `fix/project-docs-strict-utf8-20261014`, [PR #166](https://github.com/takatakca/Facturations/pull/166) empilée sur [PR #164](https://github.com/takatakca/Facturations/pull/164). La lecture du handoff avec `TextDecoder('utf-8', { fatal: true })` bloque désormais les octets invalides au lieu de les remplacer silencieusement. Le test de régression couvre aussi des caractères FR, ES et chinois valides. Le contrôle rejette désormais les fichiers et répertoires `docs` symboliquement liés, empêchant CI de suivre des chemins extérieurs au checkout.
 
 **Dernier commit technique poussé dans cette branche à la présente mise à jour :** `6e02f7ba3582bd607814902dd931fb6f02b3d416` (tests contre les symlinks); correctif symlink `24f32e95e346e47bc973f468d5e57184a503ba4f`; tests UTF-8 `d7ef397a798e65222f38fba185f869f1925ea3d2`; commit initial du fix `f39cfaf5a2a4f8a1fc7832b3943c2d0572397a78`. Après toute modification de ce document, lire le nouveau SHA HEAD GitHub; une annotation du SHA dans un commit qu'elle modifie ne peut pas être autoréférentielle.
 

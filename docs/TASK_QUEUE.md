@@ -4,7 +4,7 @@ Date de triage : 2026-10-15. Statuts : `DONE_PR` = code poussé mais pas nécess
 
 | Priorité | Tâche | État vérifié | Prochaine action |
 | --- | --- | --- | --- |
-| P0 | Empêcher les preuves de paiement Stripe de test en production | [#169](https://github.com/takatakca/Facturations/pull/169), SHA `c54decd8857e7e2e97526139707e328c4baa7758`, code/tests/docs poussés, **10/10 checks verts** | Attendre revue indépendante, fusion selon protection de `main` |
+| P0 | Empêcher les preuves de paiement Stripe de test en production | [#169](https://github.com/takatakca/Facturations/pull/169), SHA initial `c54decd8857e7e2e97526139707e328c4baa7758` (10/10 verts), HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (UTF-8 strict, CI relancée) | Vérifier la CI du HEAD, attendre revue indépendante, fusion selon protection de `main` |
 | P0 | Rejeter les preuves de préproduction de taille excessive ou de date ambiguë | [#168](https://github.com/takatakca/Facturations/pull/168), SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5`, code/tests/docs poussés | Examiner les checks du HEAD exact, corriger tout échec, attendre revue indépendante; aucun GO réel n'est validé |
 | P0 | Refuser les cookies de portail client surdimensionnés | [#167](https://github.com/takatakca/Facturations/pull/167) : code/tests poussés, 10/10 checks verts au SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3` | Revue indépendante, fusion selon règles GitHub |
 | P0 | Réparer les formulaires et la connexion Chromium | [#158](https://github.com/takatakca/Facturations/pull/158) : code et test proposés, non fusionnés | Revue indépendante du SHA exact, CI puis fusion autorisée |

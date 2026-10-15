@@ -84,6 +84,11 @@ function loadConfig(env = process.env) {
     throw new Error('FACTURATIONS_STRIPE_ALLOW_TEST_MODE requires FACTURATIONS_STRIPE_WEBHOOK_SECRET');
   }
   const stripeAllowTestMode = rawTestMode === '1';
+  // Test-mode events must never become payment evidence in production,
+  // even if the staging-only environment switch was accidentally copied.
+  if (productionMode && stripeAllowTestMode) {
+    throw new Error('Production forbids FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1');
+  }
 
   // Browser login is opt-in and fails closed unless its separate encryption key,
   // a dedicated database and exact external HTTPS origin are ALL configured.

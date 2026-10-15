@@ -28,7 +28,7 @@ Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des 
 - Anomalie : `NODE_ENV=production` acceptait `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1`, malgré le caractère staging-only; et `stripeEventScope` acceptait les événements sans `livemode` booléen explicite si l'option était activée.
 - Correctif : `src/config.js` bloque cette configuration en production; `src/stripe-payment-webhook.js` ne permet que `livemode === true` ou `livemode === false` avec autorisation staging. Tests de configuration et de portée dans `tests/config.test.js`, `tests/stripe-payment-webhook.test.js`; documentation `docs/stripe-verified-payment-webhook.md`.
 - GitHub Actions sur le SHA `c54decd8857e7e2e97526139707e328c4baa7758` : **10/10 contrôles `success`**, zéro échec (tests Node 20/22, navigateur Chromium, MFA/PostgreSQL et privilèges runtime). Revue humaine demandée `takatakmtl`; aucune fusion.
-- Correction additionnelle sur la même PR : rejet du JSON Stripe signé contenant de l'UTF-8 malformé avant parsing, avec test HMAC valide sur octets invalides. HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` : **CI relancée et résultats à vérifier sur le HEAD final**; ne pas appliquer le verdict 10/10 de l'ancien SHA au nouveau.
+- Correction additionnelle sur la même PR : rejet du JSON Stripe signé contenant de l'UTF-8 malformé avant parsing, avec test HMAC valide sur octets invalides. HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` : **10/10 contrôles GitHub Actions `success` sur le SHA final**, aucun échec (Node 20/22, Chromium, MFA/PostgreSQL, contrôle DB).
 - PR #168 au SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` et #166 à l'ancien SHA `6a1fcf41bc3359d02c1eefa771763032e6710797` : 10/10 checks chacun lors du dernier contrôle; nouvelles écritures documentaires changent le SHA de #166.
 - Aucune migration, mise en ligne, émission Wave, courriel client, charge ni remboursement Stripe. `main` non modifié et staging isolé non attesté.
 
@@ -75,7 +75,7 @@ Finaliser le correctif de validation UTF-8 des documents de relève sur `fix/pro
 
 ## Prochaine action exacte
 
-1. Vérifier les 10 jobs GitHub Actions du HEAD actuel #169 `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (UTF-8 strict ajouté après les 10/10 de l'ancien SHA), corriger tout échec, puis obtenir la revue indépendante.
+1. #169 au SHA final `731faefc5a2ae833d9ab51a3145e282d5a1d6086` a 10/10 checks verts : attendre revue indépendante `takatakmtl` avant fusion selon protection `main`.
 2. Obtenir la revue indépendante de #169, maintenir le rejet du mode test en production et ne fusionner qu'après les gates GitHub.
 3. Vérifier les jobs du **nouveau** HEAD de #166 après cette mise à jour documentaire; #164 doit être approuvée/fusionnée en premier, puis #166 retargetée et revalidée.
 4. Pour #158/#159/#160/#163/#165/#167/#168, intégrer les retours humains sans duplication de fonctionnalités; poursuivre une amélioration indépendante si possible.

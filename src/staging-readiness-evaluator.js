@@ -65,7 +65,7 @@ function validateTimestamp(value, nowMs, maxAgeMs) {
   // impossible calendar dates. Release evidence must be an unambiguous UTC
   // instant, with millisecond precision, exactly as written.
   if (typeof value !== 'string' ||
-      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/u.test(value)) {
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)) {
     fail('INVALID_EVALUATED_AT');
   }
   const parsed = Date.parse(value);

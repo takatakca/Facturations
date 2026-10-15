@@ -454,3 +454,36 @@ test('Stripe test-mode override accepts only explicit false livemode', () => {
     'CONNECTED_ACCOUNT_EVENT'
   );
 });
+
+
+test('signed Stripe JSON rejects malformed UTF-8 instead of silently replacing bytes', () => {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signRaw = bytes => {
+    const signature = crypto.createHmac('sha256', SECRET)
+      .update(String(timestamp) + '.')
+      .update(bytes)
+      .digest('hex');
+    return 't=' + timestamp + ',v1=' + signature;
+  };
+  const valid = Buffer.from(JSON.stringify(sessionEvent({ description: 'Café Démo' })), 'utf8');
+  const index = valid.indexOf(Buffer.from('é', 'utf8'));
+  assert.notEqual(index, -1);
+
+  const good = verifyStripeWebhook({
+    rawBody: valid,
+    signatureHeader: signRaw(valid),
+    secret: SECRET,
+  });
+  assert.equal(good.event.description, 'Café Démo');
+
+  const malformed = Buffer.from(valid);
+  malformed[index + 1] = 0x20; // Invalid UTF-8 continuation byte.
+  assert.throws(
+    () => verifyStripeWebhook({
+      rawBody: malformed,
+      signatureHeader: signRaw(malformed), // HMAC valid for the exact bad bytes.
+      secret: SECRET,
+    }),
+    error => error instanceof StripeWebhookError && error.code === 'INVALID_WEBHOOK_JSON'
+  );
+});

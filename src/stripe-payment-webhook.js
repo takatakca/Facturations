@@ -245,7 +245,11 @@ function reversalFromPendingRow(row) {
  */
 function stripeEventScope(event, { allowTestMode = false } = {}) {
   if (event.account !== undefined && event.account !== null) return { accepted: false, reason: 'CONNECTED_ACCOUNT_EVENT' };
-  if (event.livemode !== true && !allowTestMode) return { accepted: false, reason: 'TEST_MODE_EVENT' };
+  // A signed event still needs an explicit Stripe livemode boolean; do not
+  // treat absent/malformed values as test mode when staging is enabled.
+  if (event.livemode !== true && !(allowTestMode && event.livemode === false)) {
+    return { accepted: false, reason: 'TEST_MODE_EVENT' };
+  }
   return { accepted: true };
 }
 

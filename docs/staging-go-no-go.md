@@ -23,6 +23,8 @@ Codes de sortie :
 
 Le dossier doit avoir été réévalué dans les 24 heures et correspondre au SHA exact fourni par `FACTURATIONS_RELEASE_SHA`.
 
+Le champ `evaluatedAt` doit être une date UTC canonique au format `YYYY-MM-DDTHH:mm:ss.sssZ` (exemple : `2026-09-26T19:30:00.000Z`) : les décalages horaires, dates ambiguës ou calendaires invalides sont rejetés, même lorsque `Date.parse` les normaliserait. Le fichier JSON privé doit être un fichier ordinaire, non un lien symbolique, être encodé en UTF-8 valide et ne pas dépasser **64 Kio (65 536 octets)**. Les erreurs du CLI restent génériques ou codifiées, sans chemin privé, donnée client ni contenu JSON dans les journaux.
+
 ## Séparation des preuves
 
 Le moteur distingue volontairement plusieurs portées :

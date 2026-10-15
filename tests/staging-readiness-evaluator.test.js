@@ -140,3 +140,31 @@ test('blocked gate cannot carry a scope that looks like verified evidence', () =
     'BLOCKED_GATE_MUST_HAVE_NO_EVIDENCE_email_signed_webhook'
   );
 });
+
+test('staging readiness requires canonical UTC timestamps, not permissive Date.parse values', () => {
+  for (const evaluatedAt of [
+    'September 26, 2026 19:30 UTC',
+    '2026-09-26',
+    '2026-09-26T19:30:00Z',
+    '2026-09-26T19:30:00.000+00:00',
+    '2026-09-26T19:30:00.000z',
+    '2026-09-26T19:30:00.000Z ',
+    '2026-09-31T19:30:00.000Z',
+    '2026-09-26T25:30:00.000Z',
+    '',
+    null,
+  ]) {
+    const input = completePackage();
+    input.evaluatedAt = evaluatedAt;
+    expectCode(
+      () => evaluateStagingReadiness(input, { expectedReleaseSha: SHA, now: NOW }),
+      'INVALID_EVALUATED_AT'
+    );
+  }
+  const input = completePackage();
+  input.evaluatedAt = '2026-09-26T20:05:00.000Z';
+  assert.equal(
+    evaluateStagingReadiness(input, { expectedReleaseSha: SHA, now: NOW }).decision,
+    'GO'
+  );
+});

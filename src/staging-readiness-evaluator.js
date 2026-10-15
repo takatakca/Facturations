@@ -61,9 +61,17 @@ function exactObject(value, expectedKeys, code) {
 }
 
 function validateTimestamp(value, nowMs, maxAgeMs) {
-  if (typeof value !== 'string') fail('INVALID_EVALUATED_AT');
+  // Date.parse is permissive: it accepts non-ISO strings and may normalize
+  // impossible calendar dates. Release evidence must be an unambiguous UTC
+  // instant, with millisecond precision, exactly as written.
+  if (typeof value !== 'string' ||
+      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/u.test(value)) {
+    fail('INVALID_EVALUATED_AT');
+  }
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) fail('INVALID_EVALUATED_AT');
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    fail('INVALID_EVALUATED_AT');
+  }
   if (parsed > nowMs + 300000) fail('EVIDENCE_FROM_FUTURE');
   if (nowMs - parsed > maxAgeMs) fail('EVIDENCE_PACKAGE_STALE');
 }

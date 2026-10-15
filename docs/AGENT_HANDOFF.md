@@ -22,6 +22,15 @@ Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des 
 - Checks #168 déclenchés dans GitHub Actions, résultats finaux à confirmer sur ce SHA; revue demandée à `takatakmtl`.
 - Aucun test contre un serveur de production, aucune migration, émission Wave, remise d'email ou paiement réel. Le statut du déploiement est **non homologué/non vérifié**.
 
+## Correction de sécurité en cours de validation — Stripe
+
+- [PR #169](https://github.com/takatakca/Facturations/pull/169) ouverte contre `main` protégé (SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`), branche `fix/stripe-test-mode-production-gate-20261015`, dernier commit de code poussé `c54decd8857e7e2e97526139707e328c4baa7758`.
+- Anomalie : `NODE_ENV=production` acceptait `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1`, malgré le caractère staging-only; et `stripeEventScope` acceptait les événements sans `livemode` booléen explicite si l'option était activée.
+- Correctif : `src/config.js` bloque cette configuration en production; `src/stripe-payment-webhook.js` ne permet que `livemode === true` ou `livemode === false` avec autorisation staging. Tests de configuration et de portée dans `tests/config.test.js`, `tests/stripe-payment-webhook.test.js`; documentation `docs/stripe-verified-payment-webhook.md`.
+- GitHub Actions sur le SHA `c54decd8857e7e2e97526139707e328c4baa7758` : **3/10 jobs terminés `success`, 7 en cours à l'instant du suivi**; aucune conclusion sur la suite entière. Revue humaine demandée `takatakmtl`; aucune fusion.
+- PR #168 au SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` et #166 à l'ancien SHA `6a1fcf41bc3359d02c1eefa771763032e6710797` : 10/10 checks chacun lors du dernier contrôle; nouvelles écritures documentaires changent le SHA de #166.
+- Aucune migration, mise en ligne, émission Wave, courriel client, charge ni remboursement Stripe. `main` non modifié et staging isolé non attesté.
+
 ## Tâche en cours
 
 Finaliser le correctif de validation UTF-8 des documents de relève sur `fix/project-docs-strict-utf8-20261014`, [PR #166](https://github.com/takatakca/Facturations/pull/166) empilée sur [PR #164](https://github.com/takatakca/Facturations/pull/164). La lecture du handoff avec `TextDecoder('utf-8', { fatal: true })` bloque désormais les octets invalides au lieu de les remplacer silencieusement. Le test de régression couvre aussi des caractères FR, ES et chinois valides. Le contrôle rejette désormais les fichiers et répertoires `docs` symboliquement liés, empêchant CI de suivre des chemins extérieurs au checkout.
@@ -64,6 +73,15 @@ Finaliser le correctif de validation UTF-8 des documents de relève sur `fix/pro
 **Non déployé / non validé** dans le périmètre consulté. Une CI verte n'est pas une preuve d'installation.
 
 ## Prochaine action exacte
+
+1. Vérifier les 10 jobs GitHub Actions du HEAD exact de #169 `c54decd8857e7e2e97526139707e328c4baa7758`; corriger le moindre échec sur sa branche.
+2. Obtenir la revue indépendante de #169, maintenir le rejet du mode test en production et ne fusionner qu'après les gates GitHub.
+3. Vérifier les jobs du **nouveau** HEAD de #166 après cette mise à jour documentaire; #164 doit être approuvée/fusionnée en premier, puis #166 retargetée et revalidée.
+4. Pour #158/#159/#160/#163/#165/#167/#168, intégrer les retours humains sans duplication de fonctionnalités; poursuivre une amélioration indépendante si possible.
+5. Ne déployer ni ne déclencher de fournisseur réel sans approbation exacte et preuves HTTPS, DB dédiée, MFA, fiscalité et GO/NO-GO.
+
+## Historique des prochaines actions précédemment relevées
+
 
 1. Examiner tous les contrôles GitHub Actions du SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` de #168, puis corriger tout échec sans toucher `main` ni au staging réel.
 2. Maintenir la demande de revue indépendante de #168 et attendre l'autorisation de fusion conforme à la protection de `main`.

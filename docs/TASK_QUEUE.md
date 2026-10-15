@@ -1,9 +1,10 @@
 # Facturations — File des tâches
 
-Date de triage : 2026-10-14. Statuts : `DONE_PR` = code poussé mais pas nécessairement fusionné; `REVIEW` = attendre une revue autorisée; `BLOCKED_EXTERNAL` = preuve réelle ou accès opérateur absent. Les tâches peuvent évoluer; toujours comparer à GitHub avant d'agir.
+Date de triage : 2026-10-15. Statuts : `DONE_PR` = code poussé mais pas nécessairement fusionné; `REVIEW` = attendre une revue autorisée; `BLOCKED_EXTERNAL` = preuve réelle ou accès opérateur absent. Les tâches peuvent évoluer; toujours comparer à GitHub avant d'agir.
 
 | Priorité | Tâche | État vérifié | Prochaine action |
 | --- | --- | --- | --- |
+| P0 | Rejeter les preuves de préproduction de taille excessive ou de date ambiguë | [#168](https://github.com/takatakca/Facturations/pull/168), SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5`, code/tests/docs poussés | Examiner les checks du HEAD exact, corriger tout échec, attendre revue indépendante; aucun GO réel n'est validé |
 | P0 | Refuser les cookies de portail client surdimensionnés | [#167](https://github.com/takatakca/Facturations/pull/167) : code/tests poussés, 10/10 checks verts au SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3` | Revue indépendante, fusion selon règles GitHub |
 | P0 | Réparer les formulaires et la connexion Chromium | [#158](https://github.com/takatakca/Facturations/pull/158) : code et test proposés, non fusionnés | Revue indépendante du SHA exact, CI puis fusion autorisée |
 | P0 | Durcir l'ingestion Stripe (taille du corps, requête avortée) | [#163](https://github.com/takatakca/Facturations/pull/163) : `DONE_PR`, 10 checks verts, revue demandée | Intégrer les remarques de revue, fusionner selon protection |

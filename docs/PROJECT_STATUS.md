@@ -1,11 +1,13 @@
 # Facturations — État vérifié du projet
 
-Dernière vérification de GitHub : **2026-10-14**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
+Dernière vérification de GitHub : **2026-10-15**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
 
 ## Références Git
 
 - Dépôt : `takatakca/Facturations`, branche principale protégée `main`.
 - SHA `main` vérifié au début de cette reprise : `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`.
+- **PR #168 — Validation des preuves de staging** : [correctif autonome](https://github.com/takatakca/Facturations/pull/168), SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` : horodatage UTC canonique, JSON privé limité à 64 Kio, UTF-8 strict et liens symboliques refusés; CI/revue en cours au dernier relevé, non fusionné.
+- Dernier HEAD documenté de [PR #166](https://github.com/takatakca/Facturations/pull/166) avant cette actualisation : `21111e9192dbc9eaa5ca213ad880064bce6603d0`, 10/10 checks GitHub Actions réussis; toujours empilée sur #164 et non fusionnée.
 - Nouveau correctif HTTP portail client [PR #167](https://github.com/takatakca/Facturations/pull/167), commit `16be6d2f7b716dc6ab44975ee8818665ba695ab3` : borne du champ Cookie à 4096 caractères et tests sur la non-divulgation; 10/10 contrôles GitHub Actions réussis sur le SHA indiqué, revue demandée, non fusionné.
 - Correction documentaire UTF-8 : [PR #166](https://github.com/takatakca/Facturations/pull/166), empilée sur #164; le SHA initial `f39cfaf5a2a4f8a1fc7832b3943c2d0572397a78` a réussi 5/5 jobs, les vérifications finales doivent porter sur le HEAD révisé.
 - PR documentaire [#164](https://github.com/takatakca/Facturations/pull/164) : CI du SHA `2ee146883e5bb301d3a30c6cf24dd6cdce9e2c6e` réussie; encore ouverte/non fusionnée.

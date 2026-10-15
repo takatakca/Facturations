@@ -435,3 +435,22 @@ test('disposable PostgreSQL: Stripe-signed payment becomes VERIFIED evidence end
     await pool.end();
   }
 });
+
+
+test('Stripe test-mode override accepts only explicit false livemode', () => {
+  const staging = { allowTestMode: true };
+  assert.deepEqual(stripeEventScope({ livemode: false }, staging), { accepted: true });
+  assert.deepEqual(stripeEventScope({ livemode: true }, staging), { accepted: true });
+  for (const livemode of [undefined, null, 0, 1, 'false', 'true', {}]) {
+    assert.equal(
+      stripeEventScope({ livemode }, staging).reason,
+      'TEST_MODE_EVENT',
+      'invalid livemode must not be recorded as a payment'
+    );
+  }
+  assert.equal(stripeEventScope({}, staging).reason, 'TEST_MODE_EVENT');
+  assert.equal(
+    stripeEventScope({ livemode: false, account: 'acct_example' }, staging).reason,
+    'CONNECTED_ACCOUNT_EVENT'
+  );
+});

@@ -1,6 +1,6 @@
 # Facturations — Déploiement vérifiable, sans production implicite
 
-**Statut au 2026-10-14 : aucun environnement déployé/accessible n'a été vérifié dans cette session.** Ne pas présenter l'existence d'un workflow CI, d'une URL cible ou d'un Dockerfile en PR comme un déploiement réussi.
+**Statut au 2026-10-16 : aucun environnement déployé/accessible n'a été vérifié dans cette session.** Ne pas présenter l'existence d'un workflow CI, d'une URL cible ou d'un Dockerfile en PR comme un déploiement réussi.
 
 ## Hébergement cible et ambiguïté à résoudre
 
@@ -25,6 +25,8 @@ Le futur job de vérification de relève ajoute `npm run check:project-docs`. **
 5. Vérifier le rôle runtime avec `npm run check:runtime-db`, les réponses `/health` et `/ready` en HTTPS, le preflight `scripts/staging-readonly-preflight.js` et la connectivité sans port Node public.
 6. Effectuer MFA et droits OWNER/STAFF/client, restauration de sauvegarde, redaction des logs, tests mobile/accessibilité et tests interentreprises.
 7. Remplir le dossier privé `npm run go-no-go:staging` pour le SHA exact. **Interdire les fournisseurs externes réels tant que leurs gates sont NO-GO.**
+
+**Contrôle de drainage :** [PR #170](https://github.com/takatakca/Facturations/pull/170) vérifie que `/ready` cesse de signaler READY dès le début du drainage, même lorsqu'une requête PostgreSQL déclenchée auparavant termine positivement ensuite. Cette garantie est testée en CI avec une promesse différée, **pas encore validée en staging réel**. Exercer le scénario en HTTPS isolé avant la publication.
 
 ## Publication et rollback
 

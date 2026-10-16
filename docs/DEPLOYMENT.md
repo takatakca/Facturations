@@ -28,6 +28,8 @@ Le futur job de vérification de relève ajoute `npm run check:project-docs`. **
 
 **Contrôle de drainage :** [PR #170](https://github.com/takatakca/Facturations/pull/170) vérifie que `/ready` cesse de signaler READY dès le début du drainage, même lorsqu'une requête PostgreSQL déclenchée auparavant termine positivement ensuite. Cette garantie est testée en CI avec une promesse différée, **pas encore validée en staging réel**. Exercer le scénario en HTTPS isolé avant la publication.
 
+**Nettoyage en cas d'échec HTTP :** [PR #171](https://github.com/takatakca/Facturations/pull/171) garantit une tentative de libération du pool PostgreSQL même si `server.close` échoue (erreur callback ou exception), et conserve `exitCode=1` si une étape échoue. CI sur données synthétiques uniquement; répéter le test en staging isolé avant toute homologation. Ne pas déployer en production sur la seule preuve CI.
+
 ## Publication et rollback
 
 Figer SHA Git, checks et configuration; vérifier le SHA réellement actif sur l'hébergeur par méthode attestée, sans exposer de secret ni token. Vérifier santé HTTPS, monitoring et rollback; ne déclarer `DEPLOYED` qu'après preuves réelles. Références détaillées : [runbook](final-go-live-runbook.md), [gates](staging-go-no-go.md), [lecture seule staging](staging-readonly-preflight.md).

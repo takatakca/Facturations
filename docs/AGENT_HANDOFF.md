@@ -2,6 +2,16 @@
 
 **Actualisé : 2026-10-16**. Pour éviter une référence circulaire, le dernier commit de **la branche en cours** doit toujours être relu depuis GitHub (`git rev-parse HEAD` ou API); le SHA ci-dessous est le dernier commit de **code vérifié de la session précédente**, pas une assertion sur la tête de cette PR documentaire.
 
+## Reprise du 16 octobre 2026 — fermeture HTTP et PostgreSQL
+
+- **Dépôt :** `takatakca/Facturations`; `main` protégée inchangée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`. Les PR #164 et #166 restent ouvertes et attendent une revue indépendante; le HEAD précédent de #166 `140c9c87938f53e0b07365fdd054618e7622d121` avait **10/10 checks `success`**.
+- **Dernière tâche de code poussée :** [PR #171](https://github.com/takatakca/Facturations/pull/171), branche `fix/shutdown-db-cleanup-on-http-error-20261016`, commit `897137b19bf95f82e81247127a79c9014cbee95c`.
+- **Anomalie confirmée :** `src/graceful-shutdown.js` sautait `pool.end()` si `server.close()` échouait; le callback `server.close(error)` était ignoré et pouvait entraîner un code de sortie trompeur `0`.
+- **Changements sur la PR #171 :** `src/graceful-shutdown.js` gère séparément les échecs HTTP et PostgreSQL; `tests/graceful-shutdown.test.js` couvre callback en erreur, exception synchrone et échec DB; `docs/final-go-live-runbook.md` ajoute les critères de vérification.
+- **Vérifications réellement exécutées :** relecture `AGENTS.md`, état GitHub `main` / PR / issues / CI et des cinq docs; comparaison avec #170 et lecture du code actuel; push des trois fichiers; PR créée et revue `takatakmtl` demandée. **CI de #171 déclenchée (10 checks en attente au premier relevé)** : contrôler le SHA exact avant d'annoncer son verdict; pas de test local ni de staging allégué.
+- **Blocages :** approbations humaines des PR, HTTPS proxy et base PostgreSQL dédiés non vérifiés, sauvegardes/restauration, fiscalité et fournisseurs réels non homologués. **Déploiement : aucun déploiement réalisé ni vérifié**; aucune facture, Stripe, Wave, email ou base TAKATAK existante utilisée.
+- **Prochaine action exacte :** vérifier les 10 checks du SHA `897137b19bf95f82e81247127a79c9014cbee95c`, corriger tout échec sur #171, demander revue humaine; finaliser la revue/fusion #164 avant retarget de #166 et revalider; faire les essais d'arrêt réel sur staging isolé autorisé avant production. Ne pas modifier `main` directement.
+
 ## Reprise technique du 2026-10-16 — tâche réellement poussée
 
 - **Dépôt / base :** `takatakca/Facturations`, `main` protégée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3` au contrôle. L'ancienne PR #169 reste ouverte et ses 10/10 checks sur `731faefc5a2ae833d9ab51a3145e282d5a1d6086` sont confirmés. Le HEAD de #166 avant ce relevé était `c9cf734f79d43c08fc4e646e7854a486906ef10e`, 10/10 checks verts.

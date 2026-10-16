@@ -10,7 +10,9 @@ function createReadinessProbe({ pool } = {}) {
     if (draining) return false;
     try {
       const result = await pool.query('SELECT 1 AS ok');
-      return result.rows?.[0]?.ok === 1;
+      // A shutdown can begin while PostgreSQL is answering this probe.
+      // Never report ready after the server has entered draining mode.
+      return !draining && result.rows?.[0]?.ok === 1;
     } catch {
       return false;
     }

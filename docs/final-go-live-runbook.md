@@ -31,6 +31,7 @@ GO only if:
 - `/ready` returns 200;
 - `scripts/staging-readonly-preflight.js` passes;
 - graceful shutdown has been exercised without partial requests.
+- a PostgreSQL `/ready` request already in progress returns NOT READY if draining starts before its database response completes; verify the late-success race before authorizing traffic.
 
 Otherwise: **NO-GO**.
 

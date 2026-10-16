@@ -30,7 +30,7 @@ Le futur job de vérification de relève ajoute `npm run check:project-docs`. **
 
 **Nettoyage en cas d'échec HTTP :** [PR #171](https://github.com/takatakca/Facturations/pull/171) garantit une tentative de libération du pool PostgreSQL même si `server.close` échoue (erreur callback ou exception), et conserve `exitCode=1` si une étape échoue. Le HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` garantit aussi que les appels d'arrêt concurrents attendent le même nettoyage HTTP puis SQL; CI du SHA `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` : 10/10 contrôles réussis; **staging réel non vérifié**. CI sur données synthétiques uniquement; répéter le test en staging isolé avant toute homologation. Ne pas déployer en production sur la seule preuve CI.
 
-**Date limite de fermeture :** [PR #171](https://github.com/takatakca/Facturations/pull/171) HEAD `9d1e1615239efdbd3ac62e80d095c7de9095478b` étend la temporisation aux promesses HTTP et PostgreSQL. Une fermeture qui dépasse la limite retourne avec code d'échec, tente le nettoyage DB et n'autorise pas de déclarer un arrêt normal. Tests unitaires à minuterie simulée ajoutés; **pas de test d'arrêt réel en staging**. Réaliser ce scénario seulement sur le staging distinct approuvé.
+**Date limite de fermeture :** [PR #171](https://github.com/takatakca/Facturations/pull/171) HEAD `9d1e1615239efdbd3ac62e80d095c7de9095478b` étend la temporisation aux promesses HTTP et PostgreSQL. Une fermeture qui dépasse la limite retourne avec code d'échec, tente le nettoyage DB et n'autorise pas de déclarer un arrêt normal. Tests unitaires à minuterie simulée : **10/10 jobs CI verts sur ce SHA**; **pas de test d'arrêt réel en staging**. Réaliser ce scénario seulement sur le staging distinct approuvé.
 
 ## Publication et rollback
 

@@ -8,8 +8,8 @@
 - **Dernière tâche de code poussée :** [PR #171](https://github.com/takatakca/Facturations/pull/171), branche `fix/shutdown-db-cleanup-on-http-error-20261016`, **HEAD actuel `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`** (SHA initial `897137b19bf95f82e81247127a79c9014cbee95c`, CI initiale 10/10).
 - **Anomalie confirmée :** `src/graceful-shutdown.js` sautait `pool.end()` si `server.close()` échouait; le callback `server.close(error)` était ignoré et pouvait entraîner un code de sortie trompeur `0`.
 - **Changements sur la PR #171 :** `src/graceful-shutdown.js` gère séparément les échecs HTTP et PostgreSQL; `tests/graceful-shutdown.test.js` couvre callback en erreur, exception synchrone et échec DB; `docs/final-go-live-runbook.md` ajoute les critères de vérification.
-- **Vérifications réellement exécutées :** relecture `AGENTS.md`, état GitHub `main` / PR / issues / CI et des cinq docs; comparaison avec #170 et lecture du code actuel; push des trois fichiers; PR créée et revue `takatakmtl` demandée. **CI de #171 déclenchée (10 checks en attente au premier relevé)** : contrôler le SHA exact avant d'annoncer son verdict; pas de test local ni de staging allégué.
-- **Correctif additionnel sur #171 :** la promesse de fermeture est désormais partagée entre appels concurrents `shutdown()`; un second appel attend la fin du nettoyage SQL au lieu de se terminer immédiatement. Test du chemin différé ajouté dans `tests/graceful-shutdown.test.js`; runbook complété. SHA exact `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; nouvelle CI en cours lors du relevé, **ne pas réutiliser le verdict initial**.
+- **Vérifications réellement exécutées :** relecture `AGENTS.md`, état GitHub `main` / PR / issues / CI et des cinq docs; comparaison avec #170 et lecture du code actuel; push des trois fichiers; PR créée et revue `takatakmtl` demandée. **CI #171 : 10/10 checks `success` au SHA final `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`** (Node 20/22, Chromium, MFA/PostgreSQL, privilèges DB), aucun échec; pas de test local ni de staging allégué.
+- **Correctif additionnel sur #171 :** la promesse de fermeture est désormais partagée entre appels concurrents `shutdown()`; un second appel attend la fin du nettoyage SQL au lieu de se terminer immédiatement. Test du chemin différé ajouté dans `tests/graceful-shutdown.test.js`; runbook complété. SHA exact `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; **10/10 contrôles GitHub Actions `success` sur le SHA final**, aucun échec.
 - **Blocages :** approbations humaines des PR, HTTPS proxy et base PostgreSQL dédiés non vérifiés, sauvegardes/restauration, fiscalité et fournisseurs réels non homologués. **Déploiement : aucun déploiement réalisé ni vérifié**; aucune facture, Stripe, Wave, email ou base TAKATAK existante utilisée.
 - **Prochaine action exacte :** vérifier les 10 checks du SHA `897137b19bf95f82e81247127a79c9014cbee95c`, corriger tout échec sur #171, demander revue humaine; finaliser la revue/fusion #164 avant retarget de #166 et revalider; faire les essais d'arrêt réel sur staging isolé autorisé avant production. Ne pas modifier `main` directement.
 
@@ -25,7 +25,7 @@
 
 ## Dernière tâche terminée
 
-**PR #171 :** nettoyage garanti du pool PostgreSQL même si l'arrêt HTTP échoue, erreurs callback prises en compte, appels `shutdown()` concurrents synchronisés sur une unique promesse de fermeture. HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; contrôles CI du HEAD à vérifier. Fichiers : `src/graceful-shutdown.js`, `tests/graceful-shutdown.test.js`, `docs/final-go-live-runbook.md`. Code poussé, **non fusionné**; aucune mise en service.
+**PR #171 :** nettoyage garanti du pool PostgreSQL même si l'arrêt HTTP échoue, erreurs callback prises en compte, appels `shutdown()` concurrents synchronisés sur une unique promesse de fermeture. HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; **10/10 contrôles CI `success` sur le HEAD final**. Fichiers : `src/graceful-shutdown.js`, `tests/graceful-shutdown.test.js`, `docs/final-go-live-runbook.md`. Code poussé, **non fusionné**; aucune mise en service.
 
 **Correctifs antérieurs :** #170 HEAD `2fd6251a19deb66bc44ba36c32052f601093d82f` (10/10 CI), et #169 HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (10/10 CI), tous deux en attente de revue indépendante.
 
@@ -98,11 +98,11 @@ Faire homologuer les PR #164 et #166 et réintégrer les correctifs Stripe #169 
 
 ## Prochaine action exacte
 
-1. #169 au SHA final `731faefc5a2ae833d9ab51a3145e282d5a1d6086` a 10/10 checks verts : attendre revue indépendante `takatakmtl` avant fusion selon protection `main`.
-2. Obtenir la revue indépendante de #169, maintenir le rejet du mode test en production et ne fusionner qu'après les gates GitHub.
-3. Vérifier les jobs du **nouveau** HEAD de #166 après cette mise à jour documentaire; #164 doit être approuvée/fusionnée en premier, puis #166 retargetée et revalidée.
-4. Pour #158/#159/#160/#163/#165/#167/#168, intégrer les retours humains sans duplication de fonctionnalités; poursuivre une amélioration indépendante si possible.
-5. Ne déployer ni ne déclencher de fournisseur réel sans approbation exacte et preuves HTTPS, DB dédiée, MFA, fiscalité et GO/NO-GO.
+1. La [PR #171](https://github.com/takatakca/Facturations/pull/171) a passé **10/10 checks GitHub Actions** sur le SHA `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; attendre la revue indépendante de `takatakmtl` et ne fusionner qu'avec les protections `main`.
+2. Obtenir la revue indépendante puis fusion autorisée de [PR #164](https://github.com/takatakca/Facturations/pull/164); retargeter ensuite [PR #166](https://github.com/takatakca/Facturations/pull/166) sur `main`, vérifier la CI et les conflits après l'intégration.
+3. Examiner les correctifs #158, #163, #165, #167, #168, #169, #170 et #171, un par un, sans chevauchement ni écrasement des autres agents.
+4. Préparer uniquement un staging **isolé et autorisé** en suivant #159 : HTTPS, base PostgreSQL dédiée, rôle DB et sauvegarde/restitution; valider MFA et readiness/drainage sur le SHA réellement servi.
+5. Bloquer la production, les émissions Wave, les emails clients, les paiements et remboursements réels jusqu'aux revues spécifiques, à l'homologation fiscale et au GO/NO-GO documenté.
 
 ## Historique des prochaines actions précédemment relevées
 

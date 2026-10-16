@@ -33,14 +33,23 @@ function installGracefulShutdown({
     timer?.unref?.();
 
     try {
-      await new Promise(resolve => {
-        server.close(() => resolve());
-        server.closeIdleConnections?.();
-      });
-      if (pool && typeof pool.end === 'function') await pool.end();
+      // A failed HTTP close must not skip PostgreSQL cleanup. Node's close
+      // callback can receive an error (for example ERR_SERVER_NOT_RUNNING).
+      try {
+        await new Promise((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve());
+          server.closeIdleConnections?.();
+        });
+      } catch {
+        processLike.exitCode = 1;
+      }
+
+      try {
+        if (pool && typeof pool.end === 'function') await pool.end();
+      } catch {
+        processLike.exitCode = 1;
+      }
       if (processLike.exitCode == null) processLike.exitCode = 0;
-    } catch {
-      processLike.exitCode = 1;
     } finally {
       clearTimeoutImpl(timer);
     }

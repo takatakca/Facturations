@@ -19,11 +19,17 @@ function installGracefulShutdown({
     throw new TypeError('Graceful shutdown timeout must be 1000-60000 ms');
   }
 
-  let shuttingDown = false;
+  let shutdownPromise = null;
 
-  async function shutdown() {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  // Every caller observes the same in-flight shutdown. A repeated SIGINT or
+  // a caller awaiting shutdown must not receive a premature completion.
+  function shutdown() {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = performShutdown();
+    return shutdownPromise;
+  }
+
+  async function performShutdown() {
     readinessProbe?.markDraining?.();
 
     const timer = setTimeoutImpl(() => {

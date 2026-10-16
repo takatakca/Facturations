@@ -140,3 +140,66 @@ test('concurrent shutdown callers wait for the same HTTP and PostgreSQL cleanup'
   assert.equal(timerClears,1);
   assert.equal(processLike.exitCode,0);
 });
+
+
+test('hard deadline settles shutdown and attempts DB cleanup when HTTP close hangs',async()=>{
+  const processLike=new EventEmitter();
+  const events=[];
+  let expire;
+  const timer={unref(){}};
+  const controller=installGracefulShutdown({
+    server:{
+      close(){events.push('http-close-hangs');},
+      closeIdleConnections(){events.push('idle-close');},
+      closeAllConnections(){events.push('force-close');throw Error('synthetic close failure');},
+    },
+    pool:{async end(){events.push('pool-end');}},
+    processLike,timeoutMs:1000,
+    setTimeoutImpl(callback){expire=callback;return timer;},
+    clearTimeoutImpl(value){assert.equal(value,timer);events.push('timer-clear');},
+  });
+
+  const first=controller.shutdown();
+  assert.strictEqual(controller.shutdown(),first);
+  assert.deepEqual(events,['http-close-hangs','idle-close']);
+  expire(); // Simulate the one-second deadline without waiting in real time.
+  await first;
+  assert.equal(processLike.exitCode,1);
+  assert.deepEqual(events,[
+    'http-close-hangs','idle-close','force-close','pool-end','timer-clear',
+  ]);
+});
+
+test('hard deadline settles shutdown if PostgreSQL close hangs',async()=>{
+  const processLike=new EventEmitter();
+  let expire;
+  let endCalls=0;
+  let clears=0;
+  let forceCloses=0;
+  const controller=installGracefulShutdown({
+    server:{
+      close(callback){callback();},
+      closeIdleConnections(){},
+      closeAllConnections(){forceCloses++;},
+    },
+    pool:{end(){endCalls++;return new Promise(()=>{});}},
+    processLike,timeoutMs:1000,
+    setTimeoutImpl(callback){expire=callback;return {unref(){}};},
+    clearTimeoutImpl(){clears++;},
+  });
+
+  const first=controller.shutdown();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(endCalls,1);
+  let finished=false;
+  first.then(()=>{finished=true;});
+  await Promise.resolve();
+  assert.equal(finished,false,'a still-pending DB close must be awaited before timeout');
+  expire();
+  await first;
+  assert.equal(processLike.exitCode,1);
+  assert.equal(forceCloses,1);
+  assert.equal(clears,1);
+  assert.strictEqual(controller.shutdown(),first);
+  assert.equal(endCalls,1);
+});

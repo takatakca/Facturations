@@ -1,11 +1,12 @@
 # Facturations — État vérifié du projet
 
-Dernière vérification de GitHub : **2026-10-15**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
+Dernière vérification de GitHub : **2026-10-16**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
 
 ## Références Git
 
 - Dépôt : `takatakca/Facturations`, branche principale protégée `main`.
 - SHA `main` vérifié au début de cette reprise : `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`.
+- **PR #170 — Disponibilité pendant l'arrêt :** [correctif autonome](https://github.com/takatakca/Facturations/pull/170), SHA `2fd6251a19deb66bc44ba36c32052f601093d82f` : `/ready` se verrouille après `markDraining()` même si une requête DB antérieure réussit tardivement, tests de race condition, guide GO-LIVE actualisé. Revue indépendante demandée, CI du SHA exact en cours lors de l'ouverture, **non fusionné**.
 - **PR #169 — Garde Stripe en production** : [correction P0](https://github.com/takatakca/Facturations/pull/169), SHA initial `c54decd8857e7e2e97526139707e328c4baa7758` (10/10 checks verts); nouveau HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (**10/10 checks verts**) : refuse `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1` en production et requiert `livemode` booléen explicite, tests ajoutés (dont UTF-8 strict pour payload signé), verdict complet à vérifier sur nouveau HEAD; revue indépendante en attente, non fusionnée.
 - **PR #168 — Validation des preuves de staging** : [correctif autonome](https://github.com/takatakca/Facturations/pull/168), SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` : horodatage UTC canonique, JSON privé limité à 64 Kio, UTF-8 strict et liens symboliques refusés; CI/revue en cours au dernier relevé, non fusionné.
 - Dernier HEAD documenté de [PR #166](https://github.com/takatakca/Facturations/pull/166) avant cette actualisation : `21111e9192dbc9eaa5ca213ad880064bce6603d0`, 10/10 checks GitHub Actions réussis; toujours empilée sur #164 et non fusionnée.

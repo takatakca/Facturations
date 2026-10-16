@@ -32,26 +32,38 @@ function installGracefulShutdown({
   async function performShutdown() {
     readinessProbe?.markDraining?.();
 
+    // The deadline must settle the shutdown even if an HTTP callback or
+    // pool.end() never completes. A forced connection close alone is not a
+    // guarantee that those asynchronous operations will resolve.
+    let resolveDeadline;
+    const deadline = new Promise(resolve => { resolveDeadline = resolve; });
     const timer = setTimeoutImpl(() => {
       processLike.exitCode = 1;
-      server.closeAllConnections?.();
+      try { server.closeAllConnections?.(); } catch { /* already failing */ }
+      resolveDeadline();
     }, timeoutMs);
     timer?.unref?.();
 
     try {
-      // A failed HTTP close must not skip PostgreSQL cleanup. Node's close
-      // callback can receive an error (for example ERR_SERVER_NOT_RUNNING).
+      // A failed or hung HTTP close must not skip PostgreSQL cleanup. Node's
+      // close callback can receive an error (e.g. ERR_SERVER_NOT_RUNNING).
       try {
-        await new Promise((resolve, reject) => {
-          server.close(error => error ? reject(error) : resolve());
-          server.closeIdleConnections?.();
-        });
+        await Promise.race([
+          new Promise((resolve, reject) => {
+            server.close(error => error ? reject(error) : resolve());
+            server.closeIdleConnections?.();
+          }),
+          deadline,
+        ]);
       } catch {
         processLike.exitCode = 1;
       }
 
       try {
-        if (pool && typeof pool.end === 'function') await pool.end();
+        if (pool && typeof pool.end === 'function') {
+          // Still attempt pool.end() after the deadline, but never wait forever.
+          await Promise.race([Promise.resolve().then(() => pool.end()), deadline]);
+        }
       } catch {
         processLike.exitCode = 1;
       }

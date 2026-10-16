@@ -1,6 +1,6 @@
 # Facturations — Déploiement vérifiable, sans production implicite
 
-**Statut au 2026-10-14 : aucun environnement déployé/accessible n'a été vérifié dans cette session.** Ne pas présenter l'existence d'un workflow CI, d'une URL cible ou d'un Dockerfile en PR comme un déploiement réussi.
+**Statut au 2026-10-16 : aucun environnement déployé/accessible n'a été vérifié dans cette session.** Ne pas présenter l'existence d'un workflow CI, d'une URL cible ou d'un Dockerfile en PR comme un déploiement réussi.
 
 ## Hébergement cible et ambiguïté à résoudre
 
@@ -14,6 +14,8 @@
 
 Le futur job de vérification de relève ajoute `npm run check:project-docs`. **Aucun workflow de production autorisé n'est confirmé.** Ne pas ajouter une étape d'émission, d'email ou une migration réelle à un simple `push` sans isolation et gates.
 
+**Protection des événements de paiement :** `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1` est réservé au développement/staging isolé. [PR #169](https://github.com/takatakca/Facturations/pull/169) fait échouer le démarrage en `NODE_ENV=production` si le drapeau est activé; n'activer aucun traitement Stripe réel sans contrat et vérification du fournisseur.
+
 ## Déploiement staging seulement après préparation autorisée
 
 1. Revoir et fusionner le kit de déploiement #159 ou un équivalent vérifié.
@@ -23,6 +25,12 @@ Le futur job de vérification de relève ajoute `npm run check:project-docs`. **
 5. Vérifier le rôle runtime avec `npm run check:runtime-db`, les réponses `/health` et `/ready` en HTTPS, le preflight `scripts/staging-readonly-preflight.js` et la connectivité sans port Node public.
 6. Effectuer MFA et droits OWNER/STAFF/client, restauration de sauvegarde, redaction des logs, tests mobile/accessibilité et tests interentreprises.
 7. Remplir le dossier privé `npm run go-no-go:staging` pour le SHA exact. **Interdire les fournisseurs externes réels tant que leurs gates sont NO-GO.**
+
+**Contrôle de drainage :** [PR #170](https://github.com/takatakca/Facturations/pull/170) vérifie que `/ready` cesse de signaler READY dès le début du drainage, même lorsqu'une requête PostgreSQL déclenchée auparavant termine positivement ensuite. Cette garantie est testée en CI avec une promesse différée, **pas encore validée en staging réel**. Exercer le scénario en HTTPS isolé avant la publication.
+
+**Nettoyage en cas d'échec HTTP :** [PR #171](https://github.com/takatakca/Facturations/pull/171) garantit une tentative de libération du pool PostgreSQL même si `server.close` échoue (erreur callback ou exception), et conserve `exitCode=1` si une étape échoue. Le HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` garantit aussi que les appels d'arrêt concurrents attendent le même nettoyage HTTP puis SQL; CI du SHA `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` : 10/10 contrôles réussis; **staging réel non vérifié**. CI sur données synthétiques uniquement; répéter le test en staging isolé avant toute homologation. Ne pas déployer en production sur la seule preuve CI.
+
+**Date limite de fermeture :** [PR #171](https://github.com/takatakca/Facturations/pull/171) HEAD `9d1e1615239efdbd3ac62e80d095c7de9095478b` étend la temporisation aux promesses HTTP et PostgreSQL. Une fermeture qui dépasse la limite retourne avec code d'échec, tente le nettoyage DB et n'autorise pas de déclarer un arrêt normal. Tests unitaires à minuterie simulée : **10/10 jobs CI verts sur ce SHA**; **pas de test d'arrêt réel en staging**. Réaliser ce scénario seulement sur le staging distinct approuvé.
 
 ## Publication et rollback
 

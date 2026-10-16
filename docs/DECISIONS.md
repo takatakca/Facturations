@@ -1,6 +1,6 @@
 # Facturations — Décisions et contraintes
 
-Historique de décisions techniques observées, arrêté au **2026-10-14**. Ce document distingue expressément les décisions déjà inscrites au dépôt des propositions encore soumises à revue.
+Historique de décisions techniques observées, vérifié au **2026-10-16**. Ce document distingue expressément les décisions déjà inscrites au dépôt des propositions encore soumises à revue.
 
 | ID | Décision/contrainte | Source | État |
 | --- | --- | --- | --- |
@@ -12,6 +12,9 @@ Historique de décisions techniques observées, arrêté au **2026-10-14**. Ce d
 | D-006 | Les données Stripe synthétiques et `SIMULATED_EMAIL` ne constituent jamais une preuve de paiement réel ou de livraison. | `docs/stripe-verified-payment-webhook.md`, `README.md` | Obligatoire |
 | D-007 | Aucun écrasement de `main`, aucun force-push destructif; changements via branches et PR compatibles avec la protection constatée. | `AGENTS.md`; GitHub `main` protected | Obligatoire |
 | D-008 | Ajouter cinq documents de relève et une vérification CI sans activer de fonctionnalités financières. | Demande de reprise du 2026-10-14 | En PR |
+| D-009 | Les événements Stripe de test ne doivent jamais alimenter les preuves de paiement en production; l'option test ne peut être activée qu'en staging isolé. | `docs/stripe-verified-payment-webhook.md`, [PR #169](https://github.com/takatakca/Facturations/pull/169) | Invariant documenté, verrou technique en PR non fusionnée |
+| D-010 | Le statut readiness doit être indisponible après le déclenchement du drainage du serveur, même si une vérification SQL déjà en cours retourne ensuite avec succès. | `src/readiness-probe.js`, [PR #170](https://github.com/takatakca/Facturations/pull/170) et `docs/final-go-live-runbook.md` | Correction et tests en PR; validation réelle de staging en attente |
+| D-011 | Si la fermeture du serveur HTTP échoue, le nettoyage du pool PostgreSQL doit néanmoins être tenté et l'échec signalé; les appels concurrents attendent la même fermeture. La limite de temps couvre les opérations HTTP et DB sans marquer un dépassement comme succès. Des tests synthétiques précèdent les exercices staging. | `src/graceful-shutdown.js`, [PR #171](https://github.com/takatakca/Facturations/pull/171), `docs/final-go-live-runbook.md` | Correctif proposé en PR; staging non homologué |
 
 ## À ne pas considérer comme décidé
 

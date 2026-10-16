@@ -2,6 +2,16 @@
 
 **Actualisé : 2026-10-16**. Pour éviter une référence circulaire, le dernier commit de **la branche en cours** doit toujours être relu depuis GitHub (`git rev-parse HEAD` ou API); le SHA ci-dessous est le dernier commit de **code vérifié de la session précédente**, pas une assertion sur la tête de cette PR documentaire.
 
+## Reprise du 16 octobre 2026 — délai d'arrêt borné
+
+- **Dernier correctif applicatif poussé** : [PR #171](https://github.com/takatakca/Facturations/pull/171), branche `fix/shutdown-db-cleanup-on-http-error-20261016`, HEAD **`9d1e1615239efdbd3ac62e80d095c7de9095478b`**. Le SHA précédent `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` a passé 10/10 checks, mais ces checks ne valident pas automatiquement le nouveau HEAD.
+- **Problème identifié** : l'ancien timer d'arrêt forçait les connexions HTTP mais ne dénouait pas la promesse `shutdown()` lorsque `server.close(callback)` ou `pool.end()` restait suspendu. Une exception de `server.closeAllConnections()` pouvait aussi échapper au callback du timer.
+- **Fichiers modifiés de #171** : `src/graceful-shutdown.js` fait concourir chaque fermeture avec la même promesse de délai, tente toujours le nettoyage DB et signale l'expiration avec `exitCode=1`; `tests/graceful-shutdown.test.js` couvre les hangs HTTP/DB avec minuterie contrôlée; `docs/final-go-live-runbook.md` rend cette preuve obligatoire au staging.
+- **Vérifications réellement exécutées** : lecture `AGENTS.md`, cinq documents de relève, PR/issues et dernier SHA de `main` (`995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`, protégé); revue des diffs du code, tests et guide; commits/push GitHub. Au premier contrôle du HEAD, 10 jobs GitHub Actions déclenchés, **résultat final non encore confirmé**; aucun test exécuté contre une base ou un domaine réel.
+- **Statut de déploiement** : non déployé, non homologué. Aucun client réel, aucune émission Wave, remise email, charge Stripe ou remboursement. L'accès à un staging Facturations dédié (HTTPS, PostgreSQL, rôle runtime, backup/restore) n'est pas confirmé.
+- **Blocages** : les PR #164, #166 et #171 restent soumises à une revue indépendante `takatakmtl`; les comptes fournisseurs, la fiscalité et la mise en service ont leurs propres gates.
+- **Prochaine action exacte** : vérifier tous les checks GitHub Actions du SHA `9d1e1615239efdbd3ac62e80d095c7de9095478b`, corriger l'échec éventuel **sur #171**; une fois verts demander la revue humaine; finaliser la revue de #164 puis retargeter #166 sur `main`. Les tests de staging réel restent NO-GO.
+
 ## Reprise du 16 octobre 2026 — fermeture HTTP et PostgreSQL
 
 - **Dépôt :** `takatakca/Facturations`; `main` protégée inchangée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`. Les PR #164 et #166 restent ouvertes et attendent une revue indépendante; le HEAD précédent de #166 `140c9c87938f53e0b07365fdd054618e7622d121` avait **10/10 checks `success`**.

@@ -28,7 +28,7 @@ Le futur job de vérification de relève ajoute `npm run check:project-docs`. **
 
 **Contrôle de drainage :** [PR #170](https://github.com/takatakca/Facturations/pull/170) vérifie que `/ready` cesse de signaler READY dès le début du drainage, même lorsqu'une requête PostgreSQL déclenchée auparavant termine positivement ensuite. Cette garantie est testée en CI avec une promesse différée, **pas encore validée en staging réel**. Exercer le scénario en HTTPS isolé avant la publication.
 
-**Nettoyage en cas d'échec HTTP :** [PR #171](https://github.com/takatakca/Facturations/pull/171) garantit une tentative de libération du pool PostgreSQL même si `server.close` échoue (erreur callback ou exception), et conserve `exitCode=1` si une étape échoue. Le HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` garantit aussi que les appels d'arrêt concurrents attendent le même nettoyage HTTP puis SQL; CI du nouveau SHA à vérifier. CI sur données synthétiques uniquement; répéter le test en staging isolé avant toute homologation. Ne pas déployer en production sur la seule preuve CI.
+**Nettoyage en cas d'échec HTTP :** [PR #171](https://github.com/takatakca/Facturations/pull/171) garantit une tentative de libération du pool PostgreSQL même si `server.close` échoue (erreur callback ou exception), et conserve `exitCode=1` si une étape échoue. Le HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` garantit aussi que les appels d'arrêt concurrents attendent le même nettoyage HTTP puis SQL; CI du SHA `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` : 10/10 contrôles réussis; **staging réel non vérifié**. CI sur données synthétiques uniquement; répéter le test en staging isolé avant toute homologation. Ne pas déployer en production sur la seule preuve CI.
 
 ## Publication et rollback
 

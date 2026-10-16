@@ -1,9 +1,10 @@
 # Facturations — File des tâches
 
-Date de triage : 2026-10-15. Statuts : `DONE_PR` = code poussé mais pas nécessairement fusionné; `REVIEW` = attendre une revue autorisée; `BLOCKED_EXTERNAL` = preuve réelle ou accès opérateur absent. Les tâches peuvent évoluer; toujours comparer à GitHub avant d'agir.
+Date de triage : 2026-10-16. Statuts : `DONE_PR` = code poussé mais pas nécessairement fusionné; `REVIEW` = attendre une revue autorisée; `BLOCKED_EXTERNAL` = preuve réelle ou accès opérateur absent. Les tâches peuvent évoluer; toujours comparer à GitHub avant d'agir.
 
 | Priorité | Tâche | État vérifié | Prochaine action |
 | --- | --- | --- | --- |
+| P0 | Empêcher `/ready` de rester vert pendant un arrêt serveur avec requête DB déjà en cours | [#170](https://github.com/takatakca/Facturations/pull/170), SHA `2fd6251a19deb66bc44ba36c32052f601093d82f`, code/tests/runbook poussés | Vérifier 10 checks du HEAD, corriger si échec, obtenir revue indépendante, fusion autorisée |
 | P0 | Empêcher les preuves de paiement Stripe de test en production | [#169](https://github.com/takatakca/Facturations/pull/169), SHA initial `c54decd8857e7e2e97526139707e328c4baa7758` (10/10 verts), HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (UTF-8 strict, **10/10 checks verts**) | Attendre revue indépendante, puis fusion autorisée, fusion selon protection de `main` |
 | P0 | Rejeter les preuves de préproduction de taille excessive ou de date ambiguë | [#168](https://github.com/takatakca/Facturations/pull/168), SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5`, code/tests/docs poussés | Examiner les checks du HEAD exact, corriger tout échec, attendre revue indépendante; aucun GO réel n'est validé |
 | P0 | Refuser les cookies de portail client surdimensionnés | [#167](https://github.com/takatakca/Facturations/pull/167) : code/tests poussés, 10/10 checks verts au SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3` | Revue indépendante, fusion selon règles GitHub |

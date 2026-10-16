@@ -31,6 +31,7 @@ GO only if:
 - `/ready` returns 200;
 - `scripts/staging-readonly-preflight.js` passes;
 - graceful shutdown has been exercised without partial requests.
+- HTTP close failures are surfaced as failed process shutdown, and the dedicated PostgreSQL pool is still closed even when HTTP closure fails; both callback and synchronous failure paths are tested.
 
 Otherwise: **NO-GO**.
 

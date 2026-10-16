@@ -14,9 +14,9 @@
 
 ## Dernière tâche terminée
 
-Correctif de sécurité Stripe sur [PR #169](https://github.com/takatakca/Facturations/pull/169), SHA **`731faefc5a2ae833d9ab51a3145e282d5a1d6086`**, **10/10 contrôles GitHub Actions `success`**. `NODE_ENV=production` interdit désormais `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1`; seuls les événements avec `livemode` booléen explicite sont acceptés dans la portée autorisée; le JSON signé à UTF-8 malformé est rejeté. Code/tests/docs **poussés mais non fusionnés**, revue de `takatakmtl` demandée. Aucun fournisseur réel appelé.
+**Correctif de disponibilité de l'arrêt serveur** poussé dans [PR #170](https://github.com/takatakca/Facturations/pull/170), code SHA `2fd6251a19deb66bc44ba36c32052f601093d82f`, **10/10 GitHub Actions checks `success`** au SHA exact. `src/readiness-probe.js` recontrôle `draining` après `await pool.query`, empêchant une réussite SQL tardive d'afficher READY pendant SIGTERM. Tests de concurrence/fuite ajoutés dans `tests/readiness-probe.test.js`, gate dans `docs/final-go-live-runbook.md`. Poussé mais **non fusionné** : revue indépendante `takatakmtl` attendue. Aucun staging ni déploiement prouvé.
 
-L'ancienne tâche #163 (lecture Stripe bornée et robuste aux déconnexions), SHA `347564627b5e4755d9d3de95de6c730056e7ec4c`, avait aussi 10/10 jobs réussis et reste en attente de revue indépendante.
+**Correctif antérieur :** [PR #169](https://github.com/takatakca/Facturations/pull/169), SHA `731faefc5a2ae833d9ab51a3145e282d5a1d6086`, 10/10 checks `success` : refuse le mode test Stripe en production, exige `livemode` explicite et rejette les octets UTF-8 malformés même après signature HMAC. Toujours en attente de revue et non fusionné.
 
 ## Travail applicatif supplémentaire poussé
 

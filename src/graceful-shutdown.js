@@ -19,28 +19,61 @@ function installGracefulShutdown({
     throw new TypeError('Graceful shutdown timeout must be 1000-60000 ms');
   }
 
-  let shuttingDown = false;
+  let shutdownPromise = null;
 
-  async function shutdown() {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    readinessProbe?.markDraining?.();
+  // Every caller observes the same in-flight shutdown. A repeated SIGINT or
+  // a caller awaiting shutdown must not receive a premature completion.
+  function shutdown() {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = performShutdown();
+    return shutdownPromise;
+  }
 
+  async function performShutdown() {
+    // A faulty readiness hook must not prevent the HTTP listener and the
+    // dedicated database pool from being closed during SIGTERM/SIGINT.
+    try {
+      readinessProbe?.markDraining?.();
+    } catch {
+      processLike.exitCode = 1;
+    }
+
+    // The deadline must settle the shutdown even if an HTTP callback or
+    // pool.end() never completes. A forced connection close alone is not a
+    // guarantee that those asynchronous operations will resolve.
+    let resolveDeadline;
+    const deadline = new Promise(resolve => { resolveDeadline = resolve; });
     const timer = setTimeoutImpl(() => {
       processLike.exitCode = 1;
-      server.closeAllConnections?.();
+      try { server.closeAllConnections?.(); } catch { /* already failing */ }
+      resolveDeadline();
     }, timeoutMs);
     timer?.unref?.();
 
     try {
-      await new Promise(resolve => {
-        server.close(() => resolve());
-        server.closeIdleConnections?.();
-      });
-      if (pool && typeof pool.end === 'function') await pool.end();
+      // A failed or hung HTTP close must not skip PostgreSQL cleanup. Node's
+      // close callback can receive an error (e.g. ERR_SERVER_NOT_RUNNING).
+      try {
+        await Promise.race([
+          new Promise((resolve, reject) => {
+            server.close(error => error ? reject(error) : resolve());
+            server.closeIdleConnections?.();
+          }),
+          deadline,
+        ]);
+      } catch {
+        processLike.exitCode = 1;
+      }
+
+      try {
+        if (pool && typeof pool.end === 'function') {
+          // Still attempt pool.end() after the deadline, but never wait forever.
+          await Promise.race([Promise.resolve().then(() => pool.end()), deadline]);
+        }
+      } catch {
+        processLike.exitCode = 1;
+      }
       if (processLike.exitCode == null) processLike.exitCode = 0;
-    } catch {
-      processLike.exitCode = 1;
     } finally {
       clearTimeoutImpl(timer);
     }

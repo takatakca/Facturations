@@ -1,9 +1,10 @@
 # Facturations — File des tâches
 
-Date de triage : 2026-10-16. Statuts : `DONE_PR` = code poussé mais pas nécessairement fusionné; `REVIEW` = attendre une revue autorisée; `BLOCKED_EXTERNAL` = preuve réelle ou accès opérateur absent. Les tâches peuvent évoluer; toujours comparer à GitHub avant d'agir.
+Date de triage : 2026-10-28. Statuts : `DONE_PR` = code poussé mais pas nécessairement fusionné; `REVIEW` = attendre une revue autorisée; `BLOCKED_EXTERNAL` = preuve réelle ou accès opérateur absent. Les tâches peuvent évoluer; toujours comparer à GitHub avant d'agir.
 
 | Priorité | Tâche | État vérifié | Prochaine action |
 | --- | --- | --- | --- |
+| P0 | Empêcher une exception du hook readiness d'interrompre le shutdown HTTP/DB | [#171](https://github.com/takatakca/Facturations/pull/171), SHA `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc` : code/test/runbook poussés; CI du HEAD exact à vérifier | Si CI verte, revue indépendante; ne fusionner que selon protection `main` |
 | P0 | Garantir un délai de fin de shutdown même si les callbacks HTTP/DB ne terminent jamais | [#171](https://github.com/takatakca/Facturations/pull/171), SHA `9d1e1615239efdbd3ac62e80d095c7de9095478b`, **10/10 checks verts** | Obtenir revue indépendante, ne déployer qu'après staging réel |
 | P0 | Libérer PostgreSQL et signaler une erreur lors d'un arrêt HTTP défectueux | [#171](https://github.com/takatakca/Facturations/pull/171), SHA initial `897137b19bf95f82e81247127a79c9014cbee95c` (10/10 CI), HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` (appels concurrents, **10/10 checks verts**) | Revue indépendante nécessaire avant fusion, revue indépendante, fusion seulement selon les règles GitHub |
 | P0 | Empêcher `/ready` de rester vert pendant un arrêt serveur avec requête DB déjà en cours | [#170](https://github.com/takatakca/Facturations/pull/170), SHA `2fd6251a19deb66bc44ba36c32052f601093d82f`, code/tests/runbook poussés, **10/10 checks verts** | Obtenir revue indépendante; fusion autorisée seulement après protections |

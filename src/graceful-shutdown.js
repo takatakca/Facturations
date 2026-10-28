@@ -30,7 +30,13 @@ function installGracefulShutdown({
   }
 
   async function performShutdown() {
-    readinessProbe?.markDraining?.();
+    // A faulty readiness hook must not prevent the HTTP listener and the
+    // dedicated database pool from being closed during SIGTERM/SIGINT.
+    try {
+      readinessProbe?.markDraining?.();
+    } catch {
+      processLike.exitCode = 1;
+    }
 
     // The deadline must settle the shutdown even if an HTTP callback or
     // pool.end() never completes. A forced connection close alone is not a

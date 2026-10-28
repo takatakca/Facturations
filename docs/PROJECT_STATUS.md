@@ -1,6 +1,10 @@
 # Facturations — État vérifié du projet
 
-Dernière vérification de GitHub : **2026-10-16**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
+Dernière vérification de GitHub : **2026-10-28**. Source de vérité : [`AGENTS.md`](../AGENTS.md), [`README.md`](../README.md), [audit #27](https://github.com/takatakca/Facturations/issues/27) et [GO / NO-GO](staging-go-no-go.md). Ce document est un instantané, **pas** une preuve de déploiement.
+
+## Vérification du 28 octobre 2026
+
+`main` reste protégée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`; les PR #164, #166 et #171 sont ouvertes. Le HEAD de #166 avant actualisation était `9d5ebe1284b1770cdce7156130d993b1471e61c6`, 10/10 jobs réussis. Nouveau HEAD code #171 `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc` : si `markDraining()` échoue, HTTP et PostgreSQL sont tout de même arrêtés avec code de sortie d'échec; test ajouté. La CI du nouveau HEAD doit être vérifiée séparément. Note de relève privée de secrets dans Google Drive : [28 octobre](https://docs.google.com/document/d/1zp7-QT51to9iJx4zK0TeJh-lO3rVI7uWspXQZdvyUX8/edit). La note Drive du 27 octobre confirme qu'il n'existe pas de connexion Facturations → Food Hub/QCMEV/ON2GO; ne pas mélanger facturation B2B et tickets de caisse.
 
 ## Références Git
 

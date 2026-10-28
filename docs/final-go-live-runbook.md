@@ -34,6 +34,7 @@ GO only if:
 - HTTP close failures are surfaced as failed process shutdown, and the dedicated PostgreSQL pool is still closed even when HTTP closure fails; both callback and synchronous failure paths are tested.
 - concurrent shutdown calls await the same operation until both HTTP closure and PostgreSQL pool cleanup complete; no caller may observe premature success.
 - the configured 1–60 second shutdown deadline is observed across both HTTP and PostgreSQL cleanup; a hung close callback or `pool.end()` must cause a failed bounded shutdown, not an indefinitely pending completion. Forced connection close errors must not mask this failure.
+- readiness-draining hook failures must not skip HTTP and PostgreSQL cleanup; report `exitCode=1` and verify the failure path without exposing hook internals.
 
 Otherwise: **NO-GO**.
 

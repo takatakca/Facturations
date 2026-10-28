@@ -203,3 +203,31 @@ test('hard deadline settles shutdown if PostgreSQL close hangs',async()=>{
   assert.strictEqual(controller.shutdown(),first);
   assert.equal(endCalls,1);
 });
+
+
+test('readiness hook failure cannot abort HTTP and PostgreSQL shutdown',async()=>{
+  const processLike=new EventEmitter();
+  const events=[];
+  const timer={unref(){events.push('timer-unref');}};
+  const controller=installGracefulShutdown({
+    server:{
+      close(callback){events.push('http-close');callback();},
+      closeIdleConnections(){events.push('idle-close');},
+    },
+    readinessProbe:{
+      markDraining(){events.push('readiness-error');throw new Error('synthetic readiness failure');},
+    },
+    pool:{async end(){events.push('postgres-end');}},
+    processLike,timeoutMs:1000,
+    setTimeoutImpl(){return timer;},
+    clearTimeoutImpl(value){assert.equal(value,timer);events.push('timer-clear');},
+  });
+  const first=controller.shutdown();
+  assert.strictEqual(controller.shutdown(),first);
+  await first;
+  assert.equal(processLike.exitCode,1,'readiness failure must not be reported as a clean exit');
+  assert.deepEqual(events,[
+    'readiness-error','timer-unref','http-close','idle-close',
+    'postgres-end','timer-clear',
+  ]);
+});

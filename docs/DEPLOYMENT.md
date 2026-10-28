@@ -1,6 +1,8 @@
 # Facturations — Déploiement vérifiable, sans production implicite
 
-**Statut au 2026-10-16 : aucun environnement déployé/accessible n'a été vérifié dans cette session.** Ne pas présenter l'existence d'un workflow CI, d'une URL cible ou d'un Dockerfile en PR comme un déploiement réussi.
+**Statut au 2026-10-28 : aucun environnement déployé/accessible n'a été vérifié dans cette session.** Ne pas présenter l'existence d'un workflow CI, d'une URL cible ou d'un Dockerfile en PR comme un déploiement réussi.
+
+**Reprise 2026-10-28 :** [PR #171](https://github.com/takatakca/Facturations/pull/171), commit `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc`, couvre aussi l'échec du hook `markDraining()`, qui ne doit jamais empêcher les fermetures HTTP et DB. Revoir la CI sur ce nouveau SHA; effectuer une vraie simulation SIGTERM/staging uniquement dans un environnement isolé et autorisé. Le contrôle GitHub a toujours trouvé `main` protégée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`. La note Drive [Facturations — reprise](https://docs.google.com/document/d/1zp7-QT51to9iJx4zK0TeJh-lO3rVI7uWspXQZdvyUX8/edit) décrit les dépendances et la séparation avec les reçus de restauration traités par QCMEV. Aucun déploiement réel n'a été confirmé.
 
 ## Hébergement cible et ambiguïté à résoudre
 

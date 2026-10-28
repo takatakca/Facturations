@@ -1,6 +1,6 @@
 # Facturations — Décisions et contraintes
 
-Historique de décisions techniques observées, vérifié au **2026-10-16**. Ce document distingue expressément les décisions déjà inscrites au dépôt des propositions encore soumises à revue.
+Historique de décisions techniques observées, vérifié au **2026-10-28**. Ce document distingue expressément les décisions déjà inscrites au dépôt des propositions encore soumises à revue.
 
 | ID | Décision/contrainte | Source | État |
 | --- | --- | --- | --- |
@@ -23,6 +23,9 @@ Historique de décisions techniques observées, vérifié au **2026-10-16**. Ce 
 - **Fournisseur email et consentement client :** non homologués; les actions externes restent désactivées.
 - **Environnement Stripe réel et remboursements :** le traitement de preuves webhook n'autorise pas de créer ou rembourser une transaction.
 - **Conformité légale/fiscale et rétention :** revue indépendante exigée; ne jamais inventer de numéro de taxes ou de certification.
+
+| D-012 | **Proposition technique en revue** : si le hook readiness `markDraining()` échoue, l'arrêt HTTP/DB reste obligatoire; sortie en échec, aucun succès implicite. | [PR #171](https://github.com/takatakca/Facturations/pull/171) SHA `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc` | Poussé, revue et validation staging en attente |
+| D-013 | **Séparation existante confirmée** : Facturations B2B/Wave est distinct des reçus restaurant Food Hub/ON2GO/Clover/QCMEV; aucun lien de code interproduits n'est attesté et aucune intégration automatique n'est autorisée par cette note. | Addendum Google Drive du 2026-10-27 et [relève du 2026-10-28](https://docs.google.com/document/d/1zp7-QT51to9iJx4zK0TeJh-lO3rVI7uWspXQZdvyUX8/edit) | Architecture à préserver; tout nouveau contrat nécessite validation distincte |
 
 ## Procédure pour consigner une nouvelle décision
 

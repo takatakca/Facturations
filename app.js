@@ -35,6 +35,8 @@ const { createReadinessProbe } = require('./src/readiness-probe');
 const { installGracefulShutdown } = require('./src/graceful-shutdown');
 const { attachOperationalTelemetry } = require('./src/operational-telemetry');
 const { attachProductionEdgeGuard } = require('./src/production-edge-guard');
+const { createOpenAiAssistantClient } = require('./src/openai-assistant-client');
+const { attachBrowserAiHelp } = require('./src/browser-ai-help');
 
 if (require.main === module) {
   const config = loadConfig();
@@ -85,6 +87,18 @@ if (require.main === module) {
   if (config.browserOrigin) {
     // Wrap once per service; never pass the shared administrative key to the browser.
     attachBrowserStaffLogin(server, { origin: config.browserOrigin, staffAuthStore, attemptLimit });
+    if (config.aiEnabled) {
+      const assistantClient = createOpenAiAssistantClient({
+        apiKey: config.openAiApiKey,
+        model: config.openAiModel,
+      });
+      attachBrowserAiHelp(server, {
+        origin: config.browserOrigin,
+        encryptionKeyHex: config.totpEncryptionKeyHex,
+        staffAuthStore,
+        assistantClient,
+      });
+    }
     attachBrowserWorkspaceRoutes(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, staffAuthStore, workspaceStore });
     attachBrowserWorkspaceEditor(server, { origin: config.browserOrigin, staffAuthStore });

@@ -8,7 +8,8 @@ const base = { FACTURATIONS_DATABASE_URL: 'postgresql://localhost/facturations',
 test('defaults to port 3000 and leaves all credentials and database absent', () => {
   assert.deepEqual(loadConfig({}), { nodeEnv: 'development', productionMode: false, trustProxy: false,
     port: 3000, adminKey: '', waveToken: '', databaseUrl: '', businessId: '',
-    browserOrigin: '', totpEncryptionKeyHex: '' });
+    browserOrigin: '', totpEncryptionKeyHex: '', aiEnabled: false,
+    openAiApiKey: '', openAiModel: '' });
 });
 
 test('accepts port zero, trims token and dedicated database settings', () => {
@@ -18,7 +19,8 @@ test('accepts port zero, trims token and dedicated database settings', () => {
     nodeEnv: 'development', productionMode: false, trustProxy: false,
     port: 0, adminKey: key, waveToken: 'abc',
     databaseUrl: 'postgresql://localhost/facturations', businessId: 'business-one',
-    browserOrigin: '', totpEncryptionKeyHex: '',
+    browserOrigin: '', totpEncryptionKeyHex: '', aiEnabled: false,
+    openAiApiKey: '', openAiModel: '',
   });
 });
 
@@ -75,4 +77,44 @@ test('production fails closed unless the dedicated database and HTTPS browser se
     FACTURATIONS_PUBLIC_ORIGIN: 'https://localhost',
   }), /loopback/);
   assert.throws(() => loadConfig({ ...production, NODE_ENV: 'preview' }), /NODE_ENV/);
+});
+
+
+test('OpenAI help is explicit and requires private HTTPS staff configuration', () => {
+  const secret = 'ab'.repeat(32);
+  const env = {
+    ...base,
+    FACTURATIONS_PUBLIC_ORIGIN: 'https://facturations.example.test',
+    FACTURATIONS_TOTP_ENCRYPTION_KEY: secret,
+    FACTURATIONS_AI_ENABLED: '1',
+    OPENAI_API_KEY: 'sk-test-abcdefghijklmnopqrstuvwxyz0123456789',
+    FACTURATIONS_OPENAI_MODEL: 'chat-latest',
+  };
+  const config = loadConfig(env);
+  assert.equal(config.aiEnabled, true);
+  assert.equal(config.openAiApiKey, 'sk-test-abcdefghijklmnopqrstuvwxyz0123456789');
+  assert.equal(config.openAiModel, 'chat-latest');
+
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_AI_ENABLED: 'yes',
+  }), /AI_ENABLED/);
+  assert.throws(() => loadConfig({
+    ...base,
+    OPENAI_API_KEY: 'sk-test-abcdefghijklmnopqrstuvwxyz0123456789',
+  }), /requires FACTURATIONS_AI_ENABLED/);
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_AI_ENABLED: '1',
+    OPENAI_API_KEY: 'sk-test-abcdefghijklmnopqrstuvwxyz0123456789',
+    FACTURATIONS_OPENAI_MODEL: 'chat-latest',
+  }), /private HTTPS staff browser service/);
+  assert.throws(() => loadConfig({
+    ...env,
+    OPENAI_API_KEY: 'short',
+  }), /OPENAI_API_KEY/);
+  assert.throws(() => loadConfig({
+    ...env,
+    FACTURATIONS_OPENAI_MODEL: 'bad model',
+  }), /FACTURATIONS_OPENAI_MODEL/);
 });

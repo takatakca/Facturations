@@ -36,6 +36,13 @@ function loadConfig(env = process.env) {
     throw new Error('FACTURATIONS_DATABASE_URL must be a PostgreSQL URL');
   }
 
+  const rawAiEnabled = (env.FACTURATIONS_AI_ENABLED || '').trim();
+  if (rawAiEnabled && rawAiEnabled !== '1') {
+    throw new Error('FACTURATIONS_AI_ENABLED must be 1 when enabled');
+  }
+  const aiEnabled = rawAiEnabled === '1';
+  const openAiApiKey = env.OPENAI_API_KEY || '';
+  const openAiModel = (env.FACTURATIONS_OPENAI_MODEL || '').trim();
   // Browser login is opt-in and fails closed unless its separate encryption key,
   // a dedicated database and exact external HTTPS origin are ALL configured.
   const browserOrigin = (env.FACTURATIONS_PUBLIC_ORIGIN || '').trim();
@@ -54,6 +61,19 @@ function loadConfig(env = process.env) {
     if (!/^[a-f0-9]{64}$/i.test(totpEncryptionKeyHex)) {
       throw new Error('FACTURATIONS_TOTP_ENCRYPTION_KEY must be 32 bytes encoded as hex');
     }
+  }
+  if (aiEnabled) {
+    if (!browserOrigin || !totpEncryptionKeyHex) {
+      throw new Error('Facturations AI requires the private HTTPS staff browser service');
+    }
+    if (openAiApiKey.length < 20) {
+      throw new Error('OPENAI_API_KEY is required when Facturations AI is enabled');
+    }
+    if (!/^[A-Za-z0-9._:-]{2,100}$/.test(openAiModel)) {
+      throw new Error('FACTURATIONS_OPENAI_MODEL is required when Facturations AI is enabled');
+    }
+  } else if (openAiApiKey || openAiModel) {
+    throw new Error('OpenAI configuration requires FACTURATIONS_AI_ENABLED=1');
   }
 
   if (nodeEnv === 'production') {
@@ -84,6 +104,9 @@ function loadConfig(env = process.env) {
     businessId,
     browserOrigin,
     totpEncryptionKeyHex,
+    aiEnabled,
+    openAiApiKey,
+    openAiModel,
   });
 }
 

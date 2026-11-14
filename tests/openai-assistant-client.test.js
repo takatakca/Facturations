@@ -73,11 +73,18 @@ test('OpenAI help adapter uses Responses API structured output and returns only 
   assert.equal(body.text.format.name, 'facturations_help_response');
   assert.deepEqual(body.text.format.schema, HELP_SCHEMA);
   assert.match(body.instructions, /Never claim that an invoice was issued/);
-  assert.deepEqual(JSON.parse(body.input), {
-    language: 'fr',
-    screenId: 'dashboard',
-    message: 'Comment créer une facture?',
-  });
+  assert.match(body.instructions, /Use only PRODUCT_GUIDE facts/);
+  const providerInput = JSON.parse(body.input);
+  assert.equal(providerInput.language, 'fr');
+  assert.equal(providerInput.screenId, 'dashboard');
+  assert.equal(providerInput.message, 'Comment créer une facture?');
+  assert.equal(providerInput.productGuide.version, 1);
+  assert.equal(providerInput.productGuide.language, 'fr');
+  assert.equal(providerInput.productGuide.screenId, 'dashboard');
+  assert.equal(providerInput.productGuide.title, 'Tableau de bord');
+  assert.ok(providerInput.productGuide.facts.includes(
+    'Le bouton « Nouveau brouillon de travail » ouvre l’éditeur.'
+  ));
   assert.doesNotMatch(captured.options.body, /DATABASE_URL|TOTP|session cookie/i);
 });
 

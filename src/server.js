@@ -136,11 +136,12 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const isIntegrationCapabilities = path === '/integration/v1/capabilities';
     const isIntegrationDashboard = path === '/integration/v1/dashboard';
     const isIntegrationDrafts = path === '/integration/v1/drafts';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts) {
+    const isIntegrationCustomers = path === '/integration/v1/customers';
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers) {
       if (request.method !== 'GET') return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       if ((isIntegrationCapabilities || isIntegrationDashboard) &&
           [...url.searchParams.keys()].length) {
@@ -169,7 +170,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               capabilitiesRead: true,
               dashboardRead: true,
               draftsRead: true,
-              customersRead: false,
+              customersRead: principal.roles.includes('OWNER'),
               draftWrite: false,
               ownerApprovalWrite: false,
               issuanceAuthorizationWrite: false,
@@ -183,6 +184,57 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             },
           },
         });
+      }
+
+      if (isIntegrationCustomers) {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        if (!customerDirectory) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        let options;
+        try { options = customerListOptions(url.searchParams); }
+        catch (error) {
+          if (error instanceof CustomerDirectoryError || error instanceof DashboardError) {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          return sendJson(response, 422, { error: 'INVALID_QUERY' });
+        }
+        try {
+          const listed = await customerDirectory.listCustomers(options);
+          if (!listed || listed.status !== 'CUSTOMERS_ONLY' ||
+              !Number.isInteger(listed.page) || !Number.isInteger(listed.pageSize) ||
+              typeof listed.hasMore !== 'boolean' ||
+              !Array.isArray(listed.customers) || listed.customers.length > listed.pageSize) {
+            return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+          }
+          const safeCustomers = [];
+          for (const customer of listed.customers) {
+            if (!customer || typeof customer.id !== 'string' ||
+                typeof customer.name !== 'string' ||
+                typeof customer.email !== 'string') {
+              return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+            }
+            safeCustomers.push({
+              id: customer.id,
+              name: customer.name,
+              email: customer.email,
+            });
+          }
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              status: 'CUSTOMERS_ONLY',
+              page: listed.page,
+              pageSize: listed.pageSize,
+              hasMore: listed.hasMore,
+              customers: safeCustomers,
+            },
+          });
+        } catch {
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
       }
 
       if (!dashboardStore) return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });

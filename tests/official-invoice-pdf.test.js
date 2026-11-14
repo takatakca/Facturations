@@ -24,6 +24,29 @@ function issued(snapshot) {
   };
 }
 
+function issuer() {
+  return {
+    id: crypto.randomUUID(),
+    versionNumber: 1,
+    legalName: 'Example Legal Québec Inc.',
+    tradeName: 'GROUPE TAKATAK',
+    addressLine1: '100 rue Exemple',
+    addressLine2: null,
+    city: 'Montréal',
+    region: 'Québec',
+    postalCode: 'H0H 0H0',
+    countryCode: 'CA',
+    email: 'billing@example.test',
+    phone: '+1 514 555 0100',
+    businessRegistrationNumber: 'SYNTHETIC-REG-1',
+    taxIdentifiers: { GST: 'SYNTHETIC-GST-1', QST: 'SYNTHETIC-QST-1' },
+    profileHash: 'a'.repeat(64),
+    verified: true,
+    verifiedBy: crypto.randomUUID(),
+    verifiedAt: '2026-09-25T14:20:00.000Z',
+  };
+}
+
 function snapshot(lineCount = 1, name = 'Élodie Tremblay') {
   return previewDraft({
     currency: 'CAD',
@@ -51,8 +74,9 @@ function snapshot(lineCount = 1, name = 'Élodie Tremblay') {
 
 test('issued invoice PDF is deterministic, valid-looking and supports common French accents', () => {
   const invoice = issued(snapshot());
-  const first = renderIssuedInvoicePdf(invoice);
-  const second = renderIssuedInvoicePdf(invoice);
+  const profile = issuer();
+  const first = renderIssuedInvoicePdf(invoice, profile);
+  const second = renderIssuedInvoicePdf(invoice, profile);
   assert.ok(Buffer.isBuffer(first));
   assert.ok(first.length > 500);
   assert.equal(first.subarray(0, 8).toString('ascii'), '%PDF-1.4');
@@ -66,7 +90,7 @@ test('issued invoice PDF is deterministic, valid-looking and supports common Fre
 });
 
 test('issued invoice PDF paginates a maximum-size invoice', () => {
-  const pdf = renderIssuedInvoicePdf(issued(snapshot(50)));
+  const pdf = renderIssuedInvoicePdf(issued(snapshot(50)), issuer());
   const ascii = pdf.toString('latin1');
   const match = /\/Type \/Pages \/Count (\d+)/u.exec(ascii);
   assert.ok(match);
@@ -76,9 +100,20 @@ test('issued invoice PDF paginates a maximum-size invoice', () => {
 test('renderer refuses unsupported characters instead of corrupting customer text', () => {
   const invoice = issued(snapshot(1, 'Client 🙂'));
   assert.throws(
-    () => renderIssuedInvoicePdf(invoice),
+    () => renderIssuedInvoicePdf(invoice, issuer()),
     error => error instanceof OfficialInvoicePdfError &&
       error.code === 'UNSUPPORTED_PDF_CHARACTER' &&
+      error.statusCode === 409
+  );
+});
+
+test('renderer requires an explicitly verified issuer profile', () => {
+  const profile = issuer();
+  profile.verified = false;
+  assert.throws(
+    () => renderIssuedInvoicePdf(issued(snapshot()), profile),
+    error => error instanceof OfficialInvoicePdfError &&
+      error.code === 'VERIFIED_ISSUER_PROFILE_REQUIRED' &&
       error.statusCode === 409
   );
 });

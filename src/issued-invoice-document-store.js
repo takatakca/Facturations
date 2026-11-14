@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { renderIssuedInvoicePdf } = require('./official-invoice-pdf');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
-const RENDER_VERSION = 'invoice-pdf-v1-winansi';
+const RENDER_VERSION = 'invoice-pdf-v2-verified-issuer-winansi';
 
 class IssuedInvoiceDocumentError extends Error {
   constructor(code, statusCode = 422) {
@@ -16,9 +16,7 @@ class IssuedInvoiceDocumentError extends Error {
 }
 
 function uuid(value, code) {
-  if (typeof value !== 'string' || !UUID.test(value)) {
-    throw new IssuedInvoiceDocumentError(code);
-  }
+  if (typeof value !== 'string' || !UUID.test(value)) throw new IssuedInvoiceDocumentError(code);
   return value.toLowerCase();
 }
 
@@ -41,16 +39,64 @@ function invoiceOf(row) {
   });
 }
 
+function issuerOf(row) {
+  return Object.freeze({
+    id: row.id,
+    versionNumber: Number(row.version_number),
+    legalName: row.legal_name,
+    tradeName: row.trade_name || null,
+    addressLine1: row.address_line1,
+    addressLine2: row.address_line2 || null,
+    city: row.city,
+    region: row.region,
+    postalCode: row.postal_code,
+    countryCode: row.country_code,
+    email: row.email,
+    phone: row.phone || null,
+    businessRegistrationNumber: row.business_registration_number || null,
+    taxIdentifiers: Object.freeze({ ...(row.tax_identifiers || {}) }),
+    profileHash: row.profile_hash,
+    verified: true,
+    verifiedBy: row.verified_by,
+    verifiedAt: row.verified_at instanceof Date ? row.verified_at.toISOString() : row.verified_at,
+  });
+}
+
+function issuerSnapshot(issuer) {
+  return Object.freeze({
+    id: issuer.id,
+    versionNumber: issuer.versionNumber,
+    legalName: issuer.legalName,
+    tradeName: issuer.tradeName,
+    addressLine1: issuer.addressLine1,
+    addressLine2: issuer.addressLine2,
+    city: issuer.city,
+    region: issuer.region,
+    postalCode: issuer.postalCode,
+    countryCode: issuer.countryCode,
+    email: issuer.email,
+    phone: issuer.phone,
+    businessRegistrationNumber: issuer.businessRegistrationNumber,
+    taxIdentifiers: issuer.taxIdentifiers,
+    profileHash: issuer.profileHash,
+    verifiedBy: issuer.verifiedBy,
+    verifiedAt: issuer.verifiedAt,
+  });
+}
+
 function resultOf(row) {
   const bytes = Buffer.isBuffer(row.pdf_bytes) ? Buffer.from(row.pdf_bytes) : null;
   return Object.freeze({
     id: row.id,
     issuedInvoiceId: row.issued_invoice_id,
+    issuerProfileVersionId: row.issuer_profile_version_id,
+    issuerProfileHash: row.issuer_profile_hash,
+    issuerProfileSnapshot: Object.freeze({ ...(row.issuer_profile_snapshot || {}) }),
     documentKind: row.document_kind,
     renderVersion: row.render_version,
     contentType: row.content_type,
     contentSha256: row.content_sha256,
-    byteLength: row.byte_length,
+    byteLength: Number(row.byte_length),
     pdfBytes: bytes,
     deliveryState: row.delivery_state,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
@@ -68,11 +114,7 @@ function validatePdf(pdf) {
   return pdf;
 }
 
-function createIssuedInvoiceDocumentStore({
-  pool,
-  businessId,
-  renderer = renderIssuedInvoicePdf,
-} = {}) {
+function createIssuedInvoiceDocumentStore({ pool, businessId, renderer = renderIssuedInvoicePdf } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('Dedicated PostgreSQL pool required');
   }
@@ -89,29 +131,31 @@ function createIssuedInvoiceDocumentStore({
     }
     const issuedInvoiceId = uuid(input.issuedInvoiceId, 'INVALID_ISSUED_INVOICE_ID');
     const found = await pool.query(
-      `SELECT * FROM facturations_issued_invoice_documents
-        WHERE business_id=$1 AND issued_invoice_id=$2`,
+      `SELECT d.*,b.issuer_profile_version_id,b.issuer_profile_hash,b.issuer_profile_snapshot
+         FROM facturations_issued_invoice_documents AS d
+         JOIN facturations_issued_invoice_document_issuer_bindings AS b
+           ON b.business_id=d.business_id AND b.document_id=d.id
+        WHERE d.business_id=$1 AND d.issued_invoice_id=$2`,
       [tenant, issuedInvoiceId]
     );
-    if (!found.rows.length) {
-      throw new IssuedInvoiceDocumentError('DOCUMENT_NOT_FOUND', 404);
-    }
+    if (!found.rows.length) throw new IssuedInvoiceDocumentError('DOCUMENT_NOT_FOUND', 404);
     return resultOf(found.rows[0]);
   }
 
   async function materialize(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
-        Object.keys(input).join(',') !== 'issuedInvoiceId') {
+        Object.keys(input).sort().join(',') !== 'issuedInvoiceId,issuerProfileVersionId') {
       throw new IssuedInvoiceDocumentError('INVALID_DOCUMENT_REQUEST');
     }
     const issuedInvoiceId = uuid(input.issuedInvoiceId, 'INVALID_ISSUED_INVOICE_ID');
+    const issuerProfileVersionId = uuid(input.issuerProfileVersionId, 'INVALID_PROFILE_VERSION_ID');
     const client = await pool.connect();
     let transaction = false;
     try {
       await client.query('BEGIN');
       transaction = true;
 
-      const found = await client.query(
+      const issuedResult = await client.query(
         `SELECT id,authorization_id,draft_id,attempt_id,provider,provider_invoice_id,
                 official_invoice_number,request_hash,issued_snapshot,status,delivery_state,
                 provider_confirmed_at,materialized_at
@@ -120,17 +164,30 @@ function createIssuedInvoiceDocumentStore({
           FOR SHARE`,
         [tenant, issuedInvoiceId]
       );
-      if (!found.rows.length) {
-        throw new IssuedInvoiceDocumentError('ISSUED_INVOICE_NOT_FOUND', 404);
-      }
-      const issued = found.rows[0];
+      if (!issuedResult.rows.length) throw new IssuedInvoiceDocumentError('ISSUED_INVOICE_NOT_FOUND', 404);
+      const issued = issuedResult.rows[0];
       if (issued.status !== 'ISSUED_CONFIRMED' || issued.delivery_state !== 'NOT_AUTHORIZED') {
         throw new IssuedInvoiceDocumentError('ISSUED_INVOICE_NOT_READY', 409);
       }
 
+      const profileResult = await client.query(
+        `SELECT p.*,v.verified_by,v.verified_at
+           FROM facturations_issuer_profile_versions AS p
+           JOIN facturations_issuer_profile_verifications AS v
+             ON v.business_id=p.business_id AND v.profile_version_id=p.id
+          WHERE p.business_id=$1 AND p.id=$2
+          FOR SHARE OF p,v`,
+        [tenant, issuerProfileVersionId]
+      );
+      if (!profileResult.rows.length) {
+        throw new IssuedInvoiceDocumentError('VERIFIED_ISSUER_PROFILE_REQUIRED', 409);
+      }
+      const issuer = issuerOf(profileResult.rows[0]);
+      const snapshot = issuerSnapshot(issuer);
+
       let pdf;
       try {
-        pdf = validatePdf(await renderer(invoiceOf(issued)));
+        pdf = validatePdf(await renderer(invoiceOf(issued), issuer));
       } catch (error) {
         if (error instanceof IssuedInvoiceDocumentError) throw error;
         if (error && typeof error.code === 'string') {
@@ -150,19 +207,38 @@ function createIssuedInvoiceDocumentStore({
       );
       let row = inserted.rows[0];
 
-      if (!row) {
+      if (row) {
+        await client.query(
+          `INSERT INTO facturations_issued_invoice_document_issuer_bindings
+             (business_id,document_id,issuer_profile_version_id,issuer_profile_hash,issuer_profile_snapshot)
+           VALUES ($1,$2,$3,$4,$5::jsonb)`,
+          [tenant, row.id, issuer.id, issuer.profileHash, JSON.stringify(snapshot)]
+        );
+        row = {
+          ...row,
+          issuer_profile_version_id: issuer.id,
+          issuer_profile_hash: issuer.profileHash,
+          issuer_profile_snapshot: snapshot,
+        };
+      } else {
         const prior = await client.query(
-          `SELECT * FROM facturations_issued_invoice_documents
-            WHERE business_id=$1 AND issued_invoice_id=$2`,
+          `SELECT d.*,b.issuer_profile_version_id,b.issuer_profile_hash,b.issuer_profile_snapshot
+             FROM facturations_issued_invoice_documents AS d
+             LEFT JOIN facturations_issued_invoice_document_issuer_bindings AS b
+               ON b.business_id=d.business_id AND b.document_id=d.id
+            WHERE d.business_id=$1 AND d.issued_invoice_id=$2`,
           [tenant, issuedInvoiceId]
         );
         row = prior.rows[0];
-        if (!row || row.document_kind !== 'INVOICE_PDF' ||
+        if (!row || !row.issuer_profile_version_id ||
+            row.document_kind !== 'INVOICE_PDF' ||
             row.render_version !== RENDER_VERSION ||
             row.content_type !== 'application/pdf' ||
             row.content_sha256 !== hash ||
             Number(row.byte_length) !== pdf.length ||
             row.delivery_state !== 'NOT_AUTHORIZED' ||
+            row.issuer_profile_version_id !== issuer.id ||
+            row.issuer_profile_hash !== issuer.profileHash ||
             !Buffer.isBuffer(row.pdf_bytes) ||
             !row.pdf_bytes.equals(pdf)) {
           throw new IssuedInvoiceDocumentError('DOCUMENT_CONFLICT', 409);

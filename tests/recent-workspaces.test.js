@@ -19,9 +19,9 @@ const summary = { status: 'WORKSPACES_ONLY', workspaces: [{
   id: ID, revision: 2, updatedAt: '2026-09-21T03:00:00.000Z', customerName: name,
 }] };
 
-async function withServer(recentStore, run) {
+async function withServer(recentStore, run, { assistantAvailable = false } = {}) {
   const server = createServer({ config: { businessId: 'fictional-tenant', adminKey: 'synthetic-admin', waveToken: null } });
-  attachBrowserRecentWorkspaces(server, { origin: 'https://example.test', recentStore });
+  attachBrowserRecentWorkspaces(server, { origin: 'https://example.test', recentStore, assistantAvailable });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try { await run(`http://127.0.0.1:${server.address().port}`); }
@@ -54,6 +54,35 @@ test('FR/EN index renders only escaped summaries and links to the staff-only edi
   assert.match(dashboard, /href="\/internal\/recent-workspaces\?lang=fr"/);
   assert.match(dashboard, /Mes brouillons enregistrés/);
   assert.equal((dashboard.match(/<form\b/g) || []).length, 1);
+});
+
+test('saved drafts expose contextual assistant only when server-side AI is enabled', async () => {
+  const recentStore = { async list() { return summary; } };
+
+  await withServer(recentStore, async base => {
+    const response = await fetch(base + '/internal/recent-workspaces?lang=fr', {
+      headers: { Cookie: `${COOKIE_NAME}=${TOKEN}` },
+    });
+    assert.equal(response.status, 200);
+    assert.doesNotMatch(await response.text(),
+      /\/internal\/assistant\?lang=fr&screen=saved-drafts/);
+  });
+
+  await withServer(recentStore, async base => {
+    const fr = await fetch(base + '/internal/recent-workspaces?lang=fr', {
+      headers: { Cookie: `${COOKIE_NAME}=${TOKEN}` },
+    });
+    assert.equal(fr.status, 200);
+    assert.match(await fr.text(),
+      /href="\/internal\/assistant\?lang=fr&screen=saved-drafts"/);
+
+    const en = await fetch(base + '/internal/recent-workspaces?lang=en', {
+      headers: { Cookie: `${COOKIE_NAME}=${TOKEN}` },
+    });
+    assert.equal(en.status, 200);
+    assert.match(await en.text(),
+      /href="\/internal\/assistant\?lang=en&screen=saved-drafts"/);
+  }, { assistantAvailable: true });
 });
 
 test('HTML listing fails closed for missing, revoked, wrong or admin/bearer credentials and bad requests', async () => {

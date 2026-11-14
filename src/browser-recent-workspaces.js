@@ -7,7 +7,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-
 const MAX_BODY_BYTES = 512;
 const COPY = Object.freeze({
   fr: Object.freeze({ title: 'Mes brouillons de travail', new: 'Nouveau brouillon',
-    back: 'Tableau de bord', other: 'en', language: 'English',
+    back: 'Tableau de bord', assistant: 'Assistant IA', other: 'en', language: 'English',
     empty: 'Aucun brouillon enregistré. Commencez un nouveau brouillon.',
     noMatches: 'Aucun brouillon correspondant à cette recherche.',
     searchLabel: 'Rechercher par nom de client', search: 'Rechercher', reset: 'Effacer la recherche',
@@ -15,7 +15,7 @@ const COPY = Object.freeze({
     preview: 'Aperçu calculé (si complet)',
     note: 'Vos 20 espaces de travail les plus récents, ou les 20 premiers résultats de recherche. Ce ne sont pas des factures émises.' }),
   en: Object.freeze({ title: 'My working drafts', new: 'New draft',
-    back: 'Dashboard', other: 'fr', language: 'Français',
+    back: 'Dashboard', assistant: 'AI Assistant', other: 'fr', language: 'Français',
     empty: 'No saved drafts yet. Start a new draft.',
     noMatches: 'No saved drafts match this search.',
     searchLabel: 'Search by customer name', search: 'Search', reset: 'Clear search',
@@ -37,13 +37,17 @@ function escapeHtml(value) {
   })[char]);
 }
 
-function renderRecentWorkspaces(result, language = 'fr', query = '') {
+function renderRecentWorkspaces(result, language = 'fr', query = '', assistantAvailable = false) {
   if (!Object.hasOwn(COPY, language) || !result || result.status !== 'WORKSPACES_ONLY' ||
       !Array.isArray(result.workspaces) || result.workspaces.length > 20 ||
-      typeof query !== 'string' || query.length > 80 || /[\u0000-\u001f\u007f]/.test(query)) {
+      typeof query !== 'string' || query.length > 80 || /[\u0000-\u001f\u007f]/.test(query) ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Bounded private workspace listing required');
   }
   const t = COPY[language];
+  const assistantLink = assistantAvailable
+    ? `<a href="/internal/assistant?lang=${language}&screen=saved-drafts">${t.assistant}</a>`
+    : '';
   const items = result.workspaces.map(row => {
     if (!row || !UUID.test(row.id) || !Number.isSafeInteger(row.revision) || row.revision < 1 ||
         (row.customerName !== null && typeof row.customerName !== 'string') ||
@@ -58,7 +62,7 @@ function renderRecentWorkspaces(result, language = 'fr', query = '') {
   }).join('');
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title} — GROUPE TAKATAK</title>
 <style>:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.5}main{max-width:850px;margin:auto;padding:clamp(18px,4vw,48px)}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}.brand{font-size:.85rem;font-weight:800;letter-spacing:.1em;color:#14536b}nav{display:flex;flex-wrap:wrap;gap:16px}a{color:#194a91;font-weight:700;text-underline-offset:3px}a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #4d7dc8;outline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.8rem);margin:30px 0 8px}p{color:#52647c}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;padding:clamp(18px,4vw,32px);margin:26px 0}ul{list-style:none;padding:0;margin:0}li{padding:18px 0;border-top:1px solid #e9eef5}li:first-child{border-top:0}.meta{display:block;color:#52647c;font-size:.86rem;margin-top:5px}.preview{display:inline-block;margin-top:9px;font-size:.9rem}.new{display:inline-block;background:#164b9b;color:#fff;border-radius:9px;padding:11px 16px;text-decoration:none}.search{margin:22px 0;display:flex;flex-wrap:wrap;align-items:end;gap:12px}.search label{display:block;font-weight:700;flex:1 1 230px}.search input{display:block;width:100%;padding:11px;font:inherit;border:1px solid #aebdd1;border-radius:9px;margin-top:6px}.search button{font:inherit;padding:11px 16px;border:0;border-radius:9px;background:#164b9b;color:#fff;cursor:pointer}.reset{padding:11px 0;overflow-wrap:anywhere}@media(max-width:450px){.search button{width:100%}}</style></head>
-<body><main><header><div class="brand">GROUPE TAKATAK</div><nav aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.back}</a><a href="/internal/recent-workspaces?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header>
+<body><main><header><div class="brand">GROUPE TAKATAK</div><nav aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.back}</a>${assistantLink}<a href="/internal/recent-workspaces?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header>
 <h1>${t.title}</h1><p>${t.note}</p><a class="new" href="/internal/editor?lang=${language}">${t.new}</a>
 <form class="search" method="post" action="/internal/recent-workspaces?lang=${language}" autocomplete="off"><label for="q">${t.searchLabel}<input id="q" name="q" type="search" maxlength="80" value="${escapeHtml(query)}" autocomplete="off"></label><button type="submit">${t.search}</button><a class="reset" href="/internal/recent-workspaces?lang=${language}">${t.reset}</a></form>
 <section class="panel" aria-label="${t.title}">${items ? `<ul>${items}</ul>` : `<p>${query ? t.noMatches : t.empty}</p>`}</section></main></body></html>`;
@@ -114,12 +118,13 @@ function readSearchBody(request) {
 
 // Runs after the editor wrapper; never turns a cookie into an API bearer token.
 // Search is a read-only POST so customer names do not appear in URLs or referrers.
-function attachBrowserRecentWorkspaces(server, { origin, recentStore }) {
+function attachBrowserRecentWorkspaces(server, { origin, recentStore, assistantAvailable = false }) {
   let validOrigin = false;
   try { validOrigin = typeof origin === 'string' && origin.startsWith('https://') && new URL(origin).origin === origin; }
   catch { /* Fail closed. */ }
   if (!server || typeof server.listeners !== 'function' || server.listeners('request').length !== 1 ||
-      !validOrigin || !recentStore || typeof recentStore.list !== 'function') {
+      !validOrigin || !recentStore || typeof recentStore.list !== 'function' ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Dedicated HTTPS browser and private recent-workspace store required');
   }
   const previous = server.listeners('request')[0];
@@ -153,7 +158,8 @@ function attachBrowserRecentWorkspaces(server, { origin, recentStore }) {
     }
     try {
       const listing = await recentStore.list({ token, query });
-      return send(response, 200, 'text/html; charset=utf-8', renderRecentWorkspaces(listing, language, query));
+      return send(response, 200, 'text/html; charset=utf-8',
+        renderRecentWorkspaces(listing, language, query, assistantAvailable));
     } catch (error) {
       if (error instanceof WorkspaceError && error.code === 'UNAUTHORIZED') {
         return send(response, 401, 'text/plain; charset=utf-8', 'Unauthorized');

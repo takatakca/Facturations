@@ -18,7 +18,7 @@ const cookie = token => ({ Cookie: '__Host-facturations-session=' + token });
 const customer = { name: 'Fictional <script> & Société', email: 'client@example.test', address: '123 <nowhere>' };
 const sample = options => ({ status: 'CUSTOMERS_ONLY', page: options.page, pageSize: 20,
   hasMore: false, customers: [{ ...customer }] });
-async function withServer({ role = 'OWNER', businessId = BUSINESS, listCustomers = sample } = {}, run) {
+async function withServer({ role = 'OWNER', businessId = BUSINESS, listCustomers = sample, assistantAvailable = false } = {}, run) {
   const calls = [];
   const server = createServer({ config: { businessId: BUSINESS, adminKey: 'k'.repeat(64), waveToken: null } });
   attachBrowserCustomerDirectory(server, { origin: ORIGIN, businessId: BUSINESS,
@@ -26,6 +26,7 @@ async function withServer({ role = 'OWNER', businessId = BUSINESS, listCustomers
       return token === TOKEN ? { id: UUID, role, businessId } : null;
     } },
     customerDirectory: { async listCustomers(options) { calls.push(options); return listCustomers(options); } },
+    assistantAvailable,
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -59,6 +60,24 @@ test('owner navigation is bilingual and never exposed by STAFF dashboard', () =>
     assert.match(owner, new RegExp(`/internal/customers\\?lang=${language}`));
     assert.doesNotMatch(staff, /internal\/customers/);
   }
+});
+
+test('customer directory exposes contextual assistant only when server-side AI is enabled', async () => {
+  await withServer({}, async base => {
+    const response = await fetch(base + '/internal/customers?lang=fr', { headers: cookie(TOKEN) });
+    assert.equal(response.status, 200);
+    assert.doesNotMatch(await response.text(), /\/internal\/assistant\?lang=fr&amp;screen=customers/);
+  });
+
+  await withServer({ assistantAvailable: true }, async base => {
+    const fr = await fetch(base + '/internal/customers?lang=fr', { headers: cookie(TOKEN) });
+    assert.equal(fr.status, 200);
+    assert.match(await fr.text(), /href="\/internal\/assistant\?lang=fr&amp;screen=customers"/);
+
+    const en = await fetch(base + '/internal/customers?lang=en', { headers: cookie(TOKEN) });
+    assert.equal(en.status, 200);
+    assert.match(await en.text(), /href="\/internal\/assistant\?lang=en&amp;screen=customers"/);
+  });
 });
 
 test('private FR/EN page escapes customer details, bounds pagination and searches without names in URLs', async () => {

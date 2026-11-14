@@ -36,7 +36,7 @@ const COPY = Object.freeze({
       'J’ai vérifié les articles, rabais et le montant total.',
       'J’ai vérifié la date de facture et la date d’échéance.',
       'J’ai vérifié les taux de taxes indiqués et leur applicabilité.'],
-    other: 'en', language: 'English', back: 'Tableau de bord' }),
+    other: 'en', language: 'English', back: 'Tableau de bord', assistant: 'Assistant IA' }),
   en: Object.freeze({ title: 'Owner review', list: 'Drafts to review',
     details: 'Review immutable draft', customer: 'Recipient', dates: 'Dates',
     lines: 'Line items', taxes: 'Specified taxes', total: 'Calculated total',
@@ -52,7 +52,7 @@ const COPY = Object.freeze({
       'I checked the items, discounts and total amount.',
       'I checked the invoice and due dates.',
       'I checked the supplied tax rates and applicability.'],
-    other: 'fr', language: 'Français', back: 'Dashboard' }),
+    other: 'fr', language: 'Français', back: 'Dashboard', assistant: 'AI Assistant' }),
 });
 function send(response, status, type, body) {
   if (response.headersSent || response.destroyed) return;
@@ -60,11 +60,15 @@ function send(response, status, type, body) {
   response.end(body);
 }
 function plain(response, status) { send(response, status, 'text/plain; charset=utf-8', 'Review unavailable'); }
-function page(lang, heading, content) {
+function page(lang, heading, content, assistantAvailable = false) {
+  if (typeof assistantAvailable !== 'boolean') throw new TypeError('Invalid assistant availability');
   const t = COPY[lang];
+  const assistantLink = assistantAvailable
+    ? ` · <a href="/internal/assistant?lang=${lang}&screen=review">${t.assistant}</a>`
+    : '';
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${heading} — GROUPE TAKATAK</title><style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#17253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.5}main{max-width:850px;margin:auto;padding:clamp(16px,4vw,45px)}header{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}.brand{font-weight:800;letter-spacing:.08em;color:#14536b}a{color:#174b95}a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #3567b7;outline-offset:3px}.panel{background:white;border:1px solid #dce5ef;border-radius:15px;padding:clamp(16px,4vw,28px);margin:20px 0;overflow-wrap:anywhere}.notice{padding:14px;border-left:4px solid #3567b7;background:#eaf1ff;border-radius:6px}li{margin:12px 0}.checks label{display:flex;align-items:flex-start;gap:12px;margin:14px 0}.checks input{width:21px;height:21px;flex-shrink:0}button{font:inherit;font-weight:700;padding:13px 18px;border:0;border-radius:9px;background:#164b9b;color:white;cursor:pointer}.line{border-top:1px solid #e7edf4;padding:9px 0;white-space:pre-wrap}.money{font-weight:800}.muted{color:#566781}
-</style></head><body><main><header><div class="brand">GROUPE TAKATAK</div><nav><a href="/internal/dashboard?lang=${lang}">${t.back}</a> · <a href="/internal/review?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header><h1>${heading}</h1><p class="notice" role="note">${t.notice}</p>${content}</main></body></html>`;
+</style></head><body><main><header><div class="brand">GROUPE TAKATAK</div><nav><a href="/internal/dashboard?lang=${lang}">${t.back}</a>${assistantLink} · <a href="/internal/review?lang=${t.other}" lang="${t.other}">${t.language}</a></nav></header><h1>${heading}</h1><p class="notice" role="note">${t.notice}</p>${content}</main></body></html>`;
 }
 function snapshotOf(row) {
   const p = row?.preview;
@@ -80,7 +84,7 @@ function csrfFor(key, token, id) {
   return crypto.createHmac('sha256', key).update('owner-internal-review-v1:')
     .update(token).update(':').update(id.toLowerCase()).digest('base64url');
 }
-function renderList(drafts, lang) {
+function renderList(drafts, lang, assistantAvailable = false) {
   if (!drafts || drafts.status !== 'DRAFTS_ONLY' || !Array.isArray(drafts.drafts) || drafts.drafts.length > 20) {
     throw new TypeError('Bounded immutable draft listing required');
   }
@@ -89,9 +93,9 @@ function renderList(drafts, lang) {
     if (!UUID.test(d.id || '') || d.status !== 'DRAFT' || d.currency !== 'CAD') throw new TypeError('Invalid draft listing');
     return `<li><a href="/internal/review/${d.id}?lang=${lang}">${escapeHtml(d.customerName)}</a> · ${escapeHtml(money(d.totalCents, lang))} · ${escapeHtml(d.invoiceDate)}</li>`;
   }).join('');
-  return page(lang, t.list, `<section class="panel">${items ? `<ul>${items}</ul>` : `<p>${t.empty}</p>`}</section>`);
+  return page(lang, t.list, `<section class="panel">${items ? `<ul>${items}</ul>` : `<p>${t.empty}</p>`}</section>`, assistantAvailable);
 }
-function renderDetail(row, lang, csrf, approved = false) {
+function renderDetail(row, lang, csrf, approved = false, assistantAvailable = false) {
   const p = snapshotOf(row);
   const t = COPY[lang];
   const id = row.id.toLowerCase();
@@ -106,7 +110,7 @@ function renderDetail(row, lang, csrf, approved = false) {
   const decision = approved ? `<section class="panel" role="status"><strong>${t.approved}</strong><p><a href="/internal/review/${id}/print?lang=${lang}">${t.print}</a></p><p><a href="/internal/review/${id}/authorize-issuance?lang=${lang}">${t.authorize}</a></p></section>` :
     `<section class="panel"><form method="post" action="/internal/review/${id}?lang=${lang}" autocomplete="off"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="confirmation" value="APPROVE_DRAFT_ONLY"><input type="hidden" name="expectedTotalCents" value="${p.totalCents}"><input type="hidden" name="expectedCustomerEmail" value="${escapeHtml(p.customer.email)}"><div class="checks">${checks}</div><button type="submit">${t.approve}</button></form></section>`;
   const notes = p.notes ? `<h2>${t.notes}</h2><p class="line">${escapeHtml(p.notes)}</p>` : '';
-  return page(lang, t.details, `<p><a href="/internal/review?lang=${lang}">${t.list}</a></p><section class="panel"><h2>${t.customer}</h2><p>${escapeHtml(p.customer.name)} · ${escapeHtml(p.customer.email)}</p><p>${escapeHtml(p.customer.address || '')}</p><h2>${t.dates}</h2><p>${escapeHtml(p.invoiceDate)} · ${escapeHtml(p.dueDate)}</p><h2>${t.lines}</h2>${lines}<p>${t.subtotal}: ${amount(p.subtotalCents)}</p><h2>${t.taxes}</h2>${taxes || `<p>${t.noTaxes}</p>`}<p>${t.taxTotal}: ${amount(p.taxTotalCents)}</p><p class="money">${t.total}: ${amount(p.totalCents)}</p>${notes}</section>${decision}`);
+  return page(lang, t.details, `<p><a href="/internal/review?lang=${lang}">${t.list}</a></p><section class="panel"><h2>${t.customer}</h2><p>${escapeHtml(p.customer.name)} · ${escapeHtml(p.customer.email)}</p><p>${escapeHtml(p.customer.address || '')}</p><h2>${t.dates}</h2><p>${escapeHtml(p.invoiceDate)} · ${escapeHtml(p.dueDate)}</p><h2>${t.lines}</h2>${lines}<p>${t.subtotal}: ${amount(p.subtotalCents)}</p><h2>${t.taxes}</h2>${taxes || `<p>${t.noTaxes}</p>`}<p>${t.taxTotal}: ${amount(p.taxTotalCents)}</p><p class="money">${t.total}: ${amount(p.totalCents)}</p>${notes}</section>${decision}`, assistantAvailable);
 }
 function readBody(request) {
   return new Promise((resolve, reject) => {
@@ -141,7 +145,7 @@ function sameOrigin(request, origin) {
   return request.headers.origin === origin && request.headers.host === new URL(origin).host &&
     (request.headers['sec-fetch-site'] === undefined || request.headers['sec-fetch-site'] === 'same-origin');
 }
-function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId, staffAuthStore, dashboardStore, draftStore, approvalStore }) {
+function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId, staffAuthStore, dashboardStore, draftStore, approvalStore, assistantAvailable = false }) {
   let validOrigin = false;
   try { validOrigin = typeof origin === 'string' && origin.startsWith('https://') && new URL(origin).origin === origin; }
   catch { /* Fail closed. */ }
@@ -150,7 +154,8 @@ function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId
       !staffAuthStore || typeof staffAuthStore.getSession !== 'function' ||
       !dashboardStore || typeof dashboardStore.listDrafts !== 'function' ||
       !draftStore || typeof draftStore.getDraft !== 'function' ||
-      !approvalStore || typeof approvalStore.approveDraft !== 'function') {
+      !approvalStore || typeof approvalStore.approveDraft !== 'function' ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Dedicated owner MFA approval dependencies required');
   }
   const key = crypto.createHmac('sha256', Buffer.from(encryptionKeyHex, 'hex'))
@@ -182,14 +187,14 @@ function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId
       if (staff.role !== 'OWNER') return plain(response, 403);
       if (listing) {
         const drafts = await dashboardStore.listDrafts({ page: 1, pageSize: 20, offset: 0 });
-        return send(response, 200, 'text/html; charset=utf-8', renderList(drafts, lang));
+        return send(response, 200, 'text/html; charset=utf-8', renderList(drafts, lang, assistantAvailable));
       }
       const row = await draftStore.getDraft(item[1]);
       if (request.method === 'GET') {
         const approved = typeof approvalStore.isApproved === 'function'
           ? await approvalStore.isApproved({ draftId: row.id, ownerId: staff.id, sessionToken: token }) : false;
         return send(response, 200, 'text/html; charset=utf-8',
-          renderDetail(row, lang, approved ? '' : csrfFor(key, token, row.id), approved));
+          renderDetail(row, lang, approved ? '' : csrfFor(key, token, row.id), approved, assistantAvailable));
       }
       const body = await readBody(request);
       const supplied = body.get('csrf');
@@ -203,7 +208,7 @@ function attachBrowserOwnerReview(server, { origin, encryptionKeyHex, businessId
       await approvalStore.approveDraft({ confirmation: 'APPROVE_DRAFT_ONLY', draftId: row.id,
         ownerId: staff.id, sessionToken: token, expectedTotalCents: Number(rawTotal),
         expectedCustomerEmail: body.get('expectedCustomerEmail') });
-      return send(response, 200, 'text/html; charset=utf-8', renderDetail(row, lang, '', true));
+      return send(response, 200, 'text/html; charset=utf-8', renderDetail(row, lang, '', true, assistantAvailable));
     } catch (error) {
       if (error instanceof DraftApprovalError || error instanceof StoreError) {
         if ([401, 403, 404, 409, 422].includes(error.statusCode)) return plain(response, error.statusCode);

@@ -54,9 +54,10 @@ function fake() {
   } };
   return { state, staffAuthStore, dashboardStore, draftStore, approvalStore };
 }
-async function withServer(stores, run, tenant = TENANT) {
+async function withServer(stores, run, tenant = TENANT, { assistantAvailable = false } = {}) {
   const app = createServer({ config: { businessId: tenant, adminKey: 'fictional-private-admin', waveToken: null } });
-  attachBrowserOwnerReview(app, { origin: ORIGIN, encryptionKeyHex: KEY, businessId: tenant, ...stores });
+  attachBrowserOwnerReview(app, { origin: ORIGIN, encryptionKeyHex: KEY, businessId: tenant,
+    assistantAvailable, ...stores });
   app.listen(0, '127.0.0.1'); await once(app, 'listening');
   try { await run(`http://127.0.0.1:${app.address().port}`); }
   finally { await new Promise(resolve => app.close(resolve)); }
@@ -145,6 +146,26 @@ test('owner sees escaped immutable snapshot and deliberate unchecked internal-on
     assert.ok(readCsrf(html));
     assert.equal(stores.state.writes, 0);
   });
+});
+
+test('owner review exposes contextual assistant only when server-side AI is enabled', async () => {
+  const disabledStores = fake();
+  await withServer(disabledStores, async base => {
+    const response = await fetch(base + PATH, { headers: getHeaders() });
+    assert.equal(response.status, 200);
+    assert.doesNotMatch(await response.text(), /\/internal\/assistant\?lang=fr&screen=review/);
+  });
+
+  const enabledStores = fake();
+  await withServer(enabledStores, async base => {
+    const detail = await fetch(base + PATH, { headers: getHeaders() });
+    assert.equal(detail.status, 200);
+    assert.match(await detail.text(), /href="\/internal\/assistant\?lang=fr&screen=review"/);
+
+    const listing = await fetch(base + '/internal/review?lang=en', { headers: getHeaders() });
+    assert.equal(listing.status, 200);
+    assert.match(await listing.text(), /href="\/internal\/assistant\?lang=en&screen=review"/);
+  }, TENANT, { assistantAvailable: true });
 });
 
 test('owner POST requires exact Origin, CSRF, reviewed fields and preserved expected details', async () => {

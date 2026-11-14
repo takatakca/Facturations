@@ -181,7 +181,7 @@ function evaluateAssistantProposal(input){
   }
 
   if(input.intent==='DRAFT_CHANGE'){
-    if(target.type!=='DRAFT') throw new AssistantSafetyError('DRAFT_TARGET_REQUIRED');
+    if(!['NONE','DRAFT'].includes(target.type)) throw new AssistantSafetyError('DRAFT_TARGET_REQUIRED');
     return Object.freeze({
       decision:'PROPOSAL_ONLY',
       reasonCode:'HUMAN_DRAFT_REVIEW_REQUIRED',

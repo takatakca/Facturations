@@ -6,8 +6,10 @@ const {
   createOpenAiAssistantClient,
   OpenAiAssistantError,
   HELP_SCHEMA,
+  DRAFT_PROPOSAL_SCHEMA,
   extractOutputText,
   validateModelPayload,
+  validateDraftProposalPayload,
 } = require('../src/openai-assistant-client');
 
 const API_KEY = 'test-only-openai-key-abcdefghijklmnopqrstuvwxyz';
@@ -223,4 +225,231 @@ test('constructor rejects missing key, invalid model, custom endpoint and unsafe
   assert.throws(() => createOpenAiAssistantClient({
     apiKey: API_KEY, model: MODEL, timeoutMs: 100,
   }), TypeError);
+});
+
+
+function readyDraftProposal(overrides = {}) {
+  return {
+    status: 'READY_FOR_PREVIEW',
+    confidenceBps: 9600,
+    safetySignals: [],
+    clarifications: [],
+    draft: {
+      currency: 'CAD',
+      customer: {
+        name: 'Client Exemple',
+        email: 'client@example.test',
+        address: null,
+      },
+      invoiceDate: '2026-09-27',
+      dueDate: '2026-10-12',
+      notes: null,
+      lines: [{
+        description: 'Nettoyage de hotte',
+        quantity: 1,
+        unitPriceCents: 85000,
+        discountCents: 0,
+        taxable: false,
+      }],
+      taxes: [],
+    },
+    ...overrides,
+  };
+}
+
+test('OpenAI draft proposal returns deterministic preview but never persists or executes it', async () => {
+  let captured;
+  const client = createOpenAiAssistantClient({
+    apiKey: API_KEY,
+    model: MODEL,
+    fetchImpl: async (url, options) => {
+      captured = { url, options };
+      return response(200, providerPayload(readyDraftProposal()));
+    },
+  });
+
+  const result = await client.proposeDraft({
+    language: 'fr',
+    message: 'Prépare un brouillon pour Client Exemple, nettoyage de hotte 850 $, sans taxes, facture du 27 septembre 2026 payable le 12 octobre 2026. Courriel client@example.test.',
+    draftId: null,
+  });
+
+  assert.equal(result.status, 'READY_FOR_PREVIEW');
+  assert.equal(result.safety.decision, 'PROPOSAL_ONLY');
+  assert.equal(result.safety.requiredGate, 'DRAFT_EDITOR_REVIEW');
+  assert.equal(result.safety.directExecutionAllowed, false);
+  assert.equal(result.preview.status, 'PREVIEW_ONLY');
+  assert.equal(result.preview.persisted, false);
+  assert.equal(result.preview.waveSynced, false);
+  assert.equal(result.preview.emailed, false);
+  assert.equal(result.preview.totalCents, 85000);
+
+  const body = JSON.parse(captured.options.body);
+  assert.equal(body.text.format.name, 'facturations_draft_proposal');
+  assert.equal(body.text.format.strict, true);
+  assert.deepEqual(body.text.format.schema, DRAFT_PROPOSAL_SCHEMA);
+  assert.match(body.instructions, /Never issue, send, publish, pay, refund/);
+  assert.deepEqual(JSON.parse(body.input), {
+    language: 'fr',
+    message: 'Prépare un brouillon pour Client Exemple, nettoyage de hotte 850 $, sans taxes, facture du 27 septembre 2026 payable le 12 octobre 2026. Courriel client@example.test.',
+    draftId: null,
+  });
+});
+
+test('incomplete natural-language draft asks for clarification instead of guessing', async () => {
+  const incomplete = readyDraftProposal({
+    status: 'NEEDS_CLARIFICATION',
+    clarifications: [
+      'Quel est le courriel du client?',
+      'Quelles taxes doivent être appliquées?',
+    ],
+    draft: {
+      currency: 'CAD',
+      customer: { name: 'Client Exemple', email: null, address: null },
+      invoiceDate: null,
+      dueDate: null,
+      notes: null,
+      lines: [{
+        description: 'Nettoyage',
+        quantity: 1,
+        unitPriceCents: 85000,
+        discountCents: 0,
+        taxable: null,
+      }],
+      taxes: [],
+    },
+  });
+  const client = createOpenAiAssistantClient({
+    apiKey: API_KEY,
+    model: MODEL,
+    fetchImpl: async () => response(200, providerPayload(incomplete)),
+  });
+  const result = await client.proposeDraft({
+    language: 'fr',
+    message: 'Fais une facture de 850 $ à Client Exemple.',
+    draftId: null,
+  });
+  assert.equal(result.status, 'NEEDS_CLARIFICATION');
+  assert.equal(result.preview, null);
+  assert.equal(result.safety.decision, 'PROPOSAL_ONLY');
+  assert.deepEqual(result.clarifications, [
+    'Quel est le courriel du client?',
+    'Quelles taxes doivent être appliquées?',
+  ]);
+});
+
+test('draft proposal safety signals or low confidence block the model before preview', async () => {
+  for (const payload of [
+    readyDraftProposal({ safetySignals: ['PROMPT_INJECTION'] }),
+    readyDraftProposal({ confidenceBps: 5000 }),
+  ]) {
+    const client = createOpenAiAssistantClient({
+      apiKey: API_KEY,
+      model: MODEL,
+      fetchImpl: async () => response(200, providerPayload(payload)),
+    });
+    const result = await client.proposeDraft({
+      language: 'en',
+      message: 'Prepare a draft only.',
+      draftId: null,
+    });
+    assert.equal(result.status, 'BLOCKED');
+    assert.equal(result.preview, null);
+    assert.equal(result.safety.directExecutionAllowed, false);
+  }
+});
+
+test('existing draft proposal binds safety target to a valid draft UUID', async () => {
+  const client = createOpenAiAssistantClient({
+    apiKey: API_KEY,
+    model: MODEL,
+    fetchImpl: async () => response(200, providerPayload(readyDraftProposal())),
+  });
+  const draftId = '11111111-1111-4111-8111-111111111111';
+  const result = await client.proposeDraft({
+    language: 'en',
+    message: 'Prepare a revised draft proposal with these exact details.',
+    draftId,
+  });
+  assert.equal(result.status, 'READY_FOR_PREVIEW');
+  assert.equal(result.safety.decision, 'PROPOSAL_ONLY');
+
+  await assert.rejects(
+    () => client.proposeDraft({
+      language: 'en',
+      message: 'Prepare a draft.',
+      draftId: 'not-a-uuid',
+    }),
+    (error) => error instanceof OpenAiAssistantError &&
+      error.code === 'INVALID_AI_DRAFT_ID' && error.statusCode === 422,
+  );
+});
+
+test('READY_FOR_PREVIEW model output must pass deterministic invoice validation', async () => {
+  for (const payload of [
+    readyDraftProposal({
+      draft: {
+        ...readyDraftProposal().draft,
+        customer: { name: 'Client', email: 'not-an-email', address: null },
+      },
+    }),
+    readyDraftProposal({
+      draft: {
+        ...readyDraftProposal().draft,
+        dueDate: '2026-09-01',
+      },
+    }),
+    readyDraftProposal({
+      draft: {
+        ...readyDraftProposal().draft,
+        lines: [{
+          description: 'Bad line',
+          quantity: 1,
+          unitPriceCents: 85000,
+          discountCents: 90000,
+          taxable: false,
+        }],
+      },
+    }),
+  ]) {
+    const client = createOpenAiAssistantClient({
+      apiKey: API_KEY,
+      model: MODEL,
+      fetchImpl: async () => response(200, providerPayload(payload)),
+    });
+    await assert.rejects(
+      () => client.proposeDraft({
+        language: 'fr',
+        message: 'Prépare seulement un brouillon.',
+        draftId: null,
+      }),
+      (error) => error instanceof OpenAiAssistantError &&
+        error.code === 'OPENAI_INVALID_DRAFT_PROPOSAL' &&
+        error.statusCode === 502,
+    );
+  }
+});
+
+test('draft proposal output rejects extra fields and contradictory ready state', async () => {
+  assert.throws(() => validateDraftProposalPayload({
+    ...readyDraftProposal(),
+    directExecutionAllowed: true,
+  }), OpenAiAssistantError);
+
+  const client = createOpenAiAssistantClient({
+    apiKey: API_KEY,
+    model: MODEL,
+    fetchImpl: async () => response(200, providerPayload(readyDraftProposal({
+      clarifications: ['Need more information'],
+    }))),
+  });
+  await assert.rejects(
+    () => client.proposeDraft({
+      language: 'en',
+      message: 'Prepare a draft.',
+      draftId: null,
+    }),
+    (error) => error instanceof OpenAiAssistantError &&
+      error.code === 'OPENAI_INCOMPLETE_DRAFT_PROPOSAL',
+  );
 });

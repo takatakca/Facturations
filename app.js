@@ -107,7 +107,8 @@ if (require.main === module) {
       assistantAvailable: Boolean(config.aiEnabled) });
     attachBrowserRecentWorkspaces(server, { origin: config.browserOrigin, recentStore,
       assistantAvailable: Boolean(config.aiEnabled) });
-    attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore, staffAuthStore });
+    attachBrowserWorkspacePreview(server, { origin: config.browserOrigin, workspaceStore, staffAuthStore,
+      assistantAvailable: Boolean(config.aiEnabled) });
     attachBrowserOwnerReview(server, { origin: config.browserOrigin,
       encryptionKeyHex: config.totpEncryptionKeyHex, businessId: config.businessId,
       staffAuthStore, dashboardStore, draftStore, approvalStore: draftApprovalStore,

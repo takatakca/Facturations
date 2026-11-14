@@ -2,6 +2,8 @@
 
 const { readStaffSessionCookie } = require('./staff-session-cookie');
 
+const CONTEXT_SCREENS = new Set(['dashboard','draft-editor','saved-drafts','customers','review','client-portal','settings','assistant','unknown']);
+
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store',
   'X-Content-Type-Options': 'nosniff',
@@ -74,10 +76,12 @@ const COPY = Object.freeze({
   }),
 });
 
-function renderPage(language) {
+function renderPage(language, screenId = 'assistant') {
   if (!Object.hasOwn(COPY, language)) throw new TypeError('Unsupported language');
+  if (!CONTEXT_SCREENS.has(screenId)) throw new TypeError('Unsupported assistant context');
   const t = COPY[language];
   const other = language === 'fr' ? 'en' : 'fr';
+  const context = JSON.stringify({ screenId }).replace(/</g, '\\u003c');
   const clientCopy = JSON.stringify({
     helpMode: t.helpMode,
     draftMode: t.draftMode,
@@ -116,12 +120,12 @@ a:focus-visible,button:focus-visible,textarea:focus-visible{outline:3px solid #4
 @media(max-width:760px){.shell{grid-template-columns:1fr}.quick{order:-1}.messages{min-height:300px;max-height:48vh}.row{flex-direction:column;align-items:stretch}.row button{width:100%}.message{max-width:94%}.preview-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 </style><script src="/internal/assistant-client.js" defer></script></head><body><main>
-<header><div class="brand">GROUPE TAKATAK · FACTURATIONS</div><nav class="header-links" aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.back}</a><a href="/internal/assistant?lang=${other}" lang="${other}">${t.language}</a></nav></header>
+<header><div class="brand">GROUPE TAKATAK · FACTURATIONS</div><nav class="header-links" aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.back}</a><a href="/internal/assistant?lang=${other}&screen=${screenId}" lang="${other}">${t.language}</a></nav></header>
 <section class="hero"><div class="eyebrow">${t.eyebrow}</div><h1>${t.title}</h1><p>${t.intro}</p></section>
 <div class="modebar" aria-label="${t.title}"><button id="mode-help" type="button" aria-pressed="true">${t.helpMode}</button><button id="mode-draft" type="button" aria-pressed="false">${t.draftMode}</button></div>
 <div class="shell"><section class="chat" aria-label="${t.title}"><div class="messages" id="messages" aria-live="polite"></div><form class="composer" id="assistant-form"><label id="composer-label" for="assistant-message">${t.helpMode}</label><div class="row"><textarea id="assistant-message" maxlength="4000" required placeholder="${t.placeholderHelp}"></textarea><button id="assistant-send" type="submit">${t.send}</button></div><p class="status" id="assistant-status" role="status"></p></form></section>
 <aside class="quick"><h2>${t.quick}</h2><button type="button" data-mode="help" data-prompt="${t.help1}">${t.help1}</button><button type="button" data-mode="help" data-prompt="${t.help2}">${t.help2}</button><button type="button" data-mode="draft" data-prompt="${t.draft1}">${t.draft1}</button><a class="editor-link" href="/internal/editor?lang=${language}">${t.openEditor}</a><p class="disclaimer">${t.disclaimer}</p></aside></div>
-<script type="application/json" id="assistant-copy">${clientCopy}</script>
+<script type="application/json" id="assistant-copy">${clientCopy}</script><script type="application/json" id="assistant-context">${context}</script>
 </main></body></html>`;
 }
 
@@ -133,14 +137,19 @@ const CLIENT = String.raw`'use strict';
   const messages = document.getElementById('messages');
   const status = document.getElementById('assistant-status');
   const copyNode = document.getElementById('assistant-copy');
+  const contextNode = document.getElementById('assistant-context');
   const helpButton = document.getElementById('mode-help');
   const draftButton = document.getElementById('mode-draft');
   const label = document.getElementById('composer-label');
-  if (!form || !input || !send || !messages || !status || !copyNode ||
+  if (!form || !input || !send || !messages || !status || !copyNode || !contextNode ||
       !helpButton || !draftButton || !label) return;
 
-  let copy;
-  try { copy = JSON.parse(copyNode.textContent); } catch { return; }
+  let copy, context;
+  try {
+    copy = JSON.parse(copyNode.textContent);
+    context = JSON.parse(contextNode.textContent);
+  } catch { return; }
+  const screenId = context && typeof context.screenId === 'string' ? context.screenId : 'unknown';
   const language = document.documentElement.lang === 'en' ? 'en' : 'fr';
   let csrf = null;
   let mode = 'help';
@@ -238,7 +247,7 @@ const CLIENT = String.raw`'use strict';
           },
           body: JSON.stringify(draftMode
             ? { language, message, draftId: null }
-            : { language, screenId: 'assistant', message }),
+            : { language, screenId, message }),
         },
       );
       if (response.status === 401 || response.status === 403) csrf = null;
@@ -355,19 +364,26 @@ function attachBrowserAiAssistantPage(server, { staffAuthStore } = {}) {
       return send(response, 200, 'text/javascript; charset=utf-8', CLIENT,
         "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     }
-    if ([...url.searchParams.keys()].some(key => key !== 'lang') ||
-        url.searchParams.getAll('lang').length > 1) {
+    if ([...url.searchParams.keys()].some(key => !['lang', 'screen'].includes(key)) ||
+        url.searchParams.getAll('lang').length > 1 ||
+        url.searchParams.getAll('screen').length > 1) {
       return send(response, 422, 'application/json; charset=utf-8',
         JSON.stringify({ error: 'INVALID_QUERY' }),
         "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     }
     const language = url.searchParams.get('lang') ?? 'fr';
+    const screenId = url.searchParams.get('screen') ?? 'assistant';
     if (!Object.hasOwn(COPY, language)) {
       return send(response, 422, 'application/json; charset=utf-8',
         JSON.stringify({ error: 'INVALID_LANGUAGE' }),
         "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     }
-    return send(response, 200, 'text/html; charset=utf-8', renderPage(language),
+    if (!CONTEXT_SCREENS.has(screenId)) {
+      return send(response, 422, 'application/json; charset=utf-8',
+        JSON.stringify({ error: 'INVALID_SCREEN' }),
+        "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    }
+    return send(response, 200, 'text/html; charset=utf-8', renderPage(language, screenId),
       "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
   });
   return server;

@@ -54,7 +54,8 @@ test('assistant browser client uses same-origin help/proposal endpoints and neve
   assert.match(CLIENT, /\/internal\/assistant\/csrf/);
   assert.match(CLIENT, /\/internal\/assistant\/help/);
   assert.match(CLIENT, /\/internal\/assistant\/propose-draft/);
-  assert.match(CLIENT, /screenId: 'assistant'/);
+  assert.match(CLIENT, /screenId, message/);
+  assert.match(CLIENT, /assistant-context/);
   assert.match(CLIENT, /draftId: null/);
   assert.match(CLIENT, /credentials: 'same-origin'/);
   assert.match(CLIENT, /PREVIEW_ONLY/);
@@ -62,19 +63,28 @@ test('assistant browser client uses same-origin help/proposal endpoints and neve
   assert.doesNotMatch(CLIENT, /innerHTML|insertAdjacentHTML|document\.write/);
 });
 
+test('assistant page preserves a validated screen context without trusting arbitrary values', () => {
+  const html = renderPage('fr', 'dashboard');
+  assert.match(html, /id="assistant-context">\{"screenId":"dashboard"\}<\/script>/);
+  assert.match(html, /\/internal\/assistant\?lang=en&screen=dashboard/);
+  assert.throws(() => renderPage('fr', 'secret-admin'), TypeError);
+});
+
 test('assistant page and script require live staff session and reject bearer/admin credentials', async () => {
   await withServer(async ({ base, state }) => {
     assert.equal((await fetch(base + '/internal/assistant?lang=fr')).status, 401);
     assert.equal((await fetch(base + '/internal/assistant-client.js')).status, 401);
 
-    const page = await fetch(base + '/internal/assistant?lang=fr', {
+    const page = await fetch(base + '/internal/assistant?lang=fr&screen=dashboard', {
       headers: { Cookie: cookie(TOKEN) },
     });
     assert.equal(page.status, 200);
     assert.equal(page.headers.get('content-type'), 'text/html; charset=utf-8');
     assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
     assert.match(page.headers.get('content-security-policy'), /connect-src 'self'/);
-    assert.match(await page.text(), /Assistant Facturations/);
+    const pageText = await page.text();
+    assert.match(pageText, /Assistant Facturations/);
+    assert.match(pageText, /id="assistant-context">\{"screenId":"dashboard"\}<\/script>/);
 
     const script = await fetch(base + '/internal/assistant-client.js', {
       headers: { Cookie: cookie(TOKEN) },
@@ -112,6 +122,8 @@ test('assistant workspace bounds language, query, method and script query', asyn
       '/internal/assistant?lang=es',
       '/internal/assistant?lang=fr&lang=en',
       '/internal/assistant?lang=fr&token=x',
+      '/internal/assistant?lang=fr&screen=secret-admin',
+      '/internal/assistant?lang=fr&screen=dashboard&screen=review',
       '/internal/assistant-client.js?x=1',
     ]) {
       assert.equal((await fetch(base + path, { headers })).status, 422);

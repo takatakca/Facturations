@@ -25,7 +25,7 @@ const COPY = Object.freeze({
     taxesNotice: 'Aucun taux de taxe n’est prérempli. Vérifiez vous-même les taux et leur applicabilité avant toute utilisation réelle.',
     save: 'Enregistrer le brouillon', reload: 'Recharger la version enregistrée',
     preview: 'Aperçu calculé de la version enregistrée (si complète)',
-    dashboard: 'Tableau de bord', recent: 'Mes brouillons enregistrés', language: 'English', other: 'en',
+    dashboard: 'Tableau de bord', recent: 'Mes brouillons enregistrés', assistant: 'Assistant IA', language: 'English', other: 'en',
     notice: 'Brouillon de travail uniquement. Aucun envoi, aucune émission, aucun paiement. L’aperçu n’est disponible qu’après enregistrement et seulement si les renseignements sont complets.',
   }),
   en: Object.freeze({
@@ -40,17 +40,21 @@ const COPY = Object.freeze({
     taxesNotice: 'No tax rates are prefilled. Verify rates and applicability before any real use.',
     save: 'Save workspace', reload: 'Reload saved version',
     preview: 'Calculated preview of saved version (if complete)',
-    dashboard: 'Dashboard', recent: 'My saved drafts', language: 'Français', other: 'fr',
+    dashboard: 'Dashboard', recent: 'My saved drafts', assistant: 'AI Assistant', language: 'Français', other: 'fr',
     notice: 'Working draft only. No sending, issuance or payment. Preview is available only after saving complete details.',
   }),
 });
 
-function renderEditor(language, workspaceId = null) {
-  if (!Object.hasOwn(COPY, language) || (workspaceId !== null && !UUID.test(workspaceId))) {
+function renderEditor(language, workspaceId = null, assistantAvailable = false) {
+  if (!Object.hasOwn(COPY, language) || (workspaceId !== null && !UUID.test(workspaceId)) ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Invalid editor parameters');
   }
   const t = COPY[language];
   const suffix = workspaceId ? `&id=${workspaceId}` : '';
+  const assistantLink = assistantAvailable
+    ? `<a href="/internal/assistant?lang=${language}&screen=draft-editor">${t.assistant}</a>`
+    : '';
   const lines = Array.from({ length: 5 }, (_, index) => {
     const n = index + 1;
     return `<fieldset class="item"><legend>${t.line} ${n}</legend><div class="two">
@@ -72,7 +76,7 @@ function renderEditor(language, workspaceId = null) {
 <style>
 :root{color-scheme:light;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16253c;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.55}main{max-width:900px;margin:0 auto;padding:clamp(18px,4vw,48px)}header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:26px}.brand{font-weight:800;letter-spacing:.1em;color:#14536b;font-size:.85rem}.links{display:flex;gap:16px;flex-wrap:wrap}a{color:#194a91;font-weight:650;text-underline-offset:3px}h1{font-size:clamp(1.8rem,5vw,2.8rem);line-height:1.12;margin:10px 0}.muted{color:#566781}.tag{display:inline-block;background:#e8f0ff;color:#224a91;padding:5px 12px;border-radius:999px;font-weight:700;font-size:.82rem}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;padding:clamp(18px,4vw,34px);box-shadow:0 4px 18px #0c1c300a;margin-top:25px}label{display:block;margin:18px 0 7px;font-weight:700}input,textarea{display:block;width:100%;font:inherit;color:inherit;background:#fff;padding:12px 14px;border:1px solid #afc0d4;border-radius:10px;margin-top:6px}textarea{resize:vertical;min-height:95px}input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #4d7dc8;outline-offset:3px}h2{font-size:1.2rem;margin-top:34px}.two,.three{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.item{border:1px solid #dce5ef;border-radius:12px;margin:16px 0;padding:10px 16px 16px;min-width:0}legend{font-weight:750;padding:0 6px}.check{display:flex;align-items:center;gap:10px}.check input{width:20px;height:20px;margin:0;flex-shrink:0}.actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:24px}button{font:inherit;font-weight:700;border:1px solid #b7c8df;border-radius:10px;padding:12px 18px;background:white;color:#173e76;cursor:pointer}button.primary{background:#164b9b;color:#fff;border-color:#164b9b}button:disabled{opacity:.55;cursor:not-allowed}#preview{display:inline-flex;padding:12px 18px;border:1px solid #164b9b;border-radius:10px;align-items:center}#preview[hidden]{display:none!important}.editing-fields{border:0;padding:0;margin:0;min-width:0}#status{padding:12px 14px;background:#eaf1ff;border-radius:10px;color:#234576;margin-top:18px;overflow-wrap:anywhere}#status[data-error="true"]{background:#fff0ed;color:#903728}.foot{margin:22px 0;color:#566781;font-size:.88rem}@media(max-width:620px){.two,.three{grid-template-columns:1fr}}
 </style><script src="/internal/editor-client.js" defer></script></head><body><main>
-<header><div class="brand">GROUPE TAKATAK</div><nav class="links" aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.dashboard}</a><a href="/internal/recent-workspaces?lang=${language}">${t.recent}</a><a lang="${t.other}" href="/internal/editor?lang=${t.other}${suffix}">${t.language}</a></nav></header>
+<header><div class="brand">GROUPE TAKATAK</div><nav class="links" aria-label="Navigation"><a href="/internal/dashboard?lang=${language}">${t.dashboard}</a><a href="/internal/recent-workspaces?lang=${language}">${t.recent}</a>${assistantLink}<a lang="${t.other}" href="/internal/editor?lang=${t.other}${suffix}">${t.language}</a></nav></header>
 <span class="tag">${t.subtitle}</span><h1>${t.title}</h1><p class="muted">${t.intro}</p>
 <section class="panel"><form id="editor" method="post" action="/internal/editor" autocomplete="off">
 <fieldset id="editing-fields" class="editing-fields" disabled>
@@ -97,12 +101,13 @@ function send(response, status, contentType, body, extra = {}) {
 
 // Attach AFTER workspace JSON routes and BEFORE the read-only dashboard cookie listener.
 // It never upgrades the browser cookie into an API bearer credential.
-function attachBrowserWorkspaceEditor(server, { origin, staffAuthStore }) {
+function attachBrowserWorkspaceEditor(server, { origin, staffAuthStore, assistantAvailable = false }) {
   let validOrigin = false;
   try { validOrigin = typeof origin === 'string' && origin.startsWith('https://') && new URL(origin).origin === origin; }
   catch { /* Fail closed. */ }
   if (!server || typeof server.listeners !== 'function' || server.listeners('request').length !== 1 ||
-      !validOrigin || !staffAuthStore || typeof staffAuthStore.getSession !== 'function') {
+      !validOrigin || !staffAuthStore || typeof staffAuthStore.getSession !== 'function' ||
+      typeof assistantAvailable !== 'boolean') {
     throw new TypeError('Private HTTPS editor and staff session store required');
   }
   const previous = server.listeners('request')[0];
@@ -139,7 +144,8 @@ function attachBrowserWorkspaceEditor(server, { origin, staffAuthStore }) {
     if (!Object.hasOwn(COPY, language) || (id !== null && !UUID.test(id))) {
       return send(response, 422, 'text/plain; charset=utf-8', 'Invalid query');
     }
-    return send(response, 200, 'text/html; charset=utf-8', renderEditor(language, id), {
+    return send(response, 200, 'text/html; charset=utf-8',
+      renderEditor(language, id, assistantAvailable), {
       'Content-Security-Policy': "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
   });

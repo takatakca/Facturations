@@ -1,26 +1,103 @@
 # Facturations — Relève entre agents
 
-**Actualisé : 2026-10-14**. Pour éviter une référence circulaire, le dernier commit de **la branche en cours** doit toujours être relu depuis GitHub (`git rev-parse HEAD` ou API); le SHA ci-dessous est le dernier commit de **code vérifié de la session précédente**, pas une assertion sur la tête de cette PR documentaire.
+**Actualisé : 2026-10-28**. Pour éviter une référence circulaire, le dernier commit de **la branche en cours** doit toujours être relu depuis GitHub (`git rev-parse HEAD` ou API); le SHA ci-dessous est le dernier commit de **code vérifié de la session précédente**, pas une assertion sur la tête de cette PR documentaire.
+
+## Reprise GPT-6 du 28 octobre 2026 — vérification GitHub + Drive et nouveau correctif
+
+- **Source GitHub :** `takatakca/Facturations`, branche `main` toujours protégée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`. `AGENTS.md` relu. Le présent fichier et les quatre autres docs de relève se trouvent sur la branche de [PR #166](https://github.com/takatakca/Facturations/pull/166), pas encore sur `main`. Le HEAD #166 vérifié avant les nouvelles écritures est `9d5ebe1284b1770cdce7156130d993b1471e61c6` (10/10 checks GitHub Actions réussis).
+- **Note Drive distincte créée et vérifiée :** [Facturations — Relève agents du 28 octobre](https://docs.google.com/document/d/1zp7-QT51to9iJx4zK0TeJh-lO3rVI7uWspXQZdvyUX8/edit), basée sur l'addendum Drive « HANDOFF addendum — what connects to what » du 27 octobre. Celui-ci confirme la séparation Facturations B2B/Wave et Food Hub/ON2GO/Clover/QCMEV : **aucun branchement interproduits inventé**.
+- **Dernière tâche de code poussée :** [PR #171](https://github.com/takatakca/Facturations/pull/171), branche `fix/shutdown-db-cleanup-on-http-error-20261016`, HEAD **`efbe5236ca9289f7e49e497e99a0f61cea2fe7fc`**. Dans `src/graceful-shutdown.js`, `readinessProbe.markDraining()` peut lancer une exception : auparavant l'arrêt quittait le flux avant `server.close()` et `pool.end()`, ce qui risquait aussi de produire un rejet non observé du gestionnaire SIGTERM/SIGINT. La fermeture HTTP/DB est désormais poursuivie malgré cette défaillance; `exitCode=1`.
+- **Fichiers réellement modifiés :** `src/graceful-shutdown.js`, `tests/graceful-shutdown.test.js` (test de régression du hook qui lance une exception), `docs/final-go-live-runbook.md`; les cinq fichiers de relève sont actualisés séparément sur #166.
+- **Vérifications exécutées :** API GitHub pour `main`, branches/PR, `AGENTS.md`, cinq docs et Actions; #171 ancien SHA `9d1e1615239efdbd3ac62e80d095c7de9095478b` = 10/10 checks success; #166 SHA antérieur `9d5ebe1284b1770cdce7156130d993b1471e61c6` = 10/10. Le **nouveau SHA #171** `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc` a **10/10 contrôles GitHub Actions `success`, aucun échec**, avec les tests Node 20/22, Chrome et privilèges DB. Ce verdict ne démontre pas un staging réel ni une revue humaine. Aucune preuve de tests directs sur hébergement ou sur fournisseur.
+- **Statut réel déploiement :** **NON VÉRIFIÉ / NON AUTORISÉ**. `facturations.bolon.ca` n'a pas de staging isolé HTTPS/PostgreSQL dédié attesté, aucune migration ni émission Wave, email client, Stripe, remboursement ou publication effectuée. Aucun accès ni secret ajouté.
+- **Blocages / permissions :** revues humaines indépendantes `takatakmtl` de #164, #166 et #171 non approuvées; #166 est empilée sur #164; décision d'hébergement MochaHost/Coolify, backup/restore, conformité fiscale et fournisseurs réels non homologués.
+- **Prochaine action exacte :** CI 10/10 vérifiée sur `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc`; obtenir la revue indépendante de #164 et sa fusion autorisée, retargeter #166 vers `main` puis valider sa CI et sa revue; traiter #171 et les autres PR une par une. Pour le staging, suivre la PR #159 et le GO/NO-GO avec preuves réelles. Le SHA HEAD de **la branche documentaire** change après chaque écriture : relire GitHub plutôt que le présumer.
+
+## Reprise du 16 octobre 2026 — délai d'arrêt borné
+
+- **Dernier correctif applicatif poussé** : [PR #171](https://github.com/takatakca/Facturations/pull/171), branche `fix/shutdown-db-cleanup-on-http-error-20261016`, HEAD **`9d1e1615239efdbd3ac62e80d095c7de9095478b`**. Le SHA précédent `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd` a passé 10/10 checks, mais ces checks ne valident pas automatiquement le nouveau HEAD.
+- **Problème identifié** : l'ancien timer d'arrêt forçait les connexions HTTP mais ne dénouait pas la promesse `shutdown()` lorsque `server.close(callback)` ou `pool.end()` restait suspendu. Une exception de `server.closeAllConnections()` pouvait aussi échapper au callback du timer.
+- **Fichiers modifiés de #171** : `src/graceful-shutdown.js` fait concourir chaque fermeture avec la même promesse de délai, tente toujours le nettoyage DB et signale l'expiration avec `exitCode=1`; `tests/graceful-shutdown.test.js` couvre les hangs HTTP/DB avec minuterie contrôlée; `docs/final-go-live-runbook.md` rend cette preuve obligatoire au staging.
+- **Vérifications réellement exécutées** : lecture `AGENTS.md`, cinq documents de relève, PR/issues et dernier SHA de `main` (`995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`, protégé); revue des diffs du code, tests et guide; commits/push GitHub. Sur le HEAD final `9d1e1615239efdbd3ac62e80d095c7de9095478b`, **10/10 jobs GitHub Actions `success`**, aucun échec (Node 20/22, Chromium, MFA/PostgreSQL et least privilege). Aucun test exécuté contre une base ou un domaine réel.
+- **Statut de déploiement** : non déployé, non homologué. Aucun client réel, aucune émission Wave, remise email, charge Stripe ou remboursement. L'accès à un staging Facturations dédié (HTTPS, PostgreSQL, rôle runtime, backup/restore) n'est pas confirmé.
+- **Blocages** : les PR #164, #166 et #171 restent soumises à une revue indépendante `takatakmtl`; les comptes fournisseurs, la fiscalité et la mise en service ont leurs propres gates.
+- **Prochaine action exacte** : CI 10/10 réussie sur le SHA `9d1e1615239efdbd3ac62e80d095c7de9095478b`; demander la revue humaine indépendante de #171; finaliser la revue de #164 puis retargeter #166 sur `main`. Les tests de staging réel restent NO-GO.
+
+## Reprise du 16 octobre 2026 — fermeture HTTP et PostgreSQL
+
+- **Dépôt :** `takatakca/Facturations`; `main` protégée inchangée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`. Les PR #164 et #166 restent ouvertes et attendent une revue indépendante; le HEAD précédent de #166 `140c9c87938f53e0b07365fdd054618e7622d121` avait **10/10 checks `success`**.
+- **Dernière tâche de code poussée :** [PR #171](https://github.com/takatakca/Facturations/pull/171), branche `fix/shutdown-db-cleanup-on-http-error-20261016`, **HEAD actuel `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`** (SHA initial `897137b19bf95f82e81247127a79c9014cbee95c`, CI initiale 10/10).
+- **Anomalie confirmée :** `src/graceful-shutdown.js` sautait `pool.end()` si `server.close()` échouait; le callback `server.close(error)` était ignoré et pouvait entraîner un code de sortie trompeur `0`.
+- **Changements sur la PR #171 :** `src/graceful-shutdown.js` gère séparément les échecs HTTP et PostgreSQL; `tests/graceful-shutdown.test.js` couvre callback en erreur, exception synchrone et échec DB; `docs/final-go-live-runbook.md` ajoute les critères de vérification.
+- **Vérifications réellement exécutées :** relecture `AGENTS.md`, état GitHub `main` / PR / issues / CI et des cinq docs; comparaison avec #170 et lecture du code actuel; push des trois fichiers; PR créée et revue `takatakmtl` demandée. **CI #171 : 10/10 checks `success` au SHA final `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`** (Node 20/22, Chromium, MFA/PostgreSQL, privilèges DB), aucun échec; pas de test local ni de staging allégué.
+- **Correctif additionnel sur #171 :** la promesse de fermeture est désormais partagée entre appels concurrents `shutdown()`; un second appel attend la fin du nettoyage SQL au lieu de se terminer immédiatement. Test du chemin différé ajouté dans `tests/graceful-shutdown.test.js`; runbook complété. SHA exact `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; **10/10 contrôles GitHub Actions `success` sur le SHA final**, aucun échec.
+- **Blocages :** approbations humaines des PR, HTTPS proxy et base PostgreSQL dédiés non vérifiés, sauvegardes/restauration, fiscalité et fournisseurs réels non homologués. **Déploiement : aucun déploiement réalisé ni vérifié**; aucune facture, Stripe, Wave, email ou base TAKATAK existante utilisée.
+- **Prochaine action exacte :** vérifier les 10 checks du SHA `897137b19bf95f82e81247127a79c9014cbee95c`, corriger tout échec sur #171, demander revue humaine; finaliser la revue/fusion #164 avant retarget de #166 et revalider; faire les essais d'arrêt réel sur staging isolé autorisé avant production. Ne pas modifier `main` directement.
+
+## Reprise technique du 2026-10-16 — tâche réellement poussée
+
+- **Dépôt / base :** `takatakca/Facturations`, `main` protégée au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3` au contrôle. L'ancienne PR #169 reste ouverte et ses 10/10 checks sur `731faefc5a2ae833d9ab51a3145e282d5a1d6086` sont confirmés. Le HEAD de #166 avant ce relevé était `c9cf734f79d43c08fc4e646e7854a486906ef10e`, 10/10 checks verts.
+- **Dernière tâche de code terminée :** [PR #170](https://github.com/takatakca/Facturations/pull/170), branche `fix/readiness-draining-inflight-20261016`, SHA `2fd6251a19deb66bc44ba36c32052f601093d82f`. La vérification `/ready` refuse un résultat PostgreSQL réussi si le serveur entre en mode arrêt pendant la requête; l'ancien code contrôlait l'état uniquement avant `await`.
+- **Fichiers modifiés sur la branche #170 :** `src/readiness-probe.js`, `tests/readiness-probe.test.js`, `docs/final-go-live-runbook.md`. Les tests ajoutés déclenchent une requête asynchrone différée, puis `markDraining()`, vérifient le résultat faux et l'absence de requêtes suivantes, et couvrent une exception différée sans fuite.
+- **Vérifications exécutées :** lecture `AGENTS.md`, des cinq documents de relève, des PR/issues et Actions via GitHub; diff de #170 vérifiée; revue indépendante demandée à `takatakmtl`. Les GitHub Actions de #170 au SHA exact `2fd6251a19deb66bc44ba36c32052f601093d82f` ont terminé : **10/10 checks `success`**, aucun échec (Node 20/22, Chromium, MFA/PostgreSQL, privilèges runtime). Une réussite CI n'est pas une preuve de staging. Aucun clone ni test local intégré attesté.
+- **Statut du déploiement :** non exécuté, non homologué. Aucun accès PostgreSQL réel, aucune facture, émission Wave, email client, paiement ou remboursement.
+- **Accès / preuves manquantes :** approbation indépendante GitHub des PR ouvertes, environnement staging Facturations dédié (base, reverse-proxy HTTPS et sauvegarde), validation du GO/NO-GO, attestations des fournisseurs et revue fiscale/comptable.
+- **Prochaine action exacte :** la CI de #170 est 10/10 verte au SHA `2fd6251a19deb66bc44ba36c32052f601093d82f` : obtenir revue `takatakmtl` sans contourner la protection de `main`; poursuivre #164 puis #166 dans cet ordre avant de retargeter; n'intégrer les autres PR qu'après leurs revues et validations. Le HEAD de la branche documentaire **change à chaque édition** : le lire via GitHub, ne pas confondre avec le SHA de code #170.
 
 ## Dernière tâche terminée
 
-Correction d'un lecteur de payload Stripe limité à 1 Mio, avec traitement des uploads interrompus et tests unitaires/HTTP. Travail poussé dans [PR #163](https://github.com/takatakca/Facturations/pull/163), SHA **`347564627b5e4755d9d3de95de6c730056e7ec4c`**. Ses **10 checks GitHub Actions** ont conclu `success`. La PR n'était **pas fusionnée**; revue de `takatakmtl` demandée.
+**PR #171 :** nettoyage garanti du pool PostgreSQL même si l'arrêt HTTP échoue, erreurs callback prises en compte, appels `shutdown()` concurrents synchronisés sur une unique promesse de fermeture. HEAD `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; **10/10 contrôles CI `success` sur le HEAD final**. Fichiers : `src/graceful-shutdown.js`, `tests/graceful-shutdown.test.js`, `docs/final-go-live-runbook.md`. Code poussé, **non fusionné**; aucune mise en service.
+
+**Correctifs antérieurs :** #170 HEAD `2fd6251a19deb66bc44ba36c32052f601093d82f` (10/10 CI), et #169 HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (10/10 CI), tous deux en attente de revue indépendante.
 
 ## Travail applicatif supplémentaire poussé
 
 [PR #165](https://github.com/takatakca/Facturations/pull/165), SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10` : lecteur JSON de brouillon avec limites et traitement d'abandon, nouveaux tests; revue indépendante demandée. Vérifier les jobs GitHub Actions du SHA exact, encore en cours lors de la mise à jour.
 
+## Nouvelle tâche terminée en branche indépendante
+
+[PR #167](https://github.com/takatakca/Facturations/pull/167), branche `fix/client-cookie-header-bound-20261014`, commit `16be6d2f7b716dc6ab44975ee8818665ba695ab3` : refuse les en-têtes `Cookie` du portail client dépassant 4096 caractères (même borne que les cookies du personnel). Les tests couvrent le seuil 4096/4097, les doublons, et le rejet HTTP 401 sur liste/détails/PDF sans lecture du store; un cookie valide reste autorisé. Fichiers : `src/client-session-cookie.js`, `tests/client-session-cookie.test.js`, `tests/browser-client-portal.test.js`. CI GitHub Actions **10/10 `success`** au SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3`; revue `takatakmtl` demandée; toujours **non fusionnée**.
+
+## Travail terminé lors de la reprise du 2026-10-15
+
+- Après relecture de `AGENTS.md`, des PR ouvertes, des issues et de la CI, `main` reste protégé au SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`. Les PR #164, #166 et #167 restent en attente de revue humaine `takatakmtl`.
+- Vérification du précédent HEAD #166 `21111e9192dbc9eaa5ca213ad880064bce6603d0` : **10/10 checks `success`**.
+- [PR #168](https://github.com/takatakca/Facturations/pull/168) indépendante créée contre `main`, branche `fix/staging-evidence-input-guard-20261015`, SHA du dernier correctif poussé `395d133795741ce202a3dd9eab23e10c7b7dc4e5`. Fichiers : `src/staging-readiness-evaluator.js`, `scripts/evaluate-staging-readiness.js`, `tests/staging-readiness-evaluator.test.js`, `tests/staging-evidence-file.test.js` et `docs/staging-go-no-go.md`. Contrôle d'horodatage UTC canonique, fichier JSON privé borné à 65 536 octets et décodage UTF-8 strict; symlinks rejetés. Aucun changement fournisseur, DB ou production.
+- Checks #168 déclenchés dans GitHub Actions, résultats finaux à confirmer sur ce SHA; revue demandée à `takatakmtl`.
+- Aucun test contre un serveur de production, aucune migration, émission Wave, remise d'email ou paiement réel. Le statut du déploiement est **non homologué/non vérifié**.
+
+## Correction de sécurité en cours de validation — Stripe
+
+- [PR #169](https://github.com/takatakca/Facturations/pull/169) ouverte contre `main` protégé (SHA `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3`), branche `fix/stripe-test-mode-production-gate-20261015`, dernier commit poussé `731faefc5a2ae833d9ab51a3145e282d5a1d6086` (UTF-8 strict, test et documentation additionnels); premier SHA validé `c54decd8857e7e2e97526139707e328c4baa7758`.
+- Anomalie : `NODE_ENV=production` acceptait `FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1`, malgré le caractère staging-only; et `stripeEventScope` acceptait les événements sans `livemode` booléen explicite si l'option était activée.
+- Correctif : `src/config.js` bloque cette configuration en production; `src/stripe-payment-webhook.js` ne permet que `livemode === true` ou `livemode === false` avec autorisation staging. Tests de configuration et de portée dans `tests/config.test.js`, `tests/stripe-payment-webhook.test.js`; documentation `docs/stripe-verified-payment-webhook.md`.
+- GitHub Actions sur le SHA `c54decd8857e7e2e97526139707e328c4baa7758` : **10/10 contrôles `success`**, zéro échec (tests Node 20/22, navigateur Chromium, MFA/PostgreSQL et privilèges runtime). Revue humaine demandée `takatakmtl`; aucune fusion.
+- Correction additionnelle sur la même PR : rejet du JSON Stripe signé contenant de l'UTF-8 malformé avant parsing, avec test HMAC valide sur octets invalides. HEAD `731faefc5a2ae833d9ab51a3145e282d5a1d6086` : **10/10 contrôles GitHub Actions `success` sur le SHA final**, aucun échec (Node 20/22, Chromium, MFA/PostgreSQL, contrôle DB).
+- PR #168 au SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` et #166 à l'ancien SHA `6a1fcf41bc3359d02c1eefa771763032e6710797` : 10/10 checks chacun lors du dernier contrôle; nouvelles écritures documentaires changent le SHA de #166.
+- Aucune migration, mise en ligne, émission Wave, courriel client, charge ni remboursement Stripe. `main` non modifié et staging isolé non attesté.
+
 ## Tâche en cours
 
-Installer les documents de relève `PROJECT_STATUS.md`, `TASK_QUEUE.md`, `AGENT_HANDOFF.md`, `DEPLOYMENT.md`, `DECISIONS.md` et un contrôle CI de leur présence/structure sur la branche `docs/agent-handoff-ci-20261014`. Cette étape ne modifie ni le comportement financier ni la base de données.
+Faire homologuer les PR #164 et #166 et réintégrer les correctifs Stripe #169 et HTTP #167 sous revue humaine; aucune fusion ni production avant gates. La partie technique du correctif de validation UTF-8 des documents de relève est terminée sur `fix/project-docs-strict-utf8-20261014`, [PR #166](https://github.com/takatakca/Facturations/pull/166) empilée sur [PR #164](https://github.com/takatakca/Facturations/pull/164). La lecture du handoff avec `TextDecoder('utf-8', { fatal: true })` bloque désormais les octets invalides au lieu de les remplacer silencieusement. Le test de régression couvre aussi des caractères FR, ES et chinois valides. Le contrôle rejette désormais les fichiers et répertoires `docs` symboliquement liés, empêchant CI de suivre des chemins extérieurs au checkout.
+
+**Dernier commit technique poussé dans cette branche à la présente mise à jour :** `6e02f7ba3582bd607814902dd931fb6f02b3d416` (tests contre les symlinks); correctif symlink `24f32e95e346e47bc973f468d5e57184a503ba4f`; tests UTF-8 `d7ef397a798e65222f38fba185f869f1925ea3d2`; commit initial du fix `f39cfaf5a2a4f8a1fc7832b3943c2d0572397a78`. Après toute modification de ce document, lire le nouveau SHA HEAD GitHub; une annotation du SHA dans un commit qu'elle modifie ne peut pas être autoréférentielle.
 
 ## Références et fichiers
 
 - `main` constaté : `995d5cbb6296fca5ea852985c2cb9c4e4d89f2d3` (protégé).
 - Code de #163 : `src/stripe-raw-body.js`, `src/stripe-payment-webhook-route.js`, `tests/stripe-webhook-body.test.js`, `docs/stripe-verified-payment-webhook.md`.
-- Branche de relève : `docs/PROJECT_STATUS.md`, `docs/TASK_QUEUE.md`, `docs/AGENT_HANDOFF.md`, `docs/DEPLOYMENT.md`, `docs/DECISIONS.md`, `scripts/check-project-docs.js`, `tests/project-docs.test.js`, `package.json`, `.github/workflows/ci.yml`.
+- Correctif UTF-8 de #166 : `scripts/check-project-docs.js`, `tests/project-docs.test.js`, `docs/AGENT_HANDOFF.md`, `docs/TASK_QUEUE.md`, `docs/PROJECT_STATUS.md`.
+- Branche de relève (#164) : `docs/PROJECT_STATUS.md`, `docs/TASK_QUEUE.md`, `docs/AGENT_HANDOFF.md`, `docs/DEPLOYMENT.md`, `docs/DECISIONS.md`, `scripts/check-project-docs.js`, `tests/project-docs.test.js`, `package.json`, `.github/workflows/ci.yml`.
 
 ## Vérifications réellement exécutées
+
+- #167 SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3` : GitHub Actions **10/10 success** sur push et PR, comprenant Node 20/22, Chromium, MFA/PostgreSQL et runtime least privilege. Les tests de cookie et les assertions HTTP s'exécutent dans `npm test`.
+
+- CI du commit initial `f39cfaf5a2a4f8a1fc7832b3943c2d0572397a78` : cinq jobs GitHub Actions terminés avec conclusion `success` (Node 20/22, Chromium, MFA/PostgreSQL, least privilege).
+- CI de `docs/agent-handoff-ci-20261014` au SHA `2ee146883e5bb301d3a30c6cf24dd6cdce9e2c6e` : les jobs consultés sont `success`.
+- Correctifs `d7ef397a798e65222f38fba185f869f1925ea3d2` et `6e02f7ba3582bd607814902dd931fb6f02b3d416` : tests UTF-8 et symlinks; résultats GitHub Actions à examiner sur le **HEAD final**, pas sur un ancien SHA.
+- Tentative `git ls-remote https://github.com/takatakca/Facturations.git HEAD` dans le conteneur local : échec DNS `Could not resolve host: github.com` ; ne pas prétendre avoir exécuté les tests complets localement.
+- PR #165 au SHA `653c90cda1b8c102f5e0a57f37d17b767d900b10` : 10/10 checks GitHub Actions `success`.
 
 - Lecture du dépôt, de `AGENTS.md`, des documents de release, des PR/issues et des workflows sur GitHub.
 - Statuts `main` et PR vérifiés; #163 : 10/10 checks GitHub Actions réussis.
@@ -42,8 +119,19 @@ Installer les documents de relève `PROJECT_STATUS.md`, `TASK_QUEUE.md`, `AGENT_
 
 ## Prochaine action exacte
 
-1. Ouvrir la nouvelle PR de relève et attendre le résultat du job `npm run check:project-docs` et du `npm test` complet.
-2. Corriger toute erreur CI de la branche, pousser un commit additionnel puis actualiser les preuves.
-3. Demander une revue indépendante, et fusionner uniquement si les règles et les autorisations le permettent.
-4. Lire aussi le verdict CI et la revue de #165; corriger en cas d'échec.
-5. Ensuite reprendre la PR #158 (bug de login en navigateur), avant de valider l'installation isolée #159 et l'intégration #160.
+1. La [PR #171](https://github.com/takatakca/Facturations/pull/171) a passé **10/10 checks GitHub Actions** sur le SHA `1cbf7735fbc3b43a28a77a23a9776ffbda3c99fd`; attendre la revue indépendante de `takatakmtl` et ne fusionner qu'avec les protections `main`.
+2. Obtenir la revue indépendante puis fusion autorisée de [PR #164](https://github.com/takatakca/Facturations/pull/164); retargeter ensuite [PR #166](https://github.com/takatakca/Facturations/pull/166) sur `main`, vérifier la CI et les conflits après l'intégration.
+3. Examiner les correctifs #158, #163, #165, #167, #168, #169, #170 et #171, un par un, sans chevauchement ni écrasement des autres agents.
+4. Préparer uniquement un staging **isolé et autorisé** en suivant #159 : HTTPS, base PostgreSQL dédiée, rôle DB et sauvegarde/restitution; valider MFA et readiness/drainage sur le SHA réellement servi.
+5. Bloquer la production, les émissions Wave, les emails clients, les paiements et remboursements réels jusqu'aux revues spécifiques, à l'homologation fiscale et au GO/NO-GO documenté.
+
+## Historique des prochaines actions précédemment relevées
+
+
+1. Examiner tous les contrôles GitHub Actions du SHA `395d133795741ce202a3dd9eab23e10c7b7dc4e5` de #168, puis corriger tout échec sans toucher `main` ni au staging réel.
+2. Maintenir la demande de revue indépendante de #168 et attendre l'autorisation de fusion conforme à la protection de `main`.
+3. #167 est CI verte au SHA `16be6d2f7b716dc6ab44975ee8818665ba695ab3` : attendre la revue indépendante et ne fusionner que selon les protections de `main`. Consulter les jobs du dernier SHA de #166 après cette mise à jour.
+4. Vérifier les GitHub Actions du HEAD courant de la PR #166, incluant `npm run check:project-docs`, `npm run check` et `npm test`; corriger les erreurs avec un nouveau SHA.
+5. Obtenir une revue indépendante de #164 puis la fusion autorisée sur `main`; retargeter ensuite #166 vers `main` et réexécuter les vérifications exactes.
+6. Lire les PR #158 (login réel), #159 (kit staging isolé), #160 (statut d'émission), #163 (Stripe) et #165 (HTTP); ne pas écraser ni dupliquer ces changements. La CI verte ne remplace pas leurs revues.
+7. Ne tenter aucun déploiement ou fournisseur réel sans les gates TLS, staging dédié, fiscalité, revues, privilèges et GO/NO-GO validés.

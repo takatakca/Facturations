@@ -57,3 +57,44 @@ test('project handoff: rejects a document without final newline or containing NU
     assert.ok(checkProjectDocs(root).some(error => error.includes('binary')));
   });
 });
+
+test('project handoff: malformed UTF-8 bytes are rejected rather than replaced', () => {
+  withFixture(root => {
+    const filename = path.join(root, 'docs/AGENT_HANDOFF.md');
+    // 0xC3 without a continuation byte is invalid UTF-8, but fs.readFileSync
+    // with the legacy utf8 option would silently replace it with U+FFFD.
+    fs.appendFileSync(filename, Buffer.from([0xC3, 0x28, 0x0A]));
+    const failures = checkProjectDocs(root);
+    assert.ok(failures.includes('docs/AGENT_HANDOFF.md: invalid UTF-8'));
+    assert.equal(failures.some(error => error.includes(root)), false);
+  });
+});
+
+test('project handoff: valid multilingual UTF-8 content remains accepted', () => {
+  withFixture(root => {
+    const filename = path.join(root, 'docs/AGENT_HANDOFF.md');
+    fs.appendFileSync(filename, 'Données privées — suivi technique, Español, 中文.\n', 'utf8');
+    assert.deepEqual(checkProjectDocs(root), []);
+  });
+});
+
+test('project handoff: symbolic-link files and directories are rejected', { skip: process.platform === 'win32' }, () => {
+  withFixture(root => {
+    const filename = path.join(root, 'docs/PROJECT_STATUS.md');
+    const outside = path.join(root, 'copied-content.md');
+    fs.writeFileSync(outside, REQUIRED['docs/PROJECT_STATUS.md'].join('\n') + '\n', 'utf8');
+    fs.unlinkSync(filename);
+    fs.symlinkSync(outside, filename);
+    assert.ok(checkProjectDocs(root).some(error =>
+      error.includes('docs/PROJECT_STATUS.md: symbolic links')));
+    fs.unlinkSync(filename);
+    fs.writeFileSync(filename, REQUIRED['docs/PROJECT_STATUS.md'].join('\n') + '\n', 'utf8');
+
+    const folder = path.join(root, 'docs');
+    const original = path.join(root, 'real-docs');
+    fs.renameSync(folder, original);
+    fs.symlinkSync(original, folder, 'dir');
+    assert.ok(checkProjectDocs(root).some(error =>
+      error.includes('docs/PROJECT_STATUS.md: symbolic links')));
+  });
+});

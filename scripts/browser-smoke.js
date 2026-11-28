@@ -72,7 +72,7 @@ const DRIVER = String.raw`
 function send(response, status, type, body) {
   response.writeHead(status, {
     'Content-Type': type, 'Cache-Control': 'private, no-store',
-    'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin',
     'Content-Security-Policy': "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
   });
   response.end(body);

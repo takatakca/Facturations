@@ -13,9 +13,9 @@ const {
   reversalFromPendingRow,
   stripeEventScope,
 } = require('./stripe-payment-webhook');
+const { readStripeRawBody } = require('./stripe-raw-body');
 
 const PATH = '/webhooks/stripe/payments';
-const MAX_BYTES = 1_048_576;
 
 function reply(response, status, body) {
   if (response.headersSent || response.destroyed) return;
@@ -23,31 +23,9 @@ function reply(response, status, body) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...(status === 413 ? { Connection: 'close' } : {}),
   });
   response.end(JSON.stringify(body));
-}
-
-function readRawBody(request) {
-  return new Promise((resolve, reject) => {
-    const declared = Number(request.headers['content-length'] || '0');
-    if (Number.isFinite(declared) && declared > MAX_BYTES) {
-      reject(new StripeWebhookError('BODY_TOO_LARGE', 413));
-      return;
-    }
-    const chunks = [];
-    let length = 0;
-    request.on('data', (chunk) => {
-      length += chunk.length;
-      if (length > MAX_BYTES) {
-        reject(new StripeWebhookError('BODY_TOO_LARGE', 413));
-        request.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request.on('end', () => resolve(Buffer.concat(chunks)));
-    request.on('error', () => reject(new StripeWebhookError('BODY_READ_FAILED', 400)));
-  });
 }
 
 const REVERSAL_ORDER = ['REFUND_ISSUED', 'DISPUTE_WITHDRAWN', 'REFUND_REVERSED', 'DISPUTE_REINSTATED'];
@@ -106,7 +84,7 @@ function attachStripePaymentWebhook(server, { secret, businessId, evidenceStore,
     if ([...url.searchParams.keys()].length) return reply(response, 422, { error: 'INVALID_QUERY' });
 
     try {
-      const rawBody = await readRawBody(request);
+      const rawBody = await readStripeRawBody(request);
       const verified = verifyStripeWebhook({
         rawBody,
         signatureHeader: request.headers['stripe-signature'],

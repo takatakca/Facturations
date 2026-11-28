@@ -24,6 +24,7 @@ test('integration OpenAPI contract is versioned, server-to-server and exposes on
     '/integration/v1/drafts',
     '/integration/v1/drafts/{draftId}',
     '/integration/v1/drafts/{draftId}/approval',
+    '/integration/v1/drafts/{draftId}/issuance',
     '/integration/v1/drafts/{draftId}/workflow',
     '/integration/v1/handoffs/owner-review',
   ]);
@@ -101,6 +102,20 @@ test('OpenAPI read models preserve draft-only and internal-approval semantics', 
   assert.equal(workflow.nativeActions.properties.issue.const, false);
   assert.equal(workflow.nativeActions.properties.deliver.const, false);
   assert.equal(workflow.nativeActions.properties.recordPayment.const, false);
+
+  const issuance = spec.paths['/integration/v1/drafts/{draftId}/issuance'];
+  assert.equal(issuance.post, undefined);
+  const issuanceData = issuance.get.responses['200'].content['application/json'].schema
+    .properties.data.properties;
+  assert.equal(issuanceData.nativeActions.properties.issue.const, false);
+  assert.equal(issuanceData.nativeActions.properties.deliver.const, false);
+  assert.equal(issuanceData.nativeActions.properties.recordPayment.const, false);
+  const invoice = issuanceData.invoice.oneOf[1].properties;
+  for (const forbidden of ['customer', 'email', 'snapshot', 'requestHash', 'providerInvoiceId', 'providerPayload']) {
+    assert.equal(invoice[forbidden], undefined, forbidden + ' must never be exposed');
+  }
+  assert.ok(issuance.get.responses['403']);
+  assert.ok(issuance.get.responses['404']);
 });
 
 test('OpenAPI pagination and search constraints match runtime bounds', () => {

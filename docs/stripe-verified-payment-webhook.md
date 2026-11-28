@@ -8,7 +8,7 @@ Cette étape permet au ledger de paiement d’enregistrer une **vraie** preuve d
 
 - active seulement si `FACTURATIONS_STRIPE_WEBHOOK_SECRET` (format `whsec_…`), `FACTURATIONS_DATABASE_URL` et `WAVE_BUSINESS_ID` sont configurés;
 - montée avant les gardes cookie/navigateur : Stripe n’a ni cookie ni origine, la signature est la seule autorisation;
-- corps brut limité à 1 Mo, aucune query acceptée (422), uniquement `POST` (405);
+- corps brut limité à 1 Mio : dépassement déclaré ou reçu → HTTP 413 avec `Connection: close`, sans lecture illimitée; un upload interrompu est refusé avant toute vérification/écriture; aucune query acceptée (422), uniquement `POST` (405);
 - réponses minimales : `{ received, recorded }` ou `{ error: CODE }`; aucune donnée Stripe n’est renvoyée.
 
 ## Portée des événements

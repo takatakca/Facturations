@@ -103,7 +103,8 @@ function resultOf(row){
     evidenceHash:row.evidence_hash,
     recordedAt:row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
     signatureVerified:signed,
-    realWebhookVerified:signed,
+    signedWebhookVerified:signed,
+    realWebhookVerified:false,
   });
 }
 
@@ -168,6 +169,26 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
       const recipient=row.issued_snapshot?.customer?.email;
       if(typeof recipient!=='string' || recipient.trim().toLowerCase()!==event.recipientEmail){
         throw new EmailProviderEvidenceError('EVIDENCE_RECIPIENT_MISMATCH',409);
+      }
+
+      if(sourceMode==='SIGNED_WEBHOOK'){
+        const deliveryBinding=await client.query(
+          `SELECT id
+             FROM facturations_delivery_attempts
+            WHERE business_id=$1
+              AND qualified_document_id=$2
+              AND operation_key=$3
+              AND provider_message_id=$4
+              AND provider=$5
+              AND state='CONFIRMED'
+            FOR SHARE`,
+          [tenant,qualifiedDocumentId,opKey,event.providerMessageId,event.providerKey]
+        );
+        if(deliveryBinding.rows.length!==1){
+          throw new EmailProviderEvidenceError(
+            'SIGNED_WEBHOOK_DELIVERY_BINDING_REQUIRED',409
+          );
+        }
       }
 
       const fields={
@@ -272,7 +293,7 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
   async function ingestVerifiedWebhook(input){
     if(!input || typeof input!=='object' || Array.isArray(input) ||
        Object.keys(input).sort().join(',')!==
-         'operationKey,qualifiedDocumentId,verificationScheme,verifiedEnvelope'){
+         'operationKey,qualifiedDocumentId,verifiedEnvelope'){
       throw new EmailProviderEvidenceError('INVALID_VERIFIED_WEBHOOK_REQUEST');
     }
     if(!isVerifiedEmailWebhookEnvelope(input.verifiedEnvelope)){
@@ -280,8 +301,8 @@ function createEmailProviderEvidenceStore({pool,businessId,providerKey:configure
     }
     const qualifiedDocumentId=uuid(input.qualifiedDocumentId,'INVALID_QUALIFIED_DOCUMENT_ID');
     const opKey=operationKey(input.operationKey);
-    const scheme=verificationScheme(input.verificationScheme);
     const envelope=input.verifiedEnvelope;
+    const scheme=verificationScheme(envelope.verificationScheme);
 
     if(envelope.providerKey!==provider){
       throw new EmailProviderEvidenceError('PROVIDER_KEY_MISMATCH',409);

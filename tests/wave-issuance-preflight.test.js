@@ -46,6 +46,8 @@ test('builds a no-network provider plan only when every mapping is exact',()=>{
   const draft=snapshot();
   const plan=buildWaveIssuancePreflight({snapshot:draft,...mappings()});
   assert.equal(plan.status,'READY_FOR_WAVE_ADAPTER');
+  assert.match(plan.sourceRequestHash,/^[a-f0-9]{64}$/);
+  assert.match(plan.providerPlanHash,/^[a-f0-9]{64}$/);
   assert.equal(plan.operation,'CREATE_DRAFT_THEN_APPROVE_SEPARATELY');
   assert.equal(plan.currency,'CAD');
   assert.equal(plan.expected.customerEmail,'customer@example.test');
@@ -57,6 +59,19 @@ test('builds a no-network provider plan only when every mapping is exact',()=>{
   assert.deepEqual(plan.items[1].salesTaxIds,[]);
   assert.equal(plan.items[0].unitPriceCents,1500);
   assert.equal(plan.items[0].quantity,2);
+});
+
+test('same immutable draft produces a different provider-plan hash when Wave mappings change',()=>{
+  const draft=snapshot();
+  const base=mappings();
+  const first=buildWaveIssuancePreflight({snapshot:draft,...base});
+  const remapped=buildWaveIssuancePreflight({
+    snapshot:draft,
+    ...base,
+    customerId:'wave-customer-remapped',
+  });
+  assert.equal(remapped.sourceRequestHash,first.sourceRequestHash);
+  assert.notEqual(remapped.providerPlanHash,first.providerPlanHash);
 });
 
 test('refuses missing customer, product and exact sales-tax mappings',()=>{
@@ -77,6 +92,20 @@ test('refuses missing customer, product and exact sales-tax mappings',()=>{
     ...base.salesTaxes,
     EXTRA:{id:'wave-tax-extra',rateMilliPercent:1},
   }}),'WAVE_TAX_MAPPING_MISMATCH');
+});
+
+test('blocks provider preflight before issuance when official PDF v1 cannot represent draft text',()=>{
+  const draft=snapshot();
+  draft.customer={...draft.customer,name:'Synthetic 客户'};
+  expectCode(()=>buildWaveIssuancePreflight({snapshot:draft,...mappings()}),
+    'PDF_TEXT_UNSUPPORTED',409);
+
+  const lineDraft=snapshot();
+  lineDraft.lines=lineDraft.lines.map((line,index)=>index===0
+    ? {...line,description:'Service العربية'}
+    : line);
+  expectCode(()=>buildWaveIssuancePreflight({snapshot:lineDraft,...mappings()}),
+    'PDF_TEXT_UNSUPPORTED',409);
 });
 
 test('refuses line discounts rather than approximating Wave invoice-level discount semantics',()=>{

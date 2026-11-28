@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { renderIssuedInvoicePdf } = require('./official-invoice-pdf');
+const {verifyPersistedDraftSnapshot}=require('./draft-snapshot-integrity');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const RENDER_VERSION = 'invoice-pdf-v1-winansi';
@@ -126,6 +127,9 @@ function createIssuedInvoiceDocumentStore({
       const issued = found.rows[0];
       if (issued.status !== 'ISSUED_CONFIRMED' || issued.delivery_state !== 'NOT_AUTHORIZED') {
         throw new IssuedInvoiceDocumentError('ISSUED_INVOICE_NOT_READY', 409);
+      }
+      if (!verifyPersistedDraftSnapshot(issued.issued_snapshot,issued.request_hash)) {
+        throw new IssuedInvoiceDocumentError('ISSUED_SNAPSHOT_STORAGE_INVALID',503);
       }
 
       let pdf;

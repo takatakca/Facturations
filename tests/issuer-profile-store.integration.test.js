@@ -67,6 +67,18 @@ test('verified issuer profiles are OWNER-only, versioned, idempotent and immutab
   try {
     const { owner, session } = await provisionOwner({ auth, invitations, password });
 
+    await assert.rejects(
+      profiles.createVerified(verifiedInput({
+        owner,
+        session,
+        suffix: 'unsupported',
+        legalName: 'Synthetic Legal 客户',
+      })),
+      error => error instanceof IssuerProfileError &&
+        error.code === 'ISSUER_PROFILE_PDF_TEXT_UNSUPPORTED' &&
+        error.statusCode === 409
+    );
+
     const firstInput = verifiedInput({ owner, session, suffix: 'first' });
     const first = await profiles.createVerified(firstInput);
 
@@ -86,6 +98,35 @@ test('verified issuer profiles are OWNER-only, versioned, idempotent and immutab
     assert.equal(retry.id, first.id);
     assert.equal(retry.version, 1);
     assert.equal(retry.profileHash, first.profileHash);
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_issuer_profiles
+           (business_id,profile_version,legal_name,display_name,address_lines,city,region,
+            postal_code,country_code,contact_email,contact_phone,tax_registrations,profile_hash,
+            verification_method,verification_reference,verified_by)
+         VALUES ($1,2,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,
+                 'HUMAN_DOCUMENT_REVIEW',$13,$14)`,
+        [
+          businessId,
+          firstInput.legalName,
+          firstInput.displayName,
+          JSON.stringify(firstInput.addressLines),
+          firstInput.city,
+          firstInput.region,
+          firstInput.postalCode,
+          firstInput.countryCode,
+          firstInput.contactEmail,
+          firstInput.contactPhone,
+          JSON.stringify(firstInput.taxRegistrations),
+          crypto.randomBytes(32).toString('hex'),
+          'direct-forged-profile-hash',
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct issuer profile insert with forged profile_hash must fail in PostgreSQL'
+    );
 
     const secondInput = verifiedInput({
       owner,

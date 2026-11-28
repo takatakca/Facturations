@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto=require('node:crypto');
+
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 
@@ -81,7 +83,7 @@ function createClientPortalReadStore({pool,businessId,authStore}={}){
     'FROM facturations_client_portal_publications p '+
     'JOIN facturations_issued_invoices i ON i.business_id=p.business_id AND i.id=p.issued_invoice_id '+
     'JOIN invoice_drafts d ON d.business_id=i.business_id AND d.id=i.draft_id '+
-    'JOIN facturations_qualified_invoice_documents q ON q.business_id=p.business_id AND q.id=p.qualified_document_id '+
+    'JOIN facturations_qualified_invoice_documents q ON q.business_id=p.business_id AND q.id=p.qualified_document_id AND q.issued_invoice_id=p.issued_invoice_id '+
     'JOIN facturations_payment_evidence_summary s ON s.business_id=i.business_id AND s.issued_invoice_id=i.id '+
     'LEFT JOIN facturations_client_portal_publication_revocations r ON r.business_id=p.business_id AND r.publication_id=p.id ';
 
@@ -145,7 +147,9 @@ function createClientPortalReadStore({pool,businessId,authStore}={}){
     if(!found.rows.length) throw new ClientPortalReadError('PORTAL_PDF_NOT_FOUND',404);
     const row=found.rows[0];
     if(row.content_type!=='application/pdf' || !Buffer.isBuffer(row.pdf_bytes) ||
-       Number(row.byte_length)!==row.pdf_bytes.length){
+       Number(row.byte_length)!==row.pdf_bytes.length ||
+       typeof row.content_sha256!=='string' || !/^[a-f0-9]{64}$/u.test(row.content_sha256) ||
+       crypto.createHash('sha256').update(row.pdf_bytes).digest('hex')!==row.content_sha256){
       throw new ClientPortalReadError('PORTAL_PDF_STORAGE_INVALID',503);
     }
     return Object.freeze({

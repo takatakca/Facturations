@@ -77,7 +77,10 @@ async function createIssuedInvoice({pool,businessId}){
     salesTaxes:{},
     snapshot:draft.preview,
   });
-  const prepared=await attempts.prepare({authorizationId:authorization.id});
+  const prepared=await attempts.prepare({
+    authorizationId:authorization.id,
+    providerPlanHash:payload.providerPlanHash,
+  });
   const executor=createProviderIssuanceExecutor({
     attemptStore:attempts,
     adapter:{async createInvoice(){
@@ -127,6 +130,47 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     });
     assert.equal(typeof store.ingestVerifiedWebhook,'undefined');
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,event_type,amount_cents,currency,occurred_at,
+            source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,'PAYMENT_RECEIVED',123,'CAD',$5,
+                 'SYNTHETIC_TEST',$6)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-forged-hash-' + crypto.randomUUID(),
+          'txn-direct-forged-hash-' + crypto.randomUUID(),
+          '2026-09-26T15:58:00.000Z',
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error=>error && error.code==='23514',
+      'direct payment evidence insert with forged evidence_hash must fail in PostgreSQL'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,event_type,amount_cents,currency,occurred_at,
+            source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,'PAYMENT_RECEIVED',1,'CAD',$5,
+                 'VERIFIED_PROVIDER_WEBHOOK',$6)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-verified-'+crypto.randomUUID(),
+          'txn-direct-verified-'+crypto.randomUUID(),
+          '2026-09-26T15:59:00.000Z',
+          'a'.repeat(64),
+        ]
+      ),
+      error=>error && error.code==='23514'
+    );
+
     const event={
       providerKey:'SYNTHETIC_PROCESSOR',
       eventId:'evt-'+crypto.randomUUID(),
@@ -142,12 +186,31 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     assert.equal(payment.amountCents,4000);
     assert.equal(payment.currency,'CAD');
     assert.equal(payment.sourceMode,'SYNTHETIC_TEST');
+    assert.equal(payment.relatedPaymentEvidenceId,null);
     assert.equal(payment.externallyVerified,false);
     assert.match(payment.evidenceHash,/^[a-f0-9]{64}$/);
 
     const retry=await store.ingestSynthetic({issuedInvoiceId:issued.id,event});
     assert.equal(retry.id,payment.id);
     assert.equal(retry.evidenceHash,payment.evidenceHash);
+
+    await assert.rejects(
+      store.ingestSynthetic({
+        issuedInvoiceId:issued.id,
+        event:{
+          ...event,
+          eventId:'evt-'+crypto.randomUUID(),
+        },
+      }),
+      error=>error instanceof PaymentEvidenceError &&
+        error.code==='PAYMENT_TRANSACTION_REUSE_CONFLICT' &&
+        error.statusCode===409
+    );
+    const afterTransactionReuse=await summaryStore.getByIssuedInvoice({
+      issuedInvoiceId:issued.id,
+    });
+    assert.equal(afterTransactionReuse.paidCents,4000);
+    assert.equal(afterTransactionReuse.evidenceCount,1);
 
     await assert.rejects(
       store.ingestSynthetic({
@@ -163,11 +226,31 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
       providerKey:'SYNTHETIC_PROCESSOR',
       eventId:'evt-'+crypto.randomUUID(),
       providerTransactionId:'refund-'+crypto.randomUUID(),
+      relatedProviderTransactionId:event.providerTransactionId,
       eventType:'REFUND_ISSUED',
       amountCents:1000,
       currency:'CAD',
       occurredAt:'2026-09-26T16:05:00.000Z',
     };
+    await assert.rejects(
+      store.ingestSynthetic({
+        issuedInvoiceId:issued.id,
+        event:{
+          providerKey:'SYNTHETIC_PROCESSOR',
+          eventId:'evt-'+crypto.randomUUID(),
+          providerTransactionId:'refund-'+crypto.randomUUID(),
+          relatedProviderTransactionId:'txn-missing-'+crypto.randomUUID(),
+          eventType:'REFUND_ISSUED',
+          amountCents:1000,
+          currency:'CAD',
+          occurredAt:'2026-09-26T16:04:00.000Z',
+        },
+      }),
+      error=>error instanceof PaymentEvidenceError &&
+        error.code==='REFUND_PAYMENT_EVIDENCE_REQUIRED' &&
+        error.statusCode===409
+    );
+
     const afterPayment=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
     assert.equal(afterPayment.paidCents,4000);
     assert.equal(afterPayment.refundedCents,0);
@@ -178,6 +261,7 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
 
     const refund=await store.ingestSynthetic({issuedInvoiceId:issued.id,event:refundEvent});
     assert.equal(refund.eventType,'REFUND_ISSUED');
+    assert.equal(refund.relatedPaymentEvidenceId,payment.id);
 
     const afterRefund=await summaryStore.getByIssuedInvoice({issuedInvoiceId:issued.id});
     assert.equal(afterRefund.paidCents,4000);
@@ -229,6 +313,7 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
         providerKey:'SYNTHETIC_PROCESSOR',
         eventId:'evt-'+crypto.randomUUID(),
         providerTransactionId:'refund-'+crypto.randomUUID(),
+        relatedProviderTransactionId:event.providerTransactionId,
         eventType:'REFUND_ISSUED',
         amountCents:10002,
         currency:'CAD',
@@ -243,6 +328,85 @@ test('payment evidence ledger is synthetic-only, idempotent, tenant-scoped and a
     assert.deepEqual(listed.map(item=>item.eventType),[
       'PAYMENT_RECEIVED','REFUND_ISSUED','PAYMENT_RECEIVED','PAYMENT_RECEIVED','REFUND_ISSUED',
     ]);
+
+    const secondIssued=await createIssuedInvoice({pool,businessId});
+    await assert.rejects(
+      store.ingestSynthetic({
+        issuedInvoiceId:secondIssued.id,
+        event:{
+          providerKey:'SYNTHETIC_PROCESSOR',
+          eventId:'evt-'+crypto.randomUUID(),
+          providerTransactionId:'refund-cross-'+crypto.randomUUID(),
+          relatedProviderTransactionId:event.providerTransactionId,
+          eventType:'REFUND_ISSUED',
+          amountCents:100,
+          currency:'CAD',
+          occurredAt:'2026-09-26T16:13:00.000Z',
+        },
+      }),
+      error=>error instanceof PaymentEvidenceError &&
+        error.code==='REFUND_PAYMENT_EVIDENCE_REQUIRED' &&
+        error.statusCode===409,
+      'cross-invoice refund lineage must fail closed'
+    );
+
+    const secondPaymentEvent={
+      providerKey:'SYNTHETIC_PROCESSOR',
+      eventId:'evt-'+crypto.randomUUID(),
+      providerTransactionId:'txn-'+crypto.randomUUID(),
+      eventType:'PAYMENT_RECEIVED',
+      amountCents:500,
+      currency:'CAD',
+      occurredAt:'2026-09-26T16:14:00.000Z',
+    };
+    const secondPayment=await store.ingestSynthetic({
+      issuedInvoiceId:secondIssued.id,
+      event:secondPaymentEvent,
+    });
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,related_payment_evidence_id,event_type,
+            amount_cents,currency,occurred_at,source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,$5,'REFUND_ISSUED',
+                 100,'CAD',$6,'SYNTHETIC_TEST',$7)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-cross-invoice-'+crypto.randomUUID(),
+          'refund-direct-cross-invoice-'+crypto.randomUUID(),
+          secondPayment.id,
+          '2026-09-26T16:15:00.000Z',
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error=>error && error.code==='23514',
+      'direct cross-invoice refund lineage must fail closed in PostgreSQL'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_payment_evidence
+           (business_id,issued_invoice_id,provider_key,provider_event_id,
+            provider_transaction_id,related_payment_evidence_id,event_type,
+            amount_cents,currency,occurred_at,source_mode,evidence_hash)
+         VALUES ($1,$2,'SYNTHETIC_PROCESSOR',$3,$4,$5,'REFUND_ISSUED',
+                 100,'CAD',$6,'SYNTHETIC_TEST',$7)`,
+        [
+          businessId,
+          issued.id,
+          'evt-direct-refund-parent-'+crypto.randomUUID(),
+          'refund-direct-refund-parent-'+crypto.randomUUID(),
+          refund.id,
+          '2026-09-26T16:16:00.000Z',
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error=>error && error.code==='23514',
+      'refund-to-refund lineage must fail closed in PostgreSQL'
+    );
 
     const foreign=createPaymentEvidenceStore({
       pool,businessId:'payment-other-'+crypto.randomUUID(),providerKey:'SYNTHETIC_PROCESSOR',

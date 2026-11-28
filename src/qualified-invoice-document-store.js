@@ -2,6 +2,8 @@
 
 const crypto = require('node:crypto');
 const { renderIssuedInvoicePdf } = require('./official-invoice-pdf');
+const { computeIssuerProfileHash } = require('./issuer-profile-store');
+const {verifyPersistedDraftSnapshot}=require('./draft-snapshot-integrity');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const RENDER_VERSION = 'invoice-pdf-v2-issuer-winansi';
@@ -144,14 +146,15 @@ function createQualifiedInvoiceDocumentStore({
             b.issuer_profile_hash AS binding_profile_hash,
             b.issuer_profile_version AS binding_profile_version,
             i.authorization_id,i.draft_id,i.attempt_id,i.provider,i.provider_invoice_id,
-            i.official_invoice_number,i.issued_snapshot,i.status AS invoice_status,
+            i.official_invoice_number,i.request_hash,i.issued_snapshot,i.status AS invoice_status,
             i.delivery_state AS invoice_delivery_state,i.provider_confirmed_at,
             i.materialized_at AS invoice_materialized_at,
             p.profile_version,p.legal_name,p.display_name,p.address_lines,p.city,p.region,
             p.postal_code,p.country_code,p.contact_email,p.contact_phone,p.tax_registrations,
             p.profile_hash,p.state AS profile_state,
             d.id AS source_document_id,d.content_sha256 AS source_document_sha256,
-            d.delivery_state AS source_delivery_state
+            d.content_type AS source_content_type,d.byte_length AS source_byte_length,
+            d.pdf_bytes AS source_pdf_bytes,d.delivery_state AS source_delivery_state
            FROM facturations_invoice_issuer_bindings AS b
            JOIN facturations_issued_invoices AS i
              ON i.business_id=b.business_id AND i.id=b.issued_invoice_id
@@ -174,9 +177,25 @@ function createQualifiedInvoiceDocumentStore({
           row.source_delivery_state !== 'NOT_AUTHORIZED') {
         throw new QualifiedInvoiceDocumentError('QUALIFIED_DOCUMENT_CHAIN_NOT_READY', 409);
       }
+      if (!verifyPersistedDraftSnapshot(row.issued_snapshot,row.request_hash)) {
+        throw new QualifiedInvoiceDocumentError('ISSUED_SNAPSHOT_STORAGE_INVALID',503);
+      }
       if (row.binding_profile_hash !== row.profile_hash ||
           Number(row.binding_profile_version) !== Number(row.profile_version)) {
         throw new QualifiedInvoiceDocumentError('ISSUER_PROFILE_PROVENANCE_MISMATCH', 409);
+      }
+      const issuerProfile = profileOf(row);
+      if (computeIssuerProfileHash(issuerProfile) !== row.profile_hash) {
+        throw new QualifiedInvoiceDocumentError('ISSUER_PROFILE_STORAGE_INVALID', 503);
+      }
+      if (row.source_content_type !== 'application/pdf' ||
+          !Buffer.isBuffer(row.source_pdf_bytes) ||
+          Number(row.source_byte_length) !== row.source_pdf_bytes.length ||
+          typeof row.source_document_sha256 !== 'string' ||
+          !/^[a-f0-9]{64}$/u.test(row.source_document_sha256) ||
+          crypto.createHash('sha256').update(row.source_pdf_bytes).digest('hex') !==
+            row.source_document_sha256) {
+        throw new QualifiedInvoiceDocumentError('SOURCE_DOCUMENT_STORAGE_INVALID', 503);
       }
       if (Number(row.issued_snapshot?.taxTotalCents) > 0 &&
           (!Array.isArray(row.tax_registrations) || row.tax_registrations.length < 1)) {
@@ -185,7 +204,7 @@ function createQualifiedInvoiceDocumentStore({
 
       let pdf;
       try {
-        pdf = validatePdf(await renderer(invoiceOf(row), profileOf(row)));
+        pdf = validatePdf(await renderer(invoiceOf(row), issuerProfile));
       } catch (error) {
         if (error instanceof QualifiedInvoiceDocumentError) throw error;
         if (error && typeof error.code === 'string') {

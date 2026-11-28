@@ -23,6 +23,7 @@ test('verified webhook envelope is branded only after provider-specific verifier
   let seen;
   const verifier=createEmailWebhookVerifier({
     providerKey:'TEST_SIGNED_PROVIDER',
+    verificationScheme:'TEST_HMAC_SHA256',
     async verifyAndParse(input){
       seen=input;
       assert.equal(input.providerKey,'TEST_SIGNED_PROVIDER');
@@ -38,6 +39,7 @@ test('verified webhook envelope is branded only after provider-specific verifier
   });
 
   assert.equal(envelope.providerKey,'TEST_SIGNED_PROVIDER');
+  assert.equal(envelope.verificationScheme,'TEST_HMAC_SHA256');
   assert.equal(envelope.evidence.eventType,'DELIVERED');
   assert.match(envelope.rawBodySha256,/^[a-f0-9]{64}$/);
   assert.equal(isVerifiedEmailWebhookEnvelope(envelope),true);
@@ -49,6 +51,7 @@ test('verified webhook envelope is branded only after provider-specific verifier
 test('provider verifier failure fails closed with 401 and produces no verified envelope',async()=>{
   const verifier=createEmailWebhookVerifier({
     providerKey:'TEST_SIGNED_PROVIDER',
+    verificationScheme:'TEST_HMAC_SHA256',
     async verifyAndParse(){
       throw new Error('bad signature');
     },
@@ -68,6 +71,7 @@ test('provider verifier failure fails closed with 401 and produces no verified e
 test('provider-specific verifier cannot return malformed or mismatched evidence',async()=>{
   const malformed=createEmailWebhookVerifier({
     providerKey:'TEST_SIGNED_PROVIDER',
+    verificationScheme:'TEST_HMAC_SHA256',
     async verifyAndParse(){
       return {...event(),eventType:'ACCEPTED'};
     },
@@ -80,6 +84,7 @@ test('provider-specific verifier cannot return malformed or mismatched evidence'
 
   const mismatch=createEmailWebhookVerifier({
     providerKey:'TEST_SIGNED_PROVIDER',
+    verificationScheme:'TEST_HMAC_SHA256',
     async verifyAndParse(){
       return {...event(),providerKey:'OTHER_PROVIDER'};
     },
@@ -92,14 +97,35 @@ test('provider-specific verifier cannot return malformed or mismatched evidence'
   );
 });
 
+test('verification scheme is required and validated when verifier is constructed',()=>{
+  assert.throws(
+    ()=>createEmailWebhookVerifier({
+      providerKey:'TEST_SIGNED_PROVIDER',
+      verificationScheme:'bad scheme with spaces',
+      async verifyAndParse(){return event();},
+    }),
+    error=>error instanceof EmailWebhookVerificationError &&
+      error.code==='INVALID_VERIFICATION_SCHEME'
+  );
+});
+
 test('raw body and headers are bounded and normalized before provider verification',async()=>{
   const verifier=createEmailWebhookVerifier({
     providerKey:'TEST_SIGNED_PROVIDER',
+    verificationScheme:'TEST_HMAC_SHA256',
     async verifyAndParse(){return event();},
   });
 
   await assert.rejects(
     verifier.verify({headers:{'x-test':'a\nspoof'},rawBody:Buffer.from('payload')}),
+    error=>error instanceof EmailWebhookVerificationError &&
+      error.code==='INVALID_WEBHOOK_HEADERS'
+  );
+  await assert.rejects(
+    verifier.verify({
+      headers:{'X-Test-Signature':'first','x-test-signature':'second'},
+      rawBody:Buffer.from('payload'),
+    }),
     error=>error instanceof EmailWebhookVerificationError &&
       error.code==='INVALID_WEBHOOK_HEADERS'
   );

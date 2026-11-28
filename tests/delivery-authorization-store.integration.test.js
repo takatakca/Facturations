@@ -133,7 +133,10 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       snapshot: draft.preview,
     });
 
-    const prepared = await attempts.prepare({ authorizationId: issuanceAuthorization.id });
+    const prepared = await attempts.prepare({
+      authorizationId: issuanceAuthorization.id,
+      providerPlanHash: payload.providerPlanHash,
+    });
     const executor = createProviderIssuanceExecutor({
       attemptStore: attempts,
       adapter: {
@@ -148,7 +151,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     });
     const confirmed = await executor.execute({ attemptId: prepared.id, payload });
     const issued = await registry.materialize({ attemptId: confirmed.id });
-    await documents.materialize({ issuedInvoiceId: issued.id });
+    const sourceDocument = await documents.materialize({ issuedInvoiceId: issued.id });
 
     const profile = await profiles.createVerified({
       confirmation: 'VERIFY_ISSUER_PROFILE',
@@ -199,6 +202,30 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
         error.statusCode === 409
     );
 
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_email_provider_evidence
+           (business_id,qualified_document_id,qualified_document_sha256,operation_key,
+            provider_key,provider_message_id,provider_event_id,event_type,occurred_at,
+            recipient_email,source_mode,evidence_hash)
+         VALUES ($1,$2,$3,$4,'STAGING_EMAIL',$5,$6,'DELIVERED',$7,$8,
+                 'SYNTHETIC_TEST',$9)`,
+        [
+          businessId,
+          qualified.id,
+          qualified.contentSha256,
+          stagingOperationKey,
+          providerMessageId,
+          'direct-forged-email-hash-' + crypto.randomUUID(),
+          deliveredEvent.occurredAt,
+          recipient,
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct email evidence insert with forged evidence_hash must fail in PostgreSQL'
+    );
+
     const deliveredEvidence = await providerEvidence.ingestSynthetic({
       qualifiedDocumentId: qualified.id,
       operationKey: stagingOperationKey,
@@ -210,6 +237,7 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(deliveredEvidence.providerMessageId, providerMessageId);
     assert.equal(deliveredEvidence.eventType, 'DELIVERED');
     assert.equal(deliveredEvidence.sourceMode, 'SYNTHETIC_TEST');
+    assert.equal(deliveredEvidence.signedWebhookVerified, false);
     assert.equal(deliveredEvidence.realWebhookVerified, false);
     assert.match(deliveredEvidence.evidenceHash, /^[a-f0-9]{64}$/);
 
@@ -267,78 +295,214 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(summaries[0].lastBouncedAt, '2026-09-26T16:35:00.000Z');
     assert.equal(summaries[0].lastComplaintAt, null);
 
-    const signedProviderEvidence = createEmailProviderEvidenceStore({
-      pool,
-      businessId,
-      providerKey: 'TEST_SIGNED_PROVIDER',
+
+    const crossDraft = await drafts.createDraft({
+      currency: 'CAD',
+      customer: {
+        name: 'Synthetic Cross-Invoice Customer',
+        email: recipient,
+        address: '456 Example Street',
+      },
+      invoiceDate: '2026-09-26',
+      dueDate: '2026-10-26',
+      notes: 'Synthetic cross-invoice delivery provenance test',
+      lines: [{
+        description: 'Synthetic cross-invoice service',
+        quantity: 1,
+        unitPriceCents: 2600,
+        discountCents: 0,
+        taxable: false,
+      }],
+      taxes: [],
+    }, 'delivery_cross_' + crypto.randomBytes(16).toString('hex'));
+
+    await approvals.approveDraft({
+      confirmation: 'APPROVE_DRAFT_ONLY',
+      draftId: crossDraft.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+      expectedTotalCents: 2600,
+      expectedCustomerEmail: recipient,
     });
-    const signedVerifier = createEmailWebhookVerifier({
-      providerKey: 'TEST_SIGNED_PROVIDER',
-      async verifyAndParse() {
-        return {
-          providerKey: 'TEST_SIGNED_PROVIDER',
-          eventId: 'signed-event-' + crypto.randomUUID(),
-          providerMessageId: 'signed-message-' + crypto.randomUUID(),
-          eventType: 'COMPLAINT',
-          occurredAt: '2026-09-26T16:40:00.000Z',
-          recipientEmail: recipient,
-        };
+
+    const crossIssuanceAuthorization = await authorizations.authorize({
+      confirmation: 'AUTHORIZE_ISSUANCE_PENDING_PROVIDER',
+      draftId: crossDraft.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+      expectedTotalCents: 2600,
+      expectedCustomerEmail: recipient,
+      provider: 'WAVE',
+    });
+
+    const crossPayload = buildWaveIssuancePreflight({
+      businessId: 'wave-business-example',
+      customerId: 'wave-customer-delivery-cross',
+      productIds: ['wave-product-delivery-cross'],
+      salesTaxes: {},
+      snapshot: crossDraft.preview,
+    });
+    const crossPrepared = await attempts.prepare({
+      authorizationId: crossIssuanceAuthorization.id,
+      providerPlanHash: crossPayload.providerPlanHash,
+    });
+    const crossExecutor = createProviderIssuanceExecutor({
+      attemptStore: attempts,
+      adapter: {
+        async createInvoice() {
+          return {
+            status: 'CONFIRMED',
+            providerInvoiceId: 'wave-delivery-cross-' + crypto.randomUUID(),
+            providerInvoiceNumber: 'DELIVERY-CROSS-' + crypto.randomUUID().slice(0, 8),
+          };
+        },
       },
     });
-    const signedEnvelope = await signedVerifier.verify({
-      headers: { 'x-test-signature': 'verified-by-test-verifier' },
-      rawBody: Buffer.from('{"syntheticSignedWebhook":true}', 'utf8'),
+    const crossConfirmed = await crossExecutor.execute({
+      attemptId: crossPrepared.id,
+      payload: crossPayload,
     });
-    assert.match(signedEnvelope.rawBodySha256, /^[a-f0-9]{64}$/);
+    const crossIssued = await registry.materialize({ attemptId: crossConfirmed.id });
+
+    const wrongProfileHash =
+      (profile.profileHash[0] === 'a' ? 'b' : 'a') + profile.profileHash.slice(1);
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_invoice_issuer_bindings
+           (business_id,issued_invoice_id,issuer_profile_id,issuer_profile_hash,
+            issuer_profile_version,bound_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,'BIND_VERIFIED_ISSUER_TO_INVOICE')`,
+        [
+          businessId,
+          crossIssued.id,
+          profile.id,
+          wrongProfileHash,
+          profile.version,
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23503',
+      'issuer binding cannot claim profile provenance that does not match the profile row'
+    );
+
+    const crossBinding = await bindings.bind({
+      confirmation: 'BIND_VERIFIED_ISSUER_TO_INVOICE',
+      issuedInvoiceId: crossIssued.id,
+      issuerProfileId: profile.id,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+
+    const foreignSourcePdf = Buffer.concat([
+      Buffer.from('%PDF-1.4\n', 'ascii'),
+      Buffer.alloc(128, 66),
+      Buffer.from('\n%%EOF\n', 'ascii'),
+    ]);
+    const foreignSourcePdfHash = crypto
+      .createHash('sha256')
+      .update(foreignSourcePdf)
+      .digest('hex');
 
     await assert.rejects(
-      signedProviderEvidence.ingestVerifiedWebhook({
-        qualifiedDocumentId: qualified.id,
-        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
-        verificationScheme: 'TEST_HMAC_SHA256',
-        verifiedEnvelope: { ...signedEnvelope },
-      }),
-      error => error instanceof EmailProviderEvidenceError &&
-        error.code === 'VERIFIED_WEBHOOK_ENVELOPE_REQUIRED' &&
-        error.statusCode === 403
+      pool.query(
+        `INSERT INTO facturations_qualified_invoice_documents
+           (business_id,binding_id,issued_invoice_id,source_document_id,
+            source_document_sha256,issuer_profile_id,issuer_profile_hash,
+            issuer_profile_version,render_version,content_sha256,byte_length,pdf_bytes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          businessId,
+          crossBinding.id,
+          crossIssued.id,
+          sourceDocument.id,
+          sourceDocument.contentSha256,
+          profile.id,
+          profile.profileHash,
+          profile.version,
+          'synthetic-cross-provenance-v1',
+          foreignSourcePdfHash,
+          foreignSourcePdf.length,
+          foreignSourcePdf,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'qualified PDF cannot reuse a source document from another issued invoice'
     );
 
-    const signedOperationKey = 'mail_' + crypto.randomBytes(32).toString('base64url');
-    const signedEvidence = await signedProviderEvidence.ingestVerifiedWebhook({
-      qualifiedDocumentId: qualified.id,
-      operationKey: signedOperationKey,
-      verificationScheme: 'TEST_HMAC_SHA256',
-      verifiedEnvelope: signedEnvelope,
-    });
-    assert.equal(signedEvidence.sourceMode, 'SIGNED_WEBHOOK');
-    assert.equal(signedEvidence.signatureVerified, true);
-    assert.equal(signedEvidence.realWebhookVerified, true);
-    assert.equal(signedEvidence.webhookBodySha256, signedEnvelope.rawBodySha256);
-    assert.equal(signedEvidence.verificationScheme, 'TEST_HMAC_SHA256');
-    assert.equal(signedEvidence.eventType, 'COMPLAINT');
-
-    const signedRetry = await signedProviderEvidence.ingestVerifiedWebhook({
-      qualifiedDocumentId: qualified.id,
-      operationKey: signedOperationKey,
-      verificationScheme: 'TEST_HMAC_SHA256',
-      verifiedEnvelope: signedEnvelope,
-    });
-    assert.equal(signedRetry.id, signedEvidence.id);
-
-    const summariesAfterSigned = await evidenceSummary.getByQualifiedDocument({
-      qualifiedDocumentId: qualified.id,
-    });
-    assert.equal(summariesAfterSigned.length, 2);
-    const signedSummary = summariesAfterSigned.find(
-      row => row.providerKey === 'TEST_SIGNED_PROVIDER'
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_authorizations
+           (business_id,issued_invoice_id,qualified_document_id,qualified_document_sha256,
+            expected_recipient_email,recipient_snapshot_hash,authorized_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'AUTHORIZE_QUALIFIED_PDF_DELIVERY')`,
+        [
+          businessId,
+          crossIssued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          crypto.randomBytes(32).toString('hex'),
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23503',
+      'delivery authorization cannot bind a qualified PDF to another issued invoice'
     );
-    assert.ok(signedSummary);
-    assert.equal(signedSummary.eventCount, 1);
-    assert.equal(signedSummary.latestEventType, 'COMPLAINT');
-    assert.equal(signedSummary.hasComplaint, true);
-    assert.equal(signedSummary.proofScope, 'SIGNED_WEBHOOK_PRESENT');
-    assert.equal(signedSummary.syntheticOnly, false);
-    assert.equal(signedSummary.hasSignedWebhook, true);
+
+    const crossSourceDocument = await documents.materialize({
+      issuedInvoiceId: crossIssued.id,
+    });
+    assert.equal(crossSourceDocument.issuedInvoiceId, crossIssued.id);
+
+    const crossQualified = await qualifiedDocuments.materialize({
+      bindingId: crossBinding.id,
+    });
+    assert.equal(crossQualified.issuedInvoiceId, crossIssued.id);
+
+    const crossDeliveryAuthorized = await delivery.authorize({
+      confirmation: 'AUTHORIZE_QUALIFIED_PDF_DELIVERY',
+      qualifiedDocumentId: crossQualified.id,
+      expectedRecipientEmail: recipient,
+      ownerId: owner.id,
+      sessionToken: session.token,
+    });
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_attempts
+           (business_id,authorization_id,issued_invoice_id,qualified_document_id,
+            provider,operation_key,state,started_at,finished_at,provider_message_id)
+         VALUES ($1,$2,$3,$4,'SIMULATED_EMAIL',$5,'CONFIRMED',now(),now(),$6)`,
+        [
+          businessId,
+          crossDeliveryAuthorized.id,
+          crossIssued.id,
+          crossQualified.id,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+          'direct-confirmed-' + crypto.randomUUID(),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'delivery attempt cannot be inserted directly as CONFIRMED'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_attempts
+           (business_id,authorization_id,issued_invoice_id,qualified_document_id,
+            provider,operation_key,state)
+         VALUES ($1,$2,$3,$4,'SIMULATED_EMAIL',$5,'PREPARED')`,
+        [
+          businessId,
+          crossDeliveryAuthorized.id,
+          crossIssued.id,
+          crossQualified.id,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct PREPARED attempt without its append-only ledger event must fail at commit'
+    );
 
     await assert.rejects(
       delivery.authorize({
@@ -351,6 +515,26 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
       error => error instanceof DeliveryAuthorizationError &&
         error.code === 'RECIPIENT_MISMATCH' &&
         error.statusCode === 409
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_authorizations
+           (business_id,issued_invoice_id,qualified_document_id,qualified_document_sha256,
+            expected_recipient_email,recipient_snapshot_hash,authorized_by,confirmation)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'AUTHORIZE_QUALIFIED_PDF_DELIVERY')`,
+        [
+          businessId,
+          issued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          crypto.randomBytes(32).toString('hex'),
+          owner.id,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct delivery authorization with forged recipient_snapshot_hash must fail in PostgreSQL'
     );
 
     const input = {
@@ -384,6 +568,42 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(deliveryAttempt.emailed, false);
 
     await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_attempts
+            SET state='CONFIRMED',
+                started_at=now(),
+                finished_at=now(),
+                provider_message_id=$3
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, deliveryAttempt.id, 'forged-message-' + crypto.randomUUID()]
+      ),
+      error => error && error.code === '23514',
+      'direct PREPARED to CONFIRMED transition must fail in PostgreSQL'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE facturations_delivery_attempts
+            SET state='IN_PROGRESS',started_at=now()
+          WHERE business_id=$1 AND id=$2`,
+        [businessId, deliveryAttempt.id]
+      ),
+      error => error && error.code === '23514',
+      'state transition without matching append-only event must fail at commit'
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_events
+           (business_id,attempt_id,from_state,to_state,reason_code)
+         VALUES ($1,$2,'PREPARED','CONFIRMED','PROVIDER_CONFIRMED')`,
+        [businessId, deliveryAttempt.id]
+      ),
+      error => error && error.code === '23514',
+      'delivery event cannot claim a state transition that did not occur'
+    );
+
+    await assert.rejects(
       deliveryReceipts.materialize({ attemptId: deliveryAttempt.id }),
       error => error instanceof DeliveryReceiptError &&
         error.code === 'CONFIRMED_DELIVERY_ATTEMPT_REQUIRED' &&
@@ -409,6 +629,179 @@ test('delivery authorization binds OWNER consent to exact qualified PDF and exac
     assert.equal(delivered.state, 'CONFIRMED');
     assert.ok(delivered.providerMessageId.startsWith('simulated-message-'));
     assert.equal(delivered.emailed, true);
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_receipts
+           (business_id,attempt_id,authorization_id,issued_invoice_id,qualified_document_id,
+            qualified_document_sha256,expected_recipient_email,recipient_snapshot_hash,
+            provider,provider_message_id,operation_key,receipt_hash,provider_confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SIMULATED_EMAIL',$9,$10,$11,$12)`,
+        [
+          businessId,
+          delivered.id,
+          authorized.id,
+          issued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          authorized.recipientSnapshotHash,
+          delivered.providerMessageId,
+          delivered.operationKey,
+          crypto.randomBytes(32).toString('hex'),
+          delivered.finishedAt,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct delivery receipt with forged receipt_hash must fail in PostgreSQL'
+    );
+
+    const signedProviderEvidence = createEmailProviderEvidenceStore({
+      pool,
+      businessId,
+      providerKey: 'SIMULATED_EMAIL',
+    });
+    const signedVerifier = createEmailWebhookVerifier({
+      providerKey: 'SIMULATED_EMAIL',
+      verificationScheme: 'TEST_HMAC_SHA256',
+      async verifyAndParse() {
+        return {
+          providerKey: 'SIMULATED_EMAIL',
+          eventId: 'signed-event-' + crypto.randomUUID(),
+          providerMessageId: delivered.providerMessageId,
+          eventType: 'COMPLAINT',
+          occurredAt: '2026-09-26T16:40:00.000Z',
+          recipientEmail: recipient,
+        };
+      },
+    });
+    const signedEnvelope = await signedVerifier.verify({
+      headers: { 'x-test-signature': 'verified-by-test-verifier' },
+      rawBody: Buffer.from('{"syntheticSignedWebhook":true}', 'utf8'),
+    });
+    assert.match(signedEnvelope.rawBodySha256, /^[a-f0-9]{64}$/);
+    assert.equal(signedEnvelope.verificationScheme, 'TEST_HMAC_SHA256');
+
+    await assert.rejects(
+      signedProviderEvidence.ingestVerifiedWebhook({
+        qualifiedDocumentId: qualified.id,
+        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
+        verificationScheme: 'FAKE_PRODUCTION_SCHEME',
+        verifiedEnvelope: signedEnvelope,
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'INVALID_VERIFIED_WEBHOOK_REQUEST'
+    );
+
+    await assert.rejects(
+      signedProviderEvidence.ingestVerifiedWebhook({
+        qualifiedDocumentId: qualified.id,
+        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
+        verifiedEnvelope: { ...signedEnvelope },
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'VERIFIED_WEBHOOK_ENVELOPE_REQUIRED' &&
+        error.statusCode === 403
+    );
+
+    await assert.rejects(
+      signedProviderEvidence.ingestVerifiedWebhook({
+        qualifiedDocumentId: qualified.id,
+        operationKey: 'mail_' + crypto.randomBytes(32).toString('base64url'),
+        verifiedEnvelope: signedEnvelope,
+      }),
+      error => error instanceof EmailProviderEvidenceError &&
+        error.code === 'SIGNED_WEBHOOK_DELIVERY_BINDING_REQUIRED' &&
+        error.statusCode === 409
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_email_provider_evidence
+           (business_id,qualified_document_id,qualified_document_sha256,operation_key,
+            provider_key,provider_message_id,provider_event_id,event_type,occurred_at,
+            recipient_email,source_mode,evidence_hash,webhook_body_sha256,verification_scheme)
+         VALUES ($1,$2,$3,$4,'SIMULATED_EMAIL',$5,$6,'DELIVERED',$7,$8,
+                 'SIGNED_WEBHOOK',$9,$10,'TEST_HMAC_SHA256')`,
+        [
+          businessId,
+          qualified.id,
+          qualified.contentSha256,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+          delivered.providerMessageId,
+          'direct-signed-mismatch-' + crypto.randomUUID(),
+          '2026-09-26T16:39:00.000Z',
+          recipient,
+          crypto.randomBytes(32).toString('hex'),
+          crypto.randomBytes(32).toString('hex'),
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct signed webhook evidence must bind to the exact confirmed delivery attempt'
+    );
+
+    const signedOperationKey = delivered.operationKey;
+    const signedEvidence = await signedProviderEvidence.ingestVerifiedWebhook({
+      qualifiedDocumentId: qualified.id,
+      operationKey: signedOperationKey,
+      verifiedEnvelope: signedEnvelope,
+    });
+    assert.equal(signedEvidence.sourceMode, 'SIGNED_WEBHOOK');
+    assert.equal(signedEvidence.signatureVerified, true);
+    assert.equal(signedEvidence.signedWebhookVerified, true);
+    assert.equal(signedEvidence.realWebhookVerified, false);
+    assert.equal(signedEvidence.webhookBodySha256, signedEnvelope.rawBodySha256);
+    assert.equal(signedEvidence.verificationScheme, 'TEST_HMAC_SHA256');
+    assert.equal(signedEvidence.eventType, 'COMPLAINT');
+
+    const signedRetry = await signedProviderEvidence.ingestVerifiedWebhook({
+      qualifiedDocumentId: qualified.id,
+      operationKey: signedOperationKey,
+      verifiedEnvelope: signedEnvelope,
+    });
+    assert.equal(signedRetry.id, signedEvidence.id);
+
+    const summariesAfterSigned = await evidenceSummary.getByQualifiedDocument({
+      qualifiedDocumentId: qualified.id,
+    });
+    assert.equal(summariesAfterSigned.length, 2);
+    const signedSummary = summariesAfterSigned.find(
+      row => row.providerKey === 'SIMULATED_EMAIL'
+    );
+    assert.ok(signedSummary);
+    assert.equal(signedSummary.eventCount, 1);
+    assert.equal(signedSummary.latestEventType, 'COMPLAINT');
+    assert.equal(signedSummary.hasComplaint, true);
+    assert.equal(signedSummary.proofScope, 'SIGNED_WEBHOOK_PRESENT');
+    assert.equal(signedSummary.syntheticOnly, false);
+    assert.equal(signedSummary.hasSignedWebhook, true);
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO facturations_delivery_receipts
+           (business_id,attempt_id,authorization_id,issued_invoice_id,qualified_document_id,
+            qualified_document_sha256,expected_recipient_email,recipient_snapshot_hash,
+            provider,provider_message_id,operation_key,receipt_hash,provider_confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          businessId,
+          delivered.id,
+          authorized.id,
+          issued.id,
+          qualified.id,
+          qualified.contentSha256,
+          recipient.toLowerCase(),
+          authorized.recipientSnapshotHash,
+          'SIMULATED_EMAIL',
+          delivered.providerMessageId,
+          'mail_' + crypto.randomBytes(32).toString('base64url'),
+          crypto.randomBytes(32).toString('hex'),
+          delivered.finishedAt,
+        ]
+      ),
+      error => error && error.code === '23514',
+      'direct delivery receipt must bind to the exact confirmed attempt operation key'
+    );
 
     const receipt = await deliveryReceipts.materialize({ attemptId: delivered.id });
     assert.equal(receipt.attemptId, delivered.id);

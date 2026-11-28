@@ -2,7 +2,7 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
-const { TextDecoder } = require('node:util');
+const { readJsonBody } = require('./http-json-body');
 const { listBusinesses, WaveError } = require('./wave-client');
 const { previewDraft, DraftValidationError } = require('./draft-preview');
 const { StoreError } = require('./draft-store');
@@ -14,7 +14,6 @@ const { resolveReadOnlyStaff } = require('./staff-read-access');
 const { verifyIntegrationBearer, IntegrationAuthError } = require('./integration-auth');
 const { IntegrationReplayError } = require('./integration-replay-guard');
 
-const MAX_BODY_BYTES = 32768;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 const UNSIGNED_INTEGER = /^[0-9]+$/u;
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
@@ -49,6 +48,7 @@ function sendJson(response, statusCode, body) {
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    ...(statusCode === 413 ? { Connection: 'close' } : {}),
   });
   response.end(JSON.stringify(body));
 }
@@ -73,40 +73,6 @@ function isAuthorized(provided, expected) {
   const actualDigest = crypto.createHash('sha256').update(provided).digest();
   const expectedDigest = crypto.createHash('sha256').update(expected).digest();
   return crypto.timingSafeEqual(actualDigest, expectedDigest);
-}
-
-function readJson(request) {
-  return new Promise((resolve, reject) => {
-    let length = 0;
-    const chunks = [];
-    let finished = false;
-    function fail(code, statusCode) {
-      if (finished) return;
-      finished = true;
-      reject({ code, statusCode });
-    }
-    const declared = Number(request.headers['content-length']);
-    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-      request.resume();
-      return fail('BODY_TOO_LARGE', 413);
-    }
-    request.on('data', (chunk) => {
-      if (finished) return;
-      length += chunk.length;
-      if (length > MAX_BODY_BYTES) {
-        chunks.length = 0;
-        return fail('BODY_TOO_LARGE', 413);
-      }
-      chunks.push(chunk);
-    });
-    request.on('end', () => {
-      if (finished) return;
-      finished = true;
-      try { resolve(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)))); }
-      catch { reject({ code: 'INVALID_JSON', statusCode: 400 }); }
-    });
-    request.on('error', () => fail('INVALID_REQUEST', 400));
-  });
 }
 
 function parseListOptions(searchParams) {
@@ -523,7 +489,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
           return sendJson(response, 415, { error: 'UNSUPPORTED_MEDIA_TYPE' });
         }
         try {
-          const payload = await readJson(request);
+          const payload = await readJsonBody(request);
           try {
             await integrationReplayGuard.consume({
               jti: principal.jti,
@@ -785,7 +751,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
         return sendJson(response, 415, { error: 'UNSUPPORTED_MEDIA_TYPE' });
       }
       try {
-        const payload = await readJson(request);
+        const payload = await readJsonBody(request);
         if (isPreview) return sendJson(response, 200, previewDraft(payload));
         const key = request.headers['idempotency-key'];
         const stored = await draftStore.createDraft(payload, key);

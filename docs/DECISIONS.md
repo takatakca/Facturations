@@ -1,0 +1,32 @@
+# Facturations — Décisions et contraintes
+
+Historique de décisions techniques observées, vérifié au **2026-10-28**. Ce document distingue expressément les décisions déjà inscrites au dépôt des propositions encore soumises à revue.
+
+| ID | Décision/contrainte | Source | État |
+| --- | --- | --- | --- |
+| D-001 | Facturations reste une application autonome FR/EN distincte du tableau de bord général GROUPE TAKATAK. | `AGENTS.md`, `docs/product-blueprint.md` | Adoptée en architecture |
+| D-002 | Identité TAKATAK maître, mais appels serveur-à-serveur signés, droits OWNER/STAFF et `business_id` validés par Facturations; jamais de secrets dans le navigateur. | `docs/takatak-dashboard-integration-handoff-v1.md` | Contrat du code actuel; homologation réelle en attente |
+| D-003 | Brouillon → revue humaine → autorisation d'émission → livraison explicitement et séparément autorisée. Aucune IA ne déclenche l'émission ou l'envoi. | `AGENTS.md`, `README.md` | Invariant obligatoire |
+| D-004 | PostgreSQL isolé, migrations append-only, privilèges minimaux et restauration testée; jamais de modifications des autres bases TAKATAK. | `AGENTS.md`, `docs/staging-go-no-go.md` | Obligatoire |
+| D-005 | SHA exact, CI, approbation indépendante, staging HTTPS et GO/NO-GO réel précèdent la production. | `docs/final-go-live-runbook.md` | Obligatoire |
+| D-006 | Les données Stripe synthétiques et `SIMULATED_EMAIL` ne constituent jamais une preuve de paiement réel ou de livraison. | `docs/stripe-verified-payment-webhook.md`, `README.md` | Obligatoire |
+| D-007 | Aucun écrasement de `main`, aucun force-push destructif; changements via branches et PR compatibles avec la protection constatée. | `AGENTS.md`; GitHub `main` protected | Obligatoire |
+| D-008 | Ajouter cinq documents de relève et une vérification CI sans activer de fonctionnalités financières. | Demande de reprise du 2026-10-14 | En PR |
+| D-009 | Les événements Stripe de test ne doivent jamais alimenter les preuves de paiement en production; l'option test ne peut être activée qu'en staging isolé. | `docs/stripe-verified-payment-webhook.md`, [PR #169](https://github.com/takatakca/Facturations/pull/169) | Invariant documenté, verrou technique en PR non fusionnée |
+| D-010 | Le statut readiness doit être indisponible après le déclenchement du drainage du serveur, même si une vérification SQL déjà en cours retourne ensuite avec succès. | `src/readiness-probe.js`, [PR #170](https://github.com/takatakca/Facturations/pull/170) et `docs/final-go-live-runbook.md` | Correction et tests en PR; validation réelle de staging en attente |
+| D-011 | Si la fermeture du serveur HTTP échoue, le nettoyage du pool PostgreSQL doit néanmoins être tenté et l'échec signalé; les appels concurrents attendent la même fermeture. La limite de temps couvre les opérations HTTP et DB sans marquer un dépassement comme succès. Des tests synthétiques précèdent les exercices staging. | `src/graceful-shutdown.js`, [PR #171](https://github.com/takatakca/Facturations/pull/171), `docs/final-go-live-runbook.md` | Correctif proposé en PR; staging non homologué |
+
+## À ne pas considérer comme décidé
+
+- **Plateforme du staging/production :** MochaHost et la proposition Coolify/Contabo #159 coexistent dans les documents; aucun déploiement constaté.
+- **Activation Wave réelle :** aucune autorisation transactionnelle, preuve de réconciliation ni validation d'un compte de test n'est constatée.
+- **Fournisseur email et consentement client :** non homologués; les actions externes restent désactivées.
+- **Environnement Stripe réel et remboursements :** le traitement de preuves webhook n'autorise pas de créer ou rembourser une transaction.
+- **Conformité légale/fiscale et rétention :** revue indépendante exigée; ne jamais inventer de numéro de taxes ou de certification.
+
+| D-012 | **Proposition technique en revue** : si le hook readiness `markDraining()` échoue, l'arrêt HTTP/DB reste obligatoire; sortie en échec, aucun succès implicite. | [PR #171](https://github.com/takatakca/Facturations/pull/171) SHA `efbe5236ca9289f7e49e497e99a0f61cea2fe7fc` | Poussé, revue et validation staging en attente |
+| D-013 | **Séparation existante confirmée** : Facturations B2B/Wave est distinct des reçus restaurant Food Hub/ON2GO/Clover/QCMEV; aucun lien de code interproduits n'est attesté et aucune intégration automatique n'est autorisée par cette note. | Addendum Google Drive du 2026-10-27 et [relève du 2026-10-28](https://docs.google.com/document/d/1zp7-QT51to9iJx4zK0TeJh-lO3rVI7uWspXQZdvyUX8/edit) | Architecture à préserver; tout nouveau contrat nécessite validation distincte |
+
+## Procédure pour consigner une nouvelle décision
+
+Ajouter la date, l'ID, la décision effectivement autorisée, ses implications de sécurité, sa source (PR/issue/runbook) et le SHA pertinent. Ne pas transformer une recommandation d'agent en décision du propriétaire sans preuve.

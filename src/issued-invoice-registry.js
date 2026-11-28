@@ -1,5 +1,7 @@
 'use strict';
 
+const {verifyPersistedDraftSnapshot}=require('./draft-snapshot-integrity');
+
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
 class IssuedInvoiceRegistryError extends Error {
@@ -118,6 +120,9 @@ function createIssuedInvoiceRegistry({ pool, businessId }) {
           chain.draft_status !== 'DRAFT' || chain.provider !== attempt.provider ||
           chain.authorization_request_hash !== chain.draft_request_hash) {
         throw new IssuedInvoiceRegistryError('ISSUANCE_CHAIN_MISMATCH', 409);
+      }
+      if (!verifyPersistedDraftSnapshot(chain.snapshot,chain.draft_request_hash)) {
+        throw new IssuedInvoiceRegistryError('ISSUANCE_SNAPSHOT_INTEGRITY_MISMATCH',409);
       }
       if (Number(chain.expected_total_cents) !== chain.snapshot?.totalCents ||
           typeof chain.snapshot?.customer?.email !== 'string' ||

@@ -45,14 +45,18 @@ function occurredAt(value){
   return new Date(ms).toISOString();
 }
 function normalizeEvent(value){
-  if(!value || typeof value!=='object' || Array.isArray(value) ||
-     Object.keys(value).sort().join(',')!==
-       'amountCents,currency,eventId,eventType,occurredAt,providerKey,providerTransactionId'){
+  if(!value || typeof value!=='object' || Array.isArray(value)){
     throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT');
   }
   const type=value.eventType;
   if(typeof type!=='string' || !EVENT_TYPES.has(type)){
     throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT_TYPE');
+  }
+  const expectedKeys=type==='REFUND_ISSUED'
+    ? 'amountCents,currency,eventId,eventType,occurredAt,providerKey,providerTransactionId,relatedProviderTransactionId'
+    : 'amountCents,currency,eventId,eventType,occurredAt,providerKey,providerTransactionId';
+  if(Object.keys(value).sort().join(',')!==expectedKeys){
+    throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT');
   }
   if(value.currency!=='CAD') throw new PaymentEvidenceError('INVALID_PAYMENT_CURRENCY');
   return Object.freeze({
@@ -61,6 +65,12 @@ function normalizeEvent(value){
     providerTransactionId:boundedText(
       value.providerTransactionId,'INVALID_PAYMENT_TRANSACTION_ID'
     ),
+    relatedProviderTransactionId:type==='REFUND_ISSUED'
+      ? boundedText(
+          value.relatedProviderTransactionId,
+          'INVALID_RELATED_PAYMENT_TRANSACTION_ID'
+        )
+      : null,
     eventType:type,
     amountCents:amount(value.amountCents),
     currency:'CAD',
@@ -73,6 +83,7 @@ function canonical({issuedInvoiceId,event,sourceMode}){
     providerKey:event.providerKey,
     providerEventId:event.eventId,
     providerTransactionId:event.providerTransactionId,
+    relatedProviderTransactionId:event.relatedProviderTransactionId,
     eventType:event.eventType,
     amountCents:event.amountCents,
     currency:event.currency,
@@ -93,6 +104,7 @@ function resultOf(row){
     providerKey:row.provider_key,
     providerEventId:row.provider_event_id,
     providerTransactionId:row.provider_transaction_id,
+    relatedPaymentEvidenceId:row.related_payment_evidence_id||null,
     eventType:row.event_type,
     amountCents:Number(row.amount_cents),
     currency:row.currency,
@@ -134,8 +146,90 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
        Object.keys(input).sort().join(',')!=='event,issuedInvoiceId'){
       throw new PaymentEvidenceError('INVALID_SYNTHETIC_PAYMENT_REQUEST');
     }
-    const issuedInvoiceId=uuid(input.issuedInvoiceId,'INVALID_ISSUED_INVOICE_ID');
-    const event=normalizeEvent(input.event);
+    return ingest({
+      issuedInvoiceId:input.issuedInvoiceId,
+      rawEvent:input.event,
+      sourceMode:'SYNTHETIC_TEST',
+      webhookBodySha256:null,
+      verificationScheme:null,
+    });
+  }
+
+  // Stripe-signed webhook evidence. Callers must pass the output of
+  // verifyStripeWebhook(): the signature was verified by Facturations itself.
+  async function ingestVerifiedStripe(input){
+    if(!input || typeof input!=='object' || Array.isArray(input) ||
+       Object.keys(input).sort().join(',')!=='event,issuedInvoiceId,rawBodySha256,verificationScheme'){
+      throw new PaymentEvidenceError('INVALID_VERIFIED_PAYMENT_REQUEST');
+    }
+    if(provider!=='STRIPE') throw new PaymentEvidenceError('PAYMENT_PROVIDER_KEY_MISMATCH',409);
+    if(input.verificationScheme!=='STRIPE_SIGNATURE_V1' ||
+       typeof input.rawBodySha256!=='string' || !/^[a-f0-9]{64}$/u.test(input.rawBodySha256)){
+      throw new PaymentEvidenceError('INVALID_WEBHOOK_PROVENANCE');
+    }
+    return ingest({
+      issuedInvoiceId:input.issuedInvoiceId,
+      rawEvent:input.event,
+      sourceMode:'VERIFIED_PROVIDER_WEBHOOK',
+      webhookBodySha256:input.rawBodySha256,
+      verificationScheme:'STRIPE_SIGNATURE_V1',
+    });
+  }
+
+  /** Issued invoice of a recorded PAYMENT_RECEIVED for this provider transaction, or null. */
+  async function findIssuedInvoiceByPaymentTransaction(transactionId){
+    const id=boundedText(transactionId,'INVALID_PAYMENT_TRANSACTION_ID');
+    const result=await pool.query(
+      `SELECT issued_invoice_id
+         FROM facturations_payment_evidence
+        WHERE business_id=$1 AND provider_key=$2
+          AND provider_transaction_id=$3 AND event_type='PAYMENT_RECEIVED'`,
+      [tenant,provider,id]
+    );
+    return result.rows.length===1 ? result.rows[0].issued_invoice_id : null;
+  }
+
+  /** True when evidence of this type exists for this provider transaction. */
+  async function hasEvidenceForTransaction(transactionId,eventType){
+    const id=boundedText(transactionId,'INVALID_PAYMENT_TRANSACTION_ID');
+    if(!EVENT_TYPES.has(eventType)) throw new PaymentEvidenceError('INVALID_PAYMENT_EVENT_TYPE');
+    const result=await pool.query(
+      `SELECT 1 FROM facturations_payment_evidence
+        WHERE business_id=$1 AND provider_key=$2 AND provider_transaction_id=$3 AND event_type=$4`,
+      [tenant,provider,id,eventType]
+    );
+    return result.rows.length>0;
+  }
+
+  /** Keeps a verified Stripe reversal whose payment is not recorded yet. Idempotent. */
+  async function recordPendingStripeReversal({kind,eventId,paymentIntent,amountCents,occurredAt:at,rawBodySha256}){
+    if(provider!=='STRIPE') throw new PaymentEvidenceError('PAYMENT_PROVIDER_KEY_MISMATCH',409);
+    await pool.query(
+      `INSERT INTO facturations_stripe_pending_reversals
+         (business_id,reversal_kind,provider_event_id,payment_intent_id,amount_cents,currency,
+          occurred_at,webhook_body_sha256,verification_scheme)
+       VALUES ($1,$2,$3,$4,$5,'CAD',$6,$7,'STRIPE_SIGNATURE_V1')
+       ON CONFLICT (business_id,provider_event_id) DO NOTHING`,
+      [tenant,kind,eventId,paymentIntent,amount(amountCents),occurredAt(at),rawBodySha256]
+    );
+  }
+
+  /** Pending reversals for one PaymentIntent, oldest first. */
+  async function listPendingStripeReversals(paymentIntent){
+    const id=boundedText(paymentIntent,'INVALID_PAYMENT_TRANSACTION_ID');
+    const result=await pool.query(
+      `SELECT reversal_kind,provider_event_id,payment_intent_id,amount_cents,occurred_at,webhook_body_sha256
+         FROM facturations_stripe_pending_reversals
+        WHERE business_id=$1 AND payment_intent_id=$2
+        ORDER BY occurred_at, recorded_at`,
+      [tenant,id]
+    );
+    return result.rows;
+  }
+
+  async function ingest({issuedInvoiceId:rawInvoiceId,rawEvent,sourceMode,webhookBodySha256,verificationScheme}){
+    const issuedInvoiceId=uuid(rawInvoiceId,'INVALID_ISSUED_INVOICE_ID');
+    const event=normalizeEvent(rawEvent);
     if(event.providerKey!==provider){
       throw new PaymentEvidenceError('PAYMENT_PROVIDER_KEY_MISMATCH',409);
     }
@@ -160,37 +254,68 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
         throw new PaymentEvidenceError('PAYMENT_EVIDENCE_SOURCE_NOT_READY',409);
       }
 
-      const fields={issuedInvoiceId,event,sourceMode:'SYNTHETIC_TEST'};
+      let relatedPaymentEvidenceId=null;
+      if(event.eventType==='REFUND_ISSUED'){
+        const related=await client.query(
+          `SELECT id
+             FROM facturations_payment_evidence
+            WHERE business_id=$1 AND issued_invoice_id=$2 AND provider_key=$3
+              AND provider_transaction_id=$4 AND event_type='PAYMENT_RECEIVED'
+            FOR SHARE`,
+          [tenant,issuedInvoiceId,event.providerKey,event.relatedProviderTransactionId]
+        );
+        if(related.rows.length!==1){
+          throw new PaymentEvidenceError('REFUND_PAYMENT_EVIDENCE_REQUIRED',409);
+        }
+        relatedPaymentEvidenceId=related.rows[0].id;
+      }
+
+      const fields={issuedInvoiceId,event,sourceMode};
       const hash=evidenceHash(fields);
       const inserted=await client.query(
         `INSERT INTO facturations_payment_evidence
            (business_id,issued_invoice_id,provider_key,provider_event_id,
-            provider_transaction_id,event_type,amount_cents,currency,occurred_at,
-            source_mode,evidence_hash)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'CAD',$8,'SYNTHETIC_TEST',$9)
-         ON CONFLICT (business_id,provider_key,provider_event_id) DO NOTHING
+            provider_transaction_id,related_payment_evidence_id,event_type,
+            amount_cents,currency,occurred_at,source_mode,evidence_hash,
+            webhook_body_sha256,verification_scheme)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CAD',$9,$10,$11,$12,$13)
+         ON CONFLICT DO NOTHING
          RETURNING *`,
         [tenant,issuedInvoiceId,event.providerKey,event.eventId,event.providerTransactionId,
-         event.eventType,event.amountCents,event.occurredAt,hash]
+         relatedPaymentEvidenceId,event.eventType,event.amountCents,event.occurredAt,sourceMode,hash,
+         webhookBodySha256,verificationScheme]
       );
       let saved=inserted.rows[0];
       if(!saved){
-        const prior=await client.query(
+        const priorEvent=await client.query(
           `SELECT * FROM facturations_payment_evidence
             WHERE business_id=$1 AND provider_key=$2 AND provider_event_id=$3`,
           [tenant,event.providerKey,event.eventId]
         );
-        saved=prior.rows[0];
-        if(!saved ||
-           saved.issued_invoice_id!==issuedInvoiceId ||
-           saved.provider_transaction_id!==event.providerTransactionId ||
-           saved.event_type!==event.eventType ||
-           Number(saved.amount_cents)!==event.amountCents ||
-           saved.currency!=='CAD' ||
-           new Date(saved.occurred_at).toISOString()!==event.occurredAt ||
-           saved.source_mode!=='SYNTHETIC_TEST' ||
-           saved.evidence_hash!==hash){
-          throw new PaymentEvidenceError('PAYMENT_EVIDENCE_EVENT_CONFLICT',409);
+        saved=priorEvent.rows[0];
+        if(saved){
+          if(saved.issued_invoice_id!==issuedInvoiceId ||
+             saved.provider_transaction_id!==event.providerTransactionId ||
+             (saved.related_payment_evidence_id||null)!==relatedPaymentEvidenceId ||
+             saved.event_type!==event.eventType ||
+             Number(saved.amount_cents)!==event.amountCents ||
+             saved.currency!=='CAD' ||
+             new Date(saved.occurred_at).toISOString()!==event.occurredAt ||
+             saved.source_mode!==sourceMode ||
+             saved.evidence_hash!==hash){
+            throw new PaymentEvidenceError('PAYMENT_EVIDENCE_EVENT_CONFLICT',409);
+          }
+        }else{
+          const priorTransaction=await client.query(
+            `SELECT * FROM facturations_payment_evidence
+              WHERE business_id=$1 AND provider_key=$2
+                AND provider_transaction_id=$3 AND event_type=$4`,
+            [tenant,event.providerKey,event.providerTransactionId,event.eventType]
+          );
+          if(priorTransaction.rows.length){
+            throw new PaymentEvidenceError('PAYMENT_TRANSACTION_REUSE_CONFLICT',409);
+          }
+          throw new PaymentEvidenceError('PAYMENT_EVIDENCE_CONFLICT',409);
         }
       }
 
@@ -210,6 +335,11 @@ function createPaymentEvidenceStore({pool,businessId,providerKey:configuredProvi
   return Object.freeze({
     providerKey:provider,
     ingestSynthetic,
+    ingestVerifiedStripe,
+    findIssuedInvoiceByPaymentTransaction,
+    hasEvidenceForTransaction,
+    recordPendingStripeReversal,
+    listPendingStripeReversals,
     listByIssuedInvoice,
   });
 }

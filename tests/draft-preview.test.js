@@ -58,6 +58,28 @@ test('invalid inputs are rejected with stable codes', () => {
   ];
   for (const [mutate, code] of cases) { const input = valid(); mutate(input); invalid(input, code); }
 });
+test('draft validator rejects undeclared fields while preserving documented optional fields', () => {
+  for (const mutate of [
+    x => { x.unexpected = true; },
+    x => { x.customer.unexpected = true; },
+    x => { x.lines[0].unexpected = true; },
+    x => { x.taxes[0].unexpected = true; },
+  ]) {
+    const input = valid();
+    mutate(input);
+    assert.throws(() => previewDraft(input), DraftValidationError);
+  }
+
+  const optional = valid();
+  delete optional.lines[0].discountCents;
+  optional.customer.address = undefined;
+  optional.notes = undefined;
+  const result = previewDraft(optional);
+  assert.equal(result.lines[0].discountCents, 0);
+  assert.equal(result.customer.address, null);
+  assert.equal(result.notes, null);
+});
+
 test('server preview requires auth; never contacts Wave, and never creates invoice', async () => {
   let calls = 0;
   const server = createServer({ config: { adminKey: key, waveToken: 'not-needed' }, fetchImpl: () => { calls++; throw Error('Wave must not be called'); } });

@@ -2,6 +2,7 @@
 
 // Internal approval is NOT issuance, a payment, revenue, or a Wave operation.
 const { pageOptions } = require('./dashboard-store');
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
 class ApprovalLedgerError extends Error {
   constructor(code, statusCode = 422) {
@@ -27,6 +28,40 @@ function createApprovalLedger({ pool, businessId }) {
     throw new Error('Dedicated business ID required');
   }
   const tenant = businessId.trim();
+
+  async function getApprovalByDraftId(draftId) {
+    if (typeof draftId !== 'string' || !UUID.test(draftId)) {
+      throw new ApprovalLedgerError('INVALID_DRAFT_ID');
+    }
+    let rows;
+    try {
+      rows = await pool.query(
+        `SELECT a.id, a.draft_id, a.approved_at,
+                d.snapshot->>'totalCents' AS total_cents
+           FROM facturations_draft_approvals AS a
+           JOIN invoice_drafts AS d
+             ON d.business_id=a.business_id AND d.id=a.draft_id
+          WHERE a.business_id=$1 AND a.draft_id=$2
+          LIMIT 1`,
+        [tenant, draftId]
+      );
+    } catch {
+      throw new ApprovalLedgerError('STORAGE_UNAVAILABLE', 503);
+    }
+    if (!rows.rows.length) return null;
+    const row = rows.rows[0];
+    return Object.freeze({
+      id: row.id,
+      draftId: row.draft_id,
+      approvedAt: row.approved_at instanceof Date ? row.approved_at.toISOString() : row.approved_at,
+      totalCents: row.total_cents,
+      status: 'APPROVED_INTERNAL_ONLY',
+      issued: false,
+      waveSynced: false,
+      emailed: false,
+      paid: false,
+    });
+  }
 
   async function listApprovals(options = pageOptions()) {
     const { page, pageSize, offset } = options;
@@ -56,7 +91,7 @@ function createApprovalLedger({ pool, businessId }) {
     };
   }
 
-  return Object.freeze({ listApprovals });
+  return Object.freeze({ listApprovals, getApprovalByDraftId });
 }
 
 module.exports = { createApprovalLedger, ApprovalLedgerError, approvalPageOptions };

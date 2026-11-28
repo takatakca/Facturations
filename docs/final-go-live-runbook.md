@@ -12,7 +12,7 @@ GO only if:
 - at least one independent review is required;
 - unresolved conversations block merge;
 - the exact release SHA has green Node 20/22, Chrome FR/EN and Chrome MFA/PostgreSQL runs;
-- migration integrity lock 001–027 is green;
+- migration integrity lock 001–045 is green;
 - runtime DB least-privilege matrix and target-environment preflight are green;
 - supply-chain workflow pins are unchanged or explicitly reviewed.
 
@@ -31,6 +31,7 @@ GO only if:
 - `/ready` returns 200;
 - `scripts/staging-readonly-preflight.js` passes;
 - graceful shutdown has been exercised without partial requests.
+- a PostgreSQL `/ready` request already in progress returns NOT READY if draining starts before its database response completes; verify the late-success race before authorizing traffic.
 
 Otherwise: **NO-GO**.
 
@@ -38,7 +39,7 @@ Otherwise: **NO-GO**.
 
 GO only if:
 
-- migrations 001–027 are reviewed and applied in sequence;
+- migrations 001–045 are reviewed and applied in sequence;
 - migration integrity lock passes;
 - migrations are executed with a separate admin/migration identity;
 - runtime application identity passes `npm run check:runtime-db`;

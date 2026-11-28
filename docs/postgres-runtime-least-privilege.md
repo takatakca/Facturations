@@ -12,7 +12,7 @@ Run in the target staging/production application environment:
 npm run check:runtime-db
 ```
 
-The command reads only `FACTURATIONS_DATABASE_URL`, connects with that exact runtime identity, checks privileges and prints only PASS/FAIL plus the transport classification. It never prints the role name, hostname, URL, password or SQL error details.
+The command reads only `FACTURATIONS_DATABASE_URL`, connects with that exact runtime identity, verifies both the role/transport policy **and the exact application privilege matrix** (tables, views, sequences and restricted TOTP columns), and prints only PASS/FAIL plus the transport classification. It never prints the role name, hostname, URL, password or SQL error details.
 
 ## Rejected capabilities
 

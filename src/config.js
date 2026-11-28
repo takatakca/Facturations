@@ -41,6 +41,15 @@ function loadConfig(env = process.env) {
     throw new Error('FACTURATIONS_INTEGRATION_ENABLED must be 1 when enabled');
   }
   const integrationEnabled = rawIntegrationEnabled === '1';
+  const rawIntegrationWritesEnabled =
+    (env.FACTURATIONS_INTEGRATION_WRITES_ENABLED || '').trim();
+  if (rawIntegrationWritesEnabled && rawIntegrationWritesEnabled !== '1') {
+    throw new Error('FACTURATIONS_INTEGRATION_WRITES_ENABLED must be 1 when enabled');
+  }
+  const integrationWritesEnabled = rawIntegrationWritesEnabled === '1';
+  if (integrationWritesEnabled && !integrationEnabled) {
+    throw new Error('Facturations integration writes require FACTURATIONS_INTEGRATION_ENABLED=1');
+  }
   const integrationIssuer = (env.FACTURATIONS_INTEGRATION_ISSUER || '').trim();
   const integrationAudience = (env.FACTURATIONS_INTEGRATION_AUDIENCE || '').trim();
   const integrationSecret = env.FACTURATIONS_INTEGRATION_HMAC_SECRET || '';
@@ -55,6 +64,30 @@ function loadConfig(env = process.env) {
     }
   } else if (integrationIssuer || integrationAudience || integrationSecret) {
     throw new Error('Facturations integration credentials require FACTURATIONS_INTEGRATION_ENABLED=1');
+  }
+
+  const stripeWebhookSecret = (env.FACTURATIONS_STRIPE_WEBHOOK_SECRET || '').trim();
+  if (stripeWebhookSecret) {
+    if (!databaseUrl || !businessId) {
+      throw new Error('FACTURATIONS_STRIPE_WEBHOOK_SECRET requires the dedicated database and business ID');
+    }
+    if (!/^whsec_[A-Za-z0-9+/=_-]{24,}$/.test(stripeWebhookSecret)) {
+      throw new Error('FACTURATIONS_STRIPE_WEBHOOK_SECRET must be a Stripe endpoint secret (whsec_...)');
+    }
+  }
+  // Test-mode Stripe events are refused unless this staging-only switch is set.
+  const rawTestMode = (env.FACTURATIONS_STRIPE_ALLOW_TEST_MODE || '').trim();
+  if (rawTestMode && rawTestMode !== '1') {
+    throw new Error('FACTURATIONS_STRIPE_ALLOW_TEST_MODE must be 1 or unset');
+  }
+  if (rawTestMode && !stripeWebhookSecret) {
+    throw new Error('FACTURATIONS_STRIPE_ALLOW_TEST_MODE requires FACTURATIONS_STRIPE_WEBHOOK_SECRET');
+  }
+  const stripeAllowTestMode = rawTestMode === '1';
+  // Test-mode events must never become payment evidence in production,
+  // even if the staging-only environment switch was accidentally copied.
+  if (productionMode && stripeAllowTestMode) {
+    throw new Error('Production forbids FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1');
   }
 
   // Browser login is opt-in and fails closed unless its separate encryption key,
@@ -78,6 +111,9 @@ function loadConfig(env = process.env) {
   }
 
   if (nodeEnv === 'production') {
+    if (adminKey) {
+      throw new Error('Production forbids TAKATAK_ADMIN_KEY legacy shared-key access');
+    }
     if (port === 0) throw new Error('Production PORT must not be zero');
     if (!databaseUrl || !businessId) {
       throw new Error('Production requires the dedicated Facturations database and business ID');
@@ -106,9 +142,12 @@ function loadConfig(env = process.env) {
     browserOrigin,
     totpEncryptionKeyHex,
     integrationEnabled,
+    integrationWritesEnabled,
     integrationIssuer,
     integrationAudience,
     integrationSecret,
+    stripeWebhookSecret,
+    stripeAllowTestMode,
   });
 }
 

@@ -15,6 +15,7 @@ const EXPECTED_TABLES = Object.freeze([
   'facturations_delivery_receipts',
   'facturations_draft_approvals',
   'facturations_draft_workspace_revisions',
+  'facturations_integration_token_uses',
   'facturations_draft_workspaces',
   'facturations_email_provider_evidence',
   'facturations_invoice_issuer_bindings',
@@ -33,6 +34,7 @@ const EXPECTED_TABLES = Object.freeze([
   'facturations_staff_sessions',
   'facturations_staff_totp',
   'facturations_staff_users',
+  'facturations_stripe_pending_reversals',
   'facturations_workspace_submissions',
   'invoice_audit_events',
   'invoice_customers',
@@ -59,9 +61,14 @@ const UPDATE_TABLES = new Set([
 ]);
 
 const DELETE_TABLES = new Set(['facturations_login_attempt_limits']);
+// Operator-only migration ledger written by scripts/prepare-dedicated-database.js.
+// Optional (absent in databases built by setup-test-db.js); when present the
+// runtime role must have no privilege on it at all.
+const OPTIONAL_OPERATOR_TABLES = new Set(['facturations_schema_migrations']);
 const NO_RUNTIME_TABLES = new Set([
   'facturations_mfa_recovery_authorizations',
   'facturations_mfa_recovery_events',
+  ...OPTIONAL_OPERATOR_TABLES,
 ]);
 const NO_RUNTIME_INSERT_TABLES = new Set([
   'facturations_staff_totp',
@@ -143,7 +150,8 @@ async function verifyRuntimePrivileges({ pool }) {
     "ORDER BY tablename"
   );
   const tables = tablesResult.rows.map(row => row.tablename);
-  invariant(sameList(tables, EXPECTED_TABLES), 'RUNTIME_TABLE_INVENTORY_CHANGED');
+  invariant(sameList(tables.filter(table => !OPTIONAL_OPERATOR_TABLES.has(table)), EXPECTED_TABLES),
+    'RUNTIME_TABLE_INVENTORY_CHANGED');
 
   const viewsResult = await pool.query(
     "SELECT viewname FROM pg_views " +

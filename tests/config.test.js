@@ -9,7 +9,8 @@ test('defaults to port 3000 and leaves all credentials and database absent', () 
   assert.deepEqual(loadConfig({}), { nodeEnv: 'development', productionMode: false, trustProxy: false,
     port: 3000, adminKey: '', waveToken: '', databaseUrl: '', businessId: '',
     browserOrigin: '', totpEncryptionKeyHex: '', aiEnabled: false,
-    openAiApiKey: '', openAiModel: '' });
+    openAiApiKey: '', openAiModel: '', integrationEnabled: false,
+    integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '', stripeWebhookSecret: '', stripeAllowTestMode: false });
 });
 
 test('accepts port zero, trims token and dedicated database settings', () => {
@@ -21,6 +22,9 @@ test('accepts port zero, trims token and dedicated database settings', () => {
     databaseUrl: 'postgresql://localhost/facturations', businessId: 'business-one',
     browserOrigin: '', totpEncryptionKeyHex: '', aiEnabled: false,
     openAiApiKey: '', openAiModel: '',
+    integrationEnabled: false,
+    integrationWritesEnabled: false, integrationIssuer: '', integrationAudience: '', integrationSecret: '',
+    stripeWebhookSecret: '', stripeAllowTestMode: false,
   });
 });
 
@@ -68,6 +72,10 @@ test('production fails closed unless the dedicated database and HTTPS browser se
   };
   assert.equal(loadConfig(production).browserOrigin, 'https://facturations.example.test');
   assert.equal(loadConfig(production).trustProxy, true);
+  assert.throws(() => loadConfig({
+    ...production,
+    TAKATAK_ADMIN_KEY: 'k'.repeat(48),
+  }), /forbids TAKATAK_ADMIN_KEY/);
   assert.throws(() => loadConfig({ ...production, FACTURATIONS_TRUST_PROXY: '' }), /TRUST_PROXY/);
   assert.throws(() => loadConfig({ ...production, FACTURATIONS_TRUST_PROXY: 'yes' }), /TRUST_PROXY/);
   assert.throws(() => loadConfig({ NODE_ENV: 'production' }), /Production requires/);
@@ -117,4 +125,86 @@ test('OpenAI help is explicit and requires private HTTPS staff configuration', (
     ...env,
     FACTURATIONS_OPENAI_MODEL: 'bad model',
   }), /FACTURATIONS_OPENAI_MODEL/);
+});
+
+test('TAKATAK integration is explicit, paired and fail-closed', () => {
+  const env = {
+    ...base,
+    FACTURATIONS_INTEGRATION_ENABLED: '1',
+    FACTURATIONS_INTEGRATION_ISSUER: 'https://identity.takatak.ca',
+    FACTURATIONS_INTEGRATION_AUDIENCE: 'facturations',
+    FACTURATIONS_INTEGRATION_HMAC_SECRET: 'z'.repeat(48),
+  };
+  const config = loadConfig(env);
+  assert.equal(config.integrationEnabled, true);
+  assert.equal(config.integrationWritesEnabled, false);
+  assert.equal(config.integrationIssuer, 'https://identity.takatak.ca');
+  assert.equal(config.integrationAudience, 'facturations');
+  assert.equal(config.integrationSecret, 'z'.repeat(48));
+
+  const writes = loadConfig({
+    ...env,
+    FACTURATIONS_INTEGRATION_WRITES_ENABLED: '1',
+  });
+  assert.equal(writes.integrationWritesEnabled, true);
+
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_INTEGRATION_WRITES_ENABLED: '1',
+  }), /writes require FACTURATIONS_INTEGRATION_ENABLED/);
+  assert.throws(() => loadConfig({
+    ...env,
+    FACTURATIONS_INTEGRATION_WRITES_ENABLED: 'yes',
+  }), /INTEGRATION_WRITES_ENABLED/);
+
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_INTEGRATION_ENABLED: 'yes',
+  }), /INTEGRATION_ENABLED/);
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_INTEGRATION_ISSUER: 'https://identity.takatak.ca',
+  }), /require FACTURATIONS_INTEGRATION_ENABLED/);
+  assert.throws(() => loadConfig({
+    ...base,
+    FACTURATIONS_INTEGRATION_ENABLED: '1',
+    FACTURATIONS_INTEGRATION_ISSUER: 'https://identity.takatak.ca',
+    FACTURATIONS_INTEGRATION_AUDIENCE: 'facturations',
+    FACTURATIONS_INTEGRATION_HMAC_SECRET: 'short',
+  }), /32\+ character HMAC secret/);
+  assert.throws(() => loadConfig({
+    FACTURATIONS_INTEGRATION_ENABLED: '1',
+    FACTURATIONS_INTEGRATION_ISSUER: 'https://identity.takatak.ca',
+    FACTURATIONS_INTEGRATION_AUDIENCE: 'facturations',
+    FACTURATIONS_INTEGRATION_HMAC_SECRET: 'z'.repeat(48),
+  }), /dedicated database and business ID/);
+});
+
+
+test('Stripe test-mode payments cannot be enabled on a production instance', () => {
+  const endpointSecret = 'whsec_' + 'a'.repeat(32);
+  const configured = {
+    FACTURATIONS_DATABASE_URL: 'postgresql://db.example.test/facturations',
+    WAVE_BUSINESS_ID: 'business-one',
+    FACTURATIONS_STRIPE_WEBHOOK_SECRET: endpointSecret,
+    FACTURATIONS_STRIPE_ALLOW_TEST_MODE: '1',
+  };
+  assert.equal(loadConfig({ ...configured, NODE_ENV: 'test' }).stripeAllowTestMode, true);
+  assert.equal(loadConfig({ ...configured, NODE_ENV: 'development' }).stripeAllowTestMode, true);
+  const production = {
+    ...configured,
+    NODE_ENV: 'production',
+    PORT: '3000',
+    FACTURATIONS_PUBLIC_ORIGIN: 'https://facturations.example.test',
+    FACTURATIONS_TOTP_ENCRYPTION_KEY: 'ab'.repeat(32),
+    FACTURATIONS_TRUST_PROXY: '1',
+  };
+  assert.throws(
+    () => loadConfig(production),
+    /Production forbids FACTURATIONS_STRIPE_ALLOW_TEST_MODE=1/
+  );
+  assert.equal(
+    loadConfig({ ...production, FACTURATIONS_STRIPE_ALLOW_TEST_MODE: '' }).stripeAllowTestMode,
+    false
+  );
 });

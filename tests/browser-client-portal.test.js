@@ -211,3 +211,42 @@ test('client portal rejects direct sessionless access and cross-origin redemptio
     await new Promise(resolve=>server.close(resolve));
   }
 });
+
+test('client portal denies oversized cookies before any invoice or PDF store read',async()=>{
+  let reads=0;
+  let revoked=0;
+  const authStore={
+    async redeemAccessLink(){throw new Error('must not redeem');},
+    async revokeSession(){revoked++;return true;},
+  };
+  const readStore={
+    async listInvoices(){reads++;return [];},
+    async getInvoice(){reads++;throw new Error('unexpected invoice read');},
+    async getQualifiedPdf(){reads++;throw new Error('unexpected PDF read');},
+  };
+  const server=http.createServer((req,res)=>{res.writeHead(404);res.end('fallback');});
+  attachBrowserClientPortal(server,{origin:ORIGIN,authStore,readStore});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const port=server.address().port;
+  const session='__Host-facturations_client_session='+SESSION_TOKEN;
+  const oversized=session+'; extra='+'x'.repeat(4096);
+  try{
+    for(const path of ['/portal?lang=en','/portal/invoices/'+INVOICE_ID+'?lang=en',
+      '/portal/documents/'+DOCUMENT_ID+'.pdf']){
+      const denied=await request(port,{path,headers:{Cookie:oversized}});
+      assert.equal(denied.status,401,path);
+    }
+    assert.equal(reads,0,'no tenant data is read for rejected cookies');
+    const logout=await request(port,{
+      method:'POST',path:'/portal/logout?lang=en',
+      headers:{Cookie:oversized,Origin:ORIGIN,'Sec-Fetch-Site':'same-origin'},
+    });
+    assert.equal(logout.status,303);
+    assert.equal(revoked,0,'untrusted session must not be passed to revocation');
+    const accepted=await request(port,{path:'/portal?lang=en',headers:{Cookie:session}});
+    assert.equal(accepted.status,200);
+    assert.equal(reads,1);
+  }finally{
+    await new Promise(resolve=>server.close(resolve));
+  }
+});

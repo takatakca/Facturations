@@ -21,7 +21,7 @@ Quand une origine HTTPS est configurée, le serveur applique globalement :
 
 - `Strict-Transport-Security: max-age=31536000`;
 - `X-Content-Type-Options: nosniff`;
-- `Referrer-Policy: no-referrer`.
+- `Referrer-Policy: same-origin`.
 
 En mode production, le garde de bord exige en plus :
 
@@ -61,7 +61,7 @@ Les load balancers et contrôles de préproduction doivent utiliser `/ready` pou
 4. route privée historique refusée anonymement;
 5. route CSRF refusée anonymement.
 
-Chaque réponse doit avoir un certificat valide, HSTS, `nosniff`, `no-referrer`, aucune redirection imprévue et aucune CORS permissive.
+Chaque réponse doit avoir un certificat valide, HSTS, `nosniff`, `same-origin`, aucune redirection imprévue et aucune CORS permissive.
 
 Ce script est strictement en lecture seule. Il n'autorise ni émission, ni courriel, ni paiement, ni mutation Wave.
 

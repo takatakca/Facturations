@@ -36,7 +36,7 @@ function checkResults(responses, now = Date.now()) {
       throw new Error(`HTTPS strict transport policy missing on ${PATHS[i]}`);
     }
     if (response.headers['x-content-type-options'] !== 'nosniff' ||
-        response.headers['referrer-policy'] !== 'no-referrer') {
+        response.headers['referrer-policy'] !== 'same-origin') {
       throw new Error(`Required security headers missing on ${PATHS[i]}`);
     }
   }

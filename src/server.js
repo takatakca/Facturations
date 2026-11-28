@@ -131,7 +131,7 @@ function resolveIntegrationPrincipal(request, config) {
 
 function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null, dashboardStore = null,
   staffAuthStore = null, customerDirectory = null, approvalLedger = null,
-  integrationReplayGuard = null, readinessCheck = null } = {}) {
+  integrationReplayGuard = null, readinessCheck = null, issuanceReadStore = null } = {}) {
   if (!config) throw new Error('Server config is required');
 
   return http.createServer(async (request, response) => {
@@ -169,15 +169,17 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
     const integrationDraftDetailMatch = /^\/integration\/v1\/drafts\/([^/]+)$/.exec(path);
     const integrationDraftApprovalMatch = /^\/integration\/v1\/drafts\/([^/]+)\/approval$/.exec(path);
     const integrationDraftWorkflowMatch = /^\/integration\/v1\/drafts\/([^/]+)\/workflow$/.exec(path);
+    const integrationDraftIssuanceMatch = /^\/integration\/v1\/drafts\/([^/]+)\/issuance$/.exec(path);
     const isIntegrationDraftDetail = Boolean(integrationDraftDetailMatch);
     const isIntegrationDraftApproval = Boolean(integrationDraftApprovalMatch);
     const isIntegrationDraftWorkflow = Boolean(integrationDraftWorkflowMatch);
+    const isIntegrationDraftIssuance = Boolean(integrationDraftIssuanceMatch);
     const isIntegrationOwnerReviewHandoff = path === '/integration/v1/handoffs/owner-review';
-    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail && !isIntegrationDraftApproval && !isIntegrationDraftWorkflow && !isIntegrationOwnerReviewHandoff) {
+    if (!isPreview && !isCollection && !isGet && !isWave && !isDashboard && !isCustomers && !isApprovals && !isHtml && !isIntegrationCapabilities && !isIntegrationDashboard && !isIntegrationDrafts && !isIntegrationCustomers && !isIntegrationApprovals && !isIntegrationDraftDetail && !isIntegrationDraftApproval && !isIntegrationDraftWorkflow && !isIntegrationDraftIssuance && !isIntegrationOwnerReviewHandoff) {
       return sendJson(response, 404, { error: 'NOT_FOUND' });
     }
 
-    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow || isIntegrationOwnerReviewHandoff) {
+    if (isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDrafts || isIntegrationCustomers || isIntegrationApprovals || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow || isIntegrationDraftIssuance || isIntegrationOwnerReviewHandoff) {
       // Feature gates are evaluated before route-specific validation/authentication so
       // disabled integration surfaces are uniformly indistinguishable from NOT_FOUND.
       if (!config.integrationEnabled) {
@@ -193,7 +195,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
       } else if (request.method !== 'GET') {
         return sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
       }
-      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow ||
+      if ((isIntegrationCapabilities || isIntegrationDashboard || isIntegrationDraftDetail || isIntegrationDraftApproval || isIntegrationDraftWorkflow || isIntegrationDraftIssuance ||
           (isIntegrationDrafts && request.method === 'POST') || isIntegrationOwnerReviewHandoff) &&
           [...url.searchParams.keys()].length) {
         return sendJson(response, 422, { error: 'INVALID_QUERY' });
@@ -224,6 +226,7 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
               draftDetailsRead: principal.roles.includes('OWNER'),
               draftApprovalStatusRead: principal.roles.includes('OWNER'),
               draftWorkflowRead: principal.roles.includes('OWNER'),
+              issuanceStatusRead: Boolean(issuanceReadStore && principal.roles.includes('OWNER')),
               ownerReviewHandoffRead: principal.roles.includes('OWNER'),
               customersRead: principal.roles.includes('OWNER'),
               approvalsRead: principal.roles.includes('OWNER'),
@@ -259,6 +262,47 @@ function createServer({ config, fetchImpl = globalThis.fetch, draftStore = null,
             financialAuthorization: false,
           },
         });
+      }
+
+      if (isIntegrationDraftIssuance) {
+        if (!principal.roles.includes('OWNER')) {
+          return sendJson(response, 403, { error: 'OWNER_REQUIRED' });
+        }
+        if (!issuanceReadStore || typeof issuanceReadStore.getIssuanceByDraftId !== 'function') {
+          return sendJson(response, 503, { error: 'STORAGE_NOT_CONFIGURED' });
+        }
+        try {
+          const invoice = await issuanceReadStore.getIssuanceByDraftId(integrationDraftIssuanceMatch[1]);
+          return sendJson(response, 200, {
+            version: 1,
+            requestId: request.requestId || null,
+            businessId: principal.businessId,
+            data: {
+              draftId: integrationDraftIssuanceMatch[1].toLowerCase(),
+              issued: Boolean(invoice),
+              invoice: invoice ? {
+                id: invoice.id,
+                officialInvoiceNumber: invoice.officialInvoiceNumber,
+                issuedAt: invoice.issuedAt,
+                currency: invoice.currency,
+                totalCents: invoice.totalCents,
+                balanceCents: invoice.balanceCents,
+                financialState: invoice.financialState,
+                proofScope: invoice.proofScope,
+              } : null,
+              nativeActions: {
+                issue: false,
+                deliver: false,
+                recordPayment: false,
+              },
+            },
+          });
+        } catch (error) {
+          if (error && error.name === 'IssuanceReadError') {
+            return sendJson(response, error.statusCode, { error: error.code });
+          }
+          return sendJson(response, 503, { error: 'STORAGE_UNAVAILABLE' });
+        }
       }
 
       if (isIntegrationDraftWorkflow) {

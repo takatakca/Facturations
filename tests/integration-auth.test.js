@@ -189,6 +189,7 @@ test('integration capabilities endpoint requires valid service identity and expo
       draftDetailsRead: true,
       draftApprovalStatusRead: true,
       draftWorkflowRead: true,
+      issuanceStatusRead: false,
       ownerReviewHandoffRead: true,
       customersRead: true,
       approvalsRead: true,
@@ -457,6 +458,7 @@ test('integration capabilities expose customer read only to OWNER identities', a
     assert.equal(body.data.capabilities.draftDetailsRead, false);
     assert.equal(body.data.capabilities.draftApprovalStatusRead, false);
     assert.equal(body.data.capabilities.draftWorkflowRead, false);
+    assert.equal(body.data.capabilities.issuanceStatusRead, false);
     assert.equal(body.data.capabilities.draftsRead, true);
     assert.equal(body.data.capabilities.approvalsRead, false);
     assert.equal(body.data.capabilities.draftWrite, false);

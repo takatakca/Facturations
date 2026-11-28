@@ -32,3 +32,18 @@ Build a secure, independent, bilingual (FR/EN), mobile-first invoicing applicati
 
 ## Priority order
 Fix failing CI/security bugs → auth and business isolation → saved draft lifecycle → approval and audit → Wave sync → PDF/email/payment → client portal and accessibility → AI/voice integration → staging/hardening. Consult issues #3–#8 and update them as features become verifiably complete.
+
+## Work log rule (every agent: Claude, Codex, Cursor, people)
+
+Cheap to follow: read only what is listed here.
+
+1. **Before you start:** read the top of the log (`head -40 WORKLOG.md`) and the titles of open pull requests (`gh pr list`). If a line for the same work is `active` or has an open PR, do not redo it: continue that branch or pick other work.
+2. **Claim it:** add one line at the top of the log with status `active`.
+3. **Before you stop:** update your line with the status (`done`, `PR #n`, `blocked: reason`) and the next step. Commit and push it with your work. Never stop with unlogged work.
+4. One line per piece of work, newest first. Details go in the PR, not the log.
+
+Line format: `YYYY-MM-DD | agent | branch → PR | status | what | next step`
+
+## Brand rule
+
+Everything visual or written for TAKATAK follows `BRAND.md` (logo, colours, tagline, services). Electric blue on deep navy; never the old gold "TK" logo; green is for status only.

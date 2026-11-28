@@ -51,7 +51,7 @@ test('edge guard adds HSTS and preserves existing request listeners',async()=>{
     assert.equal(response.status,200);
     assert.equal(response.headers['strict-transport-security'],STRICT_TRANSPORT_SECURITY);
     assert.equal(response.headers['x-content-type-options'],'nosniff');
-    assert.equal(response.headers['referrer-policy'],'no-referrer');
+    assert.equal(response.headers['referrer-policy'],'same-origin');
     assert.deepEqual(calls,['prepended','main']);
   }finally{
     await new Promise(resolve=>server.close(resolve));

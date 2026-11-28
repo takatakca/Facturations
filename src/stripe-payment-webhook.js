@@ -81,7 +81,10 @@ function verifyStripeWebhook({
 
   let event;
   try {
-    event = JSON.parse(rawBody.toString('utf8'));
+    // The HMAC authenticates bytes, not replacement characters: refuse
+    // malformed UTF-8 rather than letting Buffer.toString silently coerce it.
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(rawBody);
+    event = JSON.parse(json);
   } catch {
     throw new StripeWebhookError('INVALID_WEBHOOK_JSON');
   }
@@ -245,7 +248,11 @@ function reversalFromPendingRow(row) {
  */
 function stripeEventScope(event, { allowTestMode = false } = {}) {
   if (event.account !== undefined && event.account !== null) return { accepted: false, reason: 'CONNECTED_ACCOUNT_EVENT' };
-  if (event.livemode !== true && !allowTestMode) return { accepted: false, reason: 'TEST_MODE_EVENT' };
+  // A signed event still needs an explicit Stripe livemode boolean; do not
+  // treat absent/malformed values as test mode when staging is enabled.
+  if (event.livemode !== true && !(allowTestMode && event.livemode === false)) {
+    return { accepted: false, reason: 'TEST_MODE_EVENT' };
+  }
   return { accepted: true };
 }
 

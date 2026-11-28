@@ -8,7 +8,7 @@ const { TARGET, PATHS, assertTarget, checkResults, readOnlyGet } =
 const NOW = Date.parse('2026-09-21T23:00:00Z');
 const security = Object.freeze({
   'strict-transport-security': 'max-age=31536000; includeSubDomains',
-  'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin',
   'x-frame-options': 'DENY', 'cache-control': 'private, no-store',
   'content-security-policy': "default-src 'none'; form-action 'self'; frame-ancestors 'none'",
 });

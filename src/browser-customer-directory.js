@@ -23,7 +23,7 @@ const LANG = Object.freeze({
 });
 const HEADERS = Object.freeze({
   'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',

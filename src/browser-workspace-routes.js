@@ -11,7 +11,7 @@ const CSRF_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const HEADERS = Object.freeze({
   'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store',
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin',
+  'Referrer-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'same-origin',
   'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 });
